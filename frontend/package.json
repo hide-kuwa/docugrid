@@ -1,0 +1,45 @@
+{
+  "name": "taxx-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "clean": "node scripts/clean-next.mjs",
+    "copy-pdfjs": "node scripts/copy-pdfjs-assets.mjs",
+    "dev": "next dev -p 3000",
+    "dev:clean": "npm run clean && npm run copy-pdfjs && next dev -p 3000",
+    "dev:kill": "node scripts/kill-port.mjs 3000 3001 3002 3003",
+    "dev:fresh": "npm run dev:kill && npm run dev:clean",
+    "build": "npm run copy-pdfjs && next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@react-oauth/google": "^0.13.5",
+    "clsx": "^2.1.1",
+    "googleapis": "^171.4.0",
+    "immer": "^11.1.4",
+    "lucide-react": "^0.378.0",
+    "next": "14.2.3",
+    "pdfjs-dist": "^3.11.174",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-dropzone": "^14.3.8",
+    "react-virtuoso": "^4.18.5",
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.3",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}

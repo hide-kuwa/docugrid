@@ -1,0 +1,136 @@
+# 連携ポートカタログ — ランタイム正本
+# ドキュメント: docs/integration-port-catalog.md, docs/no-code-config-vision.md
+version: 1
+
+ports:
+  - port_id: docugrid.slots.monthly_trial_balance
+    label_ja: 試算表 PDF 保管
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: staging_only
+    manual_policy_label: 資料のみ
+    direction: ingress
+    source: マトリクス D&D
+    target: DocuGrid
+    api_method: POST
+    api_path: /api/slots
+    status: active
+
+  - port_id: docugrid.metrics.monthly_revenue.ocr
+    label_ja: 試算表 OCR → 売上指標
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: ssot_only
+    manual_policy_label: CHARTS 正規値編集可
+    direction: ingress
+    source: OCR ingest
+    target: client_metrics
+    api_method: INTERNAL
+    api_path: ssot_ingest / profile_extractors
+    status: active
+
+  - port_id: docugrid.metrics.monthly_revenue.projection
+    label_ja: 会計試算表 → 指標投影
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid（投影）
+    manual_policy: forbidden
+    manual_policy_label: 不可（税務会計で修正）
+    direction: ingress
+    source: 税務会計システム
+    target: DocuGrid CHARTS
+    api_method: POST
+    api_path: /api/handoff/metrics
+    idempotency_key_template: "tax-accounting:{client_id}:{period_key}:revenue"
+    status: planned
+
+  - port_id: tax-accounting.journals.import
+    label_ja: 仕訳 CSV 取込
+    ssot_owner: tax-accounting
+    ssot_owner_label: 税務会計システム
+    manual_policy: ssot_only
+    manual_policy_label: 仕訳入力のみ
+    direction: ingress
+    source: DocuGrid エクスポート
+    target: 税務会計システム
+    api_method: POST
+    api_path: /import/local-csv
+    status: planned
+
+  - port_id: tax-accounting.journals.ingress
+    label_ja: 仕訳 JSON handoff
+    ssot_owner: tax-accounting
+    ssot_owner_label: 税務会計システム
+    manual_policy: ssot_only
+    manual_policy_label: 税務会計で確定
+    direction: ingress
+    source: DocuGrid 構造 OCR
+    target: 税務会計システム
+    api_method: POST
+    api_path: /api/v1/handoff/journals
+    idempotency_key_template: "docugrid:{client_id}:{period_key}:batch-{batch_id}"
+    status: planned
+
+  - port_id: docugrid.documents.version_ref
+    label_ja: 証憑 deep link
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: forbidden
+    manual_policy_label: 不可
+    direction: egress
+    source: 税務会計仕訳
+    target: DocuGrid PDF
+    api_method: GET
+    api_path: /api/handoff/deep-link/journal/{journal_id}
+    status: planned
+
+  - port_id: docugrid.payroll.ledger_row
+    label_ja: 給与月次行
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: ssot_only
+    manual_policy_label: SSOT 画面のみ
+    direction: ingress
+    source: DATA 給与タブ
+    target: payroll_ledger
+    api_method: PUT
+    api_path: /api/payroll/ledger
+    status: active
+
+  - port_id: docugrid.payroll.marufu_apply
+    label_ja: キャプチャ → 源泉
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: staging_only
+    manual_policy_label: ステージングのみ
+    direction: ingress
+    source: キャプチャ確定
+    target: payroll_ledger
+    api_method: POST
+    api_path: /api/capture/apply-payroll
+    status: active
+
+  - port_id: legal.consumption_tax.standard
+    label_ja: 消費税率参照
+    ssot_owner: legal-master
+    ssot_owner_label: 法定マスタ
+    manual_policy: forbidden
+    manual_policy_label: マスタ運用のみ
+    direction: ingress
+    source: 共通マスタ
+    target: 税・給与計算
+    api_method: GET
+    api_path: /api/v1/legal-master/rates/consumption-tax
+    status: planned
+
+  - port_id: docugrid.audit.auto_vouch
+    label_ja: 監査数値照合
+    ssot_owner: docugrid
+    ssot_owner_label: DocuGrid
+    manual_policy: forbidden
+    manual_policy_label: 不可
+    direction: ingress
+    source: 指標 + PDF
+    target: 監査スタンプ
+    api_method: POST
+    api_path: /api/audit/auto-link
+    status: active

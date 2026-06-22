@@ -1,0 +1,16 @@
+domain,master_key,label_ja,value_numeric,value_text,jurisdiction,valid_from,valid_to,source_law,attributes_json,master_version_id
+consumption_tax,consumption_tax.standard_rate,消費税標準税率,0.08,,,2014-04-01,2019-09-30,消費税法,,ctr-2014-04-01
+consumption_tax,consumption_tax.standard_rate,消費税標準税率,0.10,,,2019-10-01,,消費税法,,ctr-2019-10-01
+consumption_tax,consumption_tax.reduced_rate,消費税軽減税率,0.08,,,2019-10-01,,消費税法,,ctr-reduced-2019-10-01
+deduction_amount,deduction.basic,基礎控除,480000,,,2025-01-01,,所得税法,,ded-basic-2025
+deduction_amount,deduction.dependent,扶養控除,380000,,,2025-01-01,,所得税法,,ded-dependent-2025
+deduction_amount,deduction.spouse,配偶者控除,380000,,,2025-01-01,,所得税法,,ded-spouse-2025
+deduction_amount,deduction.social_insurance_cap,社会保険料控除上限,120000,,,2025-01-01,,所得税法,,ded-si-cap-2025
+income_tax_surcharge,income_tax.reconstruction_surcharge_rate,復興特別所得税率,0.021,,,2013-01-01,,復興特別所得税法,,its-recon-2013
+income_tax_bracket,income_tax.bracket.1,所得税5%区分,0.05,,,2025-01-01,,所得税法,"{""bracket_min"":0,""bracket_max"":1950000,""base_deduction"":0}",itb-1-2025
+income_tax_bracket,income_tax.bracket.2,所得税10%区分,0.10,,,2025-01-01,,所得税法,"{""bracket_min"":1950000,""bracket_max"":3300000,""base_deduction"":97500}",itb-2-2025
+income_tax_bracket,income_tax.bracket.3,所得税20%区分,0.20,,,2025-01-01,,所得税法,"{""bracket_min"":3300000,""bracket_max"":6950000,""base_deduction"":427500}",itb-3-2025
+income_tax_bracket,income_tax.bracket.4,所得税23%区分,0.23,,,2025-01-01,,所得税法,"{""bracket_min"":6950000,""bracket_max"":9000000,""base_deduction"":636000}",itb-4-2025
+income_tax_bracket,income_tax.bracket.5,所得税33%区分,0.33,,,2025-01-01,,所得税法,"{""bracket_min"":9000000,""bracket_max"":18000000,""base_deduction"":1536000}",itb-5-2025
+income_tax_bracket,income_tax.bracket.6,所得税40%区分,0.40,,,2025-01-01,,所得税法,"{""bracket_min"":18000000,""bracket_max"":40000000,""base_deduction"":2796000}",itb-6-2025
+income_tax_bracket,income_tax.bracket.7,所得税45%区分,0.45,,,2025-01-01,,所得税法,"{""bracket_min"":40000000,""bracket_max"":null,""base_deduction"":4796000}",itb-7-2025
