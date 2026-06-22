@@ -1,0 +1,34 @@
+
+node_modules/
+.next/
+dist/
+build/
+
+# Python
+venv/
+.venv/
+backend/core/backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+.env
+.env.local
+.env.*.local
+
+storage/
+
+# Local dev / secrets
+login.json
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# pdfjs-dist assets copied for CMap / worker (npm run copy-pdfjs)
+frontend/public/pdfjs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp

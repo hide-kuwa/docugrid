@@ -1,0 +1,20 @@
+{
+  "name": "taxx",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:backend:lan": "node scripts/run-backend-lan.mjs",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:frontend:fresh": "cd frontend && npm run dev:fresh",
+    "dev:frontend:lan": "node scripts/run-frontend-lan.mjs",
+    "dev:lan:info": "node scripts/lan-dev-info.mjs",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && python -m pip install -r requirements.txt",
+    "build": "npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "start:frontend": "cd frontend && npm run start",
+    "test:backend": "cd backend && python -m pytest",
+    "test:frontend": "cd frontend && npx tsc --noEmit",
+    "test": "npm run test:backend && npm run test:frontend"
+  }
+}

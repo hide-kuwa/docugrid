@@ -1,0 +1,55 @@
+# metric_key ↔ 勘定科目 / Auto-Vouch field / 資料スロット
+# docs/no-code-config-vision.md C6
+version: 1
+
+mappings:
+  - metric_key: monthly.revenue
+    label_ja: 月次売上
+    field_id: acct.revenue
+    account_code: "4110"
+    account_name: 売上高
+    slot_id: monthly_trial_balance
+    period_key: month:1
+    document_label: 月次試算表
+    status: active
+
+  - metric_key: annual.revenue
+    label_ja: 年次売上
+    field_id: acct.revenue
+    account_code: "4110"
+    account_name: 売上高
+    slot_id: financial_report
+    period_key: year:1
+    document_label: 決算報告書
+    status: active
+
+  - metric_key: annual.profit
+    label_ja: 年次利益
+    field_id: tax.taxable_profit
+    account_code: ""
+    account_name: 課税所得
+    slot_id: tax_return_corporate
+    period_key: year:1
+    document_label: 法人税申告書
+    status: active
+
+  - metric_key: annual.consumption_taxable
+    label_ja: 課税売上（消費税）
+    field_id: tax.consumption_taxable
+    account_code: ""
+    account_name: 課税売上
+    slot_id: tax_return_consumption
+    period_key: year:1
+    document_label: 消費税申告書
+    status: active
+
+  - metric_key: monthly.sales_index
+    label_ja: 月次売上指数
+    field_id: acct.revenue
+    account_code: "4110"
+    account_name: 売上高
+    slot_id: monthly_trial_balance
+    period_key: month:1
+    document_label: 月次試算表
+    status: planned
+    notes: CHARTS 指数列 — 監査は revenue と同 field
