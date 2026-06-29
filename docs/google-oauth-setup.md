@@ -75,5 +75,6 @@ DOCUGRID_LOGIN_PASSWORD=password
 
 ## 関連
 
+- [`production-deployment.md`](production-deployment.md) — 本番フェーズ順手順
 - [`security-checklist.md`](security-checklist.md)
 - [`auth-tenancy-design.md`](auth-tenancy-design.md)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PersonaDefinition } from "@/config/personas";
+import type { PersonaDefinition, PersonaId } from "@/config/personas";
 import type { ScreenDesignPersona } from "@/config/screen-design-types";
 import { WipBadge, WipBanner } from "@/components/work-in-progress";
 import { resolvePersonaHome } from "@/features/persona/homes";
@@ -13,6 +13,10 @@ import { resolvePersonaId } from "@/lib/persona";
 type Props = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
+  /** 画面設計の解決に使うペルソナ（デモプレビュー用） */
+  designPersonaId?: PersonaId;
+  /** 営業デモ — ログアウトの代わりにデモ終了リンク */
+  demoMode?: boolean;
 };
 
 /** Fallback shell for personas without a dedicated home implementation yet. */
@@ -20,10 +24,12 @@ function PersonaPlaceholderHome({
   persona,
   user,
   design,
+  demoMode,
 }: {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 }) {
   const accent = design?.accentColor || "#2563eb";
   const widgets =
@@ -36,7 +42,7 @@ function PersonaPlaceholderHome({
     }));
 
   return (
-    <PersonaWorkspaceLayout persona={persona} user={user} design={design}>
+    <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
       <WipBanner
         kind="planned"
         title={`${persona.label} ワークスペース`}
@@ -68,25 +74,29 @@ function PersonaPlaceholderHome({
   );
 }
 
-export function PersonaHomeShell({ persona, user }: Props) {
+export function PersonaHomeShell({ persona, user, designPersonaId, demoMode }: Props) {
   const [design, setDesign] = useState<ScreenDesignPersona | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
-        const pid = resolvePersonaId(user);
+        const pid = designPersonaId ?? resolvePersonaId(user);
         const resolved = await fetchResolvedScreenDesign(pid);
         setDesign(resolved.merged);
       } catch {
         setDesign(null);
       }
     })();
-  }, [user]);
+  }, [user, designPersonaId]);
 
   const DedicatedHome = resolvePersonaHome(persona.id);
   if (DedicatedHome) {
-    return <DedicatedHome persona={persona} user={user} design={design} />;
+    return (
+      <DedicatedHome persona={persona} user={user} design={design} demoMode={demoMode} />
+    );
   }
 
-  return <PersonaPlaceholderHome persona={persona} user={user} design={design} />;
+  return (
+    <PersonaPlaceholderHome persona={persona} user={user} design={design} demoMode={demoMode} />
+  );
 }

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "slot_id": "corporate_registry",
+  "document_label": "履歴事項全部証明書",
+  "target_default": "client-master",
+  "fields": [
+    {
+      "id": "corporate_number",
+      "label": "法人番号",
+      "target": "client-master",
+      "required": true,
+      "confidence_min": 0.9,
+      "patterns": [
+        {
+          "type": "regex",
+          "pattern": "(?:法人番号|会社法人等番号)[^\\d]{0,12}(\\d{13})",
+          "group": 1,
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "customer_name",
+      "label": "商号",
+      "target": "client-master",
+      "required": true,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "(?:商\\s*号|名\\s*称|会社名)[\\s　:：]*([^\\n\\r]{2,80})",
+          "confidence": 0.85
+        }
+      ],
+      "cleanse": "company_name"
+    },
+    {
+      "id": "head_office_address",
+      "label": "本店所在地",
+      "target": "client-master",
+      "required": true,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "(?:本店|所在地|本\\s*店\\s*所\\s*在\\s*地)[\\s　:：]*([^\\n\\r]{4,120})",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "id": "capital",
+      "label": "資本金",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "yen",
+          "pattern": "資\\s*本\\s*金[\\s　:：]*([0-9,\\s]+(?:円)?)",
+          "confidence": 0.8
+        }
+      ]
+    },
+    {
+      "id": "representative_name",
+      "label": "代表取締役",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "代表取締役[\\s　]*([^\\n\\r（(]{2,40})",
+          "confidence": 0.85,
+          "postprocess": "representative_name"
+        }
+      ]
+    },
+    {
+      "id": "established_date",
+      "label": "設立年月日",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "設\\s*立[\\s　]*年[\\s　]*月[\\s　]*日[\\s　:：]*(\\d{4}年?\\s*\\d{1,2}月?\\s*\\d{1,2}日?)",
+          "confidence": 0.85
+        }
+      ]
+    }
+  ]
+}

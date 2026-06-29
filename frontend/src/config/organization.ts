@@ -5,6 +5,7 @@ export type AppPermission =
   | "client.edit"
   | "document.view"
   | "document.upload"
+  | "document.purge"
   | "document.annotate"
   | "document.comment"
   | "audit.link"
@@ -12,6 +13,7 @@ export type AppPermission =
   | "dashboard.view"
   | "alert.view"
   | "alert.manage"
+  | "review_checklist.edit"
   | "settings.manage"
   | "settings.platform";
 
@@ -126,7 +128,13 @@ export const APP_ROLES: AppRole[] = [
     id: "client_uploader",
     label: "クライアント提出者",
     description: "自社資料の閲覧とアップロード",
-    permissions: ["client.view", "document.view", "document.upload", "dashboard.view"],
+    permissions: [
+      "client.view",
+      "document.view",
+      "document.upload",
+      "review_checklist.edit",
+      "dashboard.view",
+    ],
   },
   {
     id: "operator",
@@ -140,6 +148,7 @@ export const APP_ROLES: AppRole[] = [
       "document.annotate",
       "document.comment",
       "audit.link",
+      "review_checklist.edit",
       "dashboard.view",
       "alert.view",
     ],
@@ -148,7 +157,16 @@ export const APP_ROLES: AppRole[] = [
     id: "reviewer",
     label: "レビュアー",
     description: "監査リンク確認とレビュー中心",
-    permissions: ["client.view", "document.view", "document.annotate", "document.comment", "audit.link", "dashboard.view", "alert.view"],
+    permissions: [
+      "client.view",
+      "document.view",
+      "document.annotate",
+      "document.comment",
+      "audit.link",
+      "review_checklist.edit",
+      "dashboard.view",
+      "alert.view",
+    ],
   },
   {
     id: "approver",
@@ -180,6 +198,7 @@ export const APP_ROLES: AppRole[] = [
       "alert.view",
       "alert.manage",
       "settings.manage",
+      "document.purge",
     ],
   },
   {
@@ -199,6 +218,7 @@ export const APP_ROLES: AppRole[] = [
       "alert.view",
       "alert.manage",
       "settings.manage",
+      "document.purge",
     ],
   },
   {

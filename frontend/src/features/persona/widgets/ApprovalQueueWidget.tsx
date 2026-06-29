@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Circle, Loader2 } from "lucide-react";
 import type { FirmTaskItem } from "@/features/docugrid/lib/firm-tasks";
+import { formatAssigneeLabel } from "@/features/docugrid/lib/firm-tasks";
 import { periodKeyLabel } from "@/features/persona/lib/period-keys";
 
 type Props = {
@@ -56,6 +57,9 @@ export function ApprovalQueueWidget({
             <span className="text-amber-800">
               {" "}
               · {periodKeyLabel(item.period_key)} · {item.slot_label}
+            </span>
+            <span className="mt-0.5 block text-[10px] font-bold text-amber-700/90">
+              担当: {formatAssigneeLabel(item.assignees)}
             </span>
           </>
         );

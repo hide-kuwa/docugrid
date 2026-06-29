@@ -70,9 +70,10 @@ export function buildSlotStorageKeyFromSlotId(
 export function classifyCandidates(
   periodKey: string,
   slotLabels: string[],
+  slotIds?: string[],
 ): { id: string; label: string }[] {
   return slotLabels.map((label, idx) => ({
-    id: stableSlotId(periodKey, idx),
+    id: slotIds?.[idx] ?? stableSlotId(periodKey, idx),
     label,
   }));
 }

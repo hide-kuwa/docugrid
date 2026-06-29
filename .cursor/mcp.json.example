@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "docugrid": {
+      "command": "node",
+      "args": ["mcp-server/dist/index.js"],
+      "env": {
+        "DOCUGRID_API_BASE": "http://localhost:8000/api",
+        "DOCUGRID_ACCESS_TOKEN": "<ログインユーザー本人の JWT>",
+        "DOCUGRID_MCP_STRICT": "true",
+        "DOCUGRID_MCP_ALLOW_DEV_LOGIN": "false"
+      }
+    }
+  }
+}

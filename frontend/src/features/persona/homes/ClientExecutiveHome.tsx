@@ -16,6 +16,7 @@ type Props = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 };
 
 function formatMan(yen: number): string {
@@ -24,7 +25,7 @@ function formatMan(yen: number): string {
   return `${Math.round(yen / 10_000)}万円`;
 }
 
-export function ClientExecutiveHome({ persona, user, design }: Props) {
+export function ClientExecutiveHome({ persona, user, design, demoMode }: Props) {
   const { clients } = useOrgDirectory();
   const clientId = user?.visibleClientIds?.[0] ?? clients[0]?.id ?? "";
   const clientName = clients.find((c) => c.id === clientId)?.name ?? clientId;
@@ -88,7 +89,7 @@ export function ClientExecutiveHome({ persona, user, design }: Props) {
   const loading = statusLoading || chartsLoading;
 
   return (
-    <PersonaWorkspaceLayout persona={persona} user={user} design={design}>
+    <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-bold text-slate-800">経営サマリー</h2>
         <p className="mt-1 text-xs text-slate-500">{clientName}</p>

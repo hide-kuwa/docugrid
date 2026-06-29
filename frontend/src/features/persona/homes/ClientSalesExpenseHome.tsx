@@ -11,6 +11,7 @@ import { useClientPeriodStatus } from "@/features/persona/hooks/useClientPeriodS
 import { periodKeyLabel } from "@/features/persona/lib/period-keys";
 import { QuickUploadWidget } from "@/features/persona/widgets/QuickUploadWidget";
 import { ExpenseStatusWidget } from "@/features/persona/widgets/ExpenseStatusWidget";
+import { MoneytreeLinkPanel } from "@/features/integrations/MoneytreeLinkPanel";
 import { SubmissionChecklistWidget } from "@/features/persona/widgets/SubmissionChecklistWidget";
 import { setClientScope } from "@/lib/api-auth";
 import type { DocugridUser } from "@/lib/auth";
@@ -27,9 +28,10 @@ type Props = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 };
 
-export function ClientSalesExpenseHome({ persona, user, design }: Props) {
+export function ClientSalesExpenseHome({ persona, user, design, demoMode }: Props) {
   const { clients } = useOrgDirectory();
   const clientId = user?.visibleClientIds?.[0] ?? clients[0]?.id ?? "";
   const clientName = clients.find((c) => c.id === clientId)?.name ?? clientId;
@@ -57,7 +59,7 @@ export function ClientSalesExpenseHome({ persona, user, design }: Props) {
   }, [periodStatus]);
 
   return (
-    <PersonaWorkspaceLayout persona={persona} user={user} design={design}>
+    <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-bold text-slate-800">経費精算 · 提出状況</h2>
         <p className="mt-1 text-xs text-slate-500">
@@ -74,6 +76,15 @@ export function ClientSalesExpenseHome({ persona, user, design }: Props) {
           ) : null}
         </div>
       </section>
+
+      {canUpload && (
+        <MoneytreeLinkPanel
+          clientId={clientId}
+          clientName={clientName}
+          returnPath="/workspace/client_sales_expense"
+          compact
+        />
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">

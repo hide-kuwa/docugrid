@@ -11,3 +11,4 @@ sqlmodel
 requests
 reportlab
 PyYAML
+stripe>=11.0.0

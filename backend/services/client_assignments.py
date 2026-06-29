@@ -35,6 +35,53 @@ def init_client_assignments_db() -> None:
         )
 
 
+def load_assignments_for_firm(firm_id: str) -> list[dict[str, str]]:
+    """All assignment rows for a firm."""
+    init_client_assignments_db()
+    with sqlite3.connect(ASSIGNMENTS_DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT client_id, member_id, assignment_role
+            FROM client_assignments
+            WHERE firm_id=?
+            ORDER BY client_id, assignment_role, member_id
+            """,
+            (firm_id,),
+        ).fetchall()
+    return [
+        {
+            "client_id": str(client_id),
+            "member_id": str(member_id),
+            "assignment_role": str(assignment_role or "main"),
+        }
+        for client_id, member_id, assignment_role in rows
+    ]
+
+
+def build_client_assignee_index(
+    firm_id: str,
+) -> dict[str, list[tuple[str, str]]]:
+    """client_id -> [(member_id, assignment_role), ...] with main first."""
+    index: dict[str, list[tuple[str, str]]] = {}
+    for row in load_assignments_for_firm(firm_id):
+        index.setdefault(row["client_id"], []).append(
+            (row["member_id"], row["assignment_role"]),
+        )
+    for client_id in index:
+        index[client_id].sort(key=lambda pair: (0 if pair[1] == "main" else 1, pair[0]))
+    return index
+
+
+def build_member_client_index(
+    firm_id: str,
+) -> dict[str, set[str]]:
+    """member_id -> assigned client ids."""
+    out: dict[str, set[str]] = {}
+    for row in load_assignments_for_firm(firm_id):
+        out.setdefault(row["member_id"], set()).add(row["client_id"])
+    return out
+
+
 def load_assignment_scope_map() -> dict[str, set[str]]:
     """member_id (stakeholder_id) -> assigned client ids."""
     if not ASSIGNMENTS_DB_PATH.exists():

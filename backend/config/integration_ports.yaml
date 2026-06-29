@@ -134,3 +134,31 @@ ports:
     api_method: POST
     api_path: /api/audit/auto-link
     status: active
+
+  - port_id: external.moneytree.accounts
+    label_ja: Moneytree 口座（銀行・クレカ）
+    ssot_owner: moneytree
+    ssot_owner_label: Moneytree LINK
+    manual_policy: staging_only
+    manual_policy_label: ステージングのみ
+    direction: ingress
+    source: Moneytree LINK API
+    target: financial_staging
+    api_method: GET
+    api_path: /api/integrations/moneytree/accounts
+    status: active
+    notes: OAuth 後に sync。SSOT へは確認後に投影。
+
+  - port_id: external.moneytree.transactions
+    label_ja: Moneytree 取引明細
+    ssot_owner: moneytree
+    ssot_owner_label: Moneytree LINK
+    manual_policy: staging_only
+    manual_policy_label: ステージングのみ
+    direction: ingress
+    source: Moneytree LINK API
+    target: financial_staging
+    api_method: GET
+    api_path: /api/integrations/moneytree/transactions
+    status: active
+    notes: 経費精算・監査突合の入力源（将来キャプチャ連携）

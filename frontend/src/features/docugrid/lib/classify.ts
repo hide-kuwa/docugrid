@@ -53,6 +53,9 @@ export type ClassifyPersistMetadata = {
   ai_reason?: string;
   classified_at: string;
   extracted_profile?: Record<string, string>;
+  field_extractions?: import("@/features/client-data/lib/extraction-api").FieldExtractionItem[];
+  extraction_review_status?: "complete" | "needs_review";
+  schema_version?: number;
 };
 
 export function toClassifyPersistMetadata(result: ClassifyResult): ClassifyPersistMetadata {

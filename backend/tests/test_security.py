@@ -343,3 +343,52 @@ def test_client_master_put_cannot_modify_other_firm_client(beta_client_master) -
     }
     r = client.put("/api/client-master", headers=_admin_headers(), json=payload)
     assert r.status_code == 400
+
+
+def test_mcp_token_requires_auth() -> None:
+    r = client.post("/api/auth/mcp-token")
+    assert r.status_code == 401
+
+
+def test_mcp_token_issued_for_authenticated_user(monkeypatch) -> None:
+    from docugrid_auth import MCP_JWT_AUDIENCE, get_mcp_jwt_exp_seconds
+
+    monkeypatch.setenv("DOCUGRID_MCP_JWT_EXP_HOURS", "1")
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "true")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
+    login = client.post(
+        "/api/auth/login",
+        json={
+            "email": "admin@tax.co.jp",
+            "password": "password",
+            "stakeholder_id": "actor-admin",
+        },
+    )
+    assert login.status_code == 200, login.text
+    session_token = login.json()["access_token"]
+
+    r = client.post(
+        "/api/auth/mcp-token",
+        headers={"Authorization": f"Bearer {session_token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["audience"] == MCP_JWT_AUDIENCE
+    assert body["expires_in"] == get_mcp_jwt_exp_seconds()
+
+    payload = jwt.decode(
+        body["access_token"],
+        _jwt_secret(),
+        algorithms=[JWT_ALG],
+        audience=MCP_JWT_AUDIENCE,
+    )
+    assert payload["aud"] == MCP_JWT_AUDIENCE
+    assert payload["sub"] == "admin@tax.co.jp"
+    assert payload["role"] == "platform_admin"
+
+    me = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {body['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["email"] == "admin@tax.co.jp"

@@ -70,6 +70,16 @@ export async function createDocumentVersionSnapshot(
   return (await res.json()) as DocumentVersionItem;
 }
 
+export async function deleteDocumentVersion(versionId: string, clientId?: string): Promise<void> {
+  const res = await authFetch(API_ENDPOINTS.DOCUMENT_VERSION(versionId), {
+    method: "DELETE",
+    headers: buildAuthHeaders(clientId),
+  });
+  if (!res.ok) {
+    throw new Error(`delete-version-failed:${res.status}`);
+  }
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   client_upload: "再アップロード",
   firm_upload: "事務所保存",

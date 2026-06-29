@@ -30,6 +30,8 @@ export const API_ENDPOINTS = {
   DOCUMENT_VERSIONS: `${API_BASE}/document-versions`,
   DOCUMENT_VERSION_FILE: (versionId: string) =>
     `${API_BASE}/document-versions/${encodeURIComponent(versionId)}/file`,
+  DOCUMENT_VERSION: (versionId: string) =>
+    `${API_BASE}/document-versions/${encodeURIComponent(versionId)}`,
   DRIVE_STATUS: `${API_BASE}/drive/status`,
   DRIVE_TEST: `${API_BASE}/drive/test`,
   DRIVE_CREDENTIALS: `${API_BASE}/drive/credentials`,

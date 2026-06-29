@@ -42,3 +42,33 @@ def login_rate_limit_exceeded(client_ip: str) -> bool:
 
 def reset_login_rate_limits() -> None:
     _attempts.clear()
+
+
+_MCP_WINDOW_SEC = 3600
+_MCP_MAX_ISSUES = 10
+_mcp_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _mcp_max_issues() -> int:
+    try:
+        return int(os.environ.get("DOCUGRID_MCP_TOKEN_RATE_LIMIT", str(_MCP_MAX_ISSUES)))
+    except ValueError:
+        return _MCP_MAX_ISSUES
+
+
+def mcp_token_rate_limit_exceeded(actor_key: str) -> bool:
+    """Per-user MCP token issuance limit (default 10/hour)."""
+    if not actor_key:
+        return False
+    now = time.time()
+    bucket = [t for t in _mcp_attempts[actor_key] if now - t < _MCP_WINDOW_SEC]
+    if len(bucket) >= _mcp_max_issues():
+        _mcp_attempts[actor_key] = bucket
+        return True
+    bucket.append(now)
+    _mcp_attempts[actor_key] = bucket
+    return False
+
+
+def reset_mcp_token_rate_limits() -> None:
+    _mcp_attempts.clear()

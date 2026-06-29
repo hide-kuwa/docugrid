@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
+import { DevScrollShell } from "@/components/dev/DevScrollShell";
 
 export default function DevLayout({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-slate-950">{children}</div>;
+  return <DevScrollShell>{children}</DevScrollShell>;
 }

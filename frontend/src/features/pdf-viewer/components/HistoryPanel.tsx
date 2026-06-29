@@ -1,5 +1,5 @@
-import { AlertTriangle, ChevronDown, ChevronRight, GitCompare, X } from "lucide-react";
-import { EnhancedDocVersion } from "../types";
+import { AlertTriangle, ChevronDown, ChevronRight, GitCompare, Trash2, X } from "lucide-react";
+import { EnhancedDocVersion, isPersistedDocumentVersionId } from "../types";
 
 type HistoryPanelProps = {
   isHistoryOpen: boolean;
@@ -12,6 +12,9 @@ type HistoryPanelProps = {
   setExpandedHistoryIdx: (idx: number | null) => void;
   onCompareWithCurrent?: (idx: number) => void;
   compareLoadingIdx?: number | null;
+  canDeleteVersion?: boolean;
+  onDeleteVersion?: (versionId: string, versionLabel: string) => void;
+  versionDeleteBusyId?: string | null;
 };
 
 export const HistoryPanel = ({
@@ -25,6 +28,9 @@ export const HistoryPanel = ({
   setExpandedHistoryIdx,
   onCompareWithCurrent,
   compareLoadingIdx = null,
+  canDeleteVersion = false,
+  onDeleteVersion,
+  versionDeleteBusyId = null,
 }: HistoryPanelProps) => {
   return (
     <div
@@ -35,7 +41,7 @@ export const HistoryPanel = ({
       <div className="flex h-14 items-center justify-between border-b border-slate-700 bg-slate-900/50 p-4">
         <div>
           <span className="text-xs font-bold uppercase tracking-widest text-slate-300">版の履歴</span>
-          <p className="mt-0.5 text-[10px] text-slate-500">最新が上 · 過去版は保持されます</p>
+          <p className="mt-0.5 text-[10px] text-slate-500">最新が上 · 不要な版は個別に削除できます</p>
         </div>
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">
           <X className="h-4 w-4" />
@@ -61,35 +67,80 @@ export const HistoryPanel = ({
           </div>
         )}
 
-        {history.map((h, i) => (
+        {history.map((h, i) => {
+          const isDeletion = h.isDeletion === true;
+          const isShareMeta = h.metaEventType === "client_share";
+          const isUnshareMeta = h.metaEventType === "client_unshare";
+          const isNonVersionMeta = isDeletion || isShareMeta || isUnshareMeta;
+          const canDeleteThis =
+            canDeleteVersion &&
+            onDeleteVersion &&
+            !isNonVersionMeta &&
+            isPersistedDocumentVersionId(h.versionId);
+          return (
           <div
             key={`${h.versionId}-${i}`}
-            className={`group relative mb-6 pl-8 ${i === activeVerIdx ? "opacity-100" : "opacity-70 hover:opacity-100"}`}
+            className={`group relative mb-6 pl-8 ${i === activeVerIdx && !isNonVersionMeta ? "opacity-100" : isNonVersionMeta ? "opacity-90" : "opacity-70 hover:opacity-100"}`}
           >
             <div
-              onClick={() => setActiveVerIdx(i)}
-              className={`absolute left-[24px] top-[6px] z-10 h-3 w-3 cursor-pointer rounded-full border-2 transition-transform ${
-                h.isMajor ? "scale-125 border-white bg-green-500" : "border-slate-300 bg-slate-500 group-hover:bg-blue-400"
-              } ${i === activeVerIdx ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-800" : ""}`}
+              onClick={() => {
+                if (!isNonVersionMeta) setActiveVerIdx(i);
+              }}
+              className={`absolute left-[24px] top-[6px] z-10 h-3 w-3 rounded-full border-2 transition-transform ${
+                isDeletion
+                  ? "scale-125 border-red-300 bg-red-600"
+                  : isShareMeta
+                    ? "scale-125 border-teal-300 bg-teal-500"
+                    : isUnshareMeta
+                      ? "scale-125 border-amber-300 bg-amber-500"
+                  : h.isMajor
+                    ? "scale-125 border-white bg-green-500"
+                    : "border-slate-300 bg-slate-500 group-hover:bg-blue-400"
+              } ${!isNonVersionMeta && i === activeVerIdx ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-800" : ""} ${isNonVersionMeta ? "" : "cursor-pointer"}`}
             />
-            <div className="cursor-pointer" onClick={() => setActiveVerIdx(i)}>
+            <div className={isNonVersionMeta ? "" : "cursor-pointer"} onClick={() => { if (!isNonVersionMeta) setActiveVerIdx(i); }}>
               <div className="mb-0.5 flex items-center justify-between">
                 <span className="font-mono text-[10px] text-slate-400">{h.date}</span>
                 <div className="flex items-center gap-1">
-                  {i === 0 ? (
+                  {isDeletion ? (
+                    <span className="rounded border border-red-700 bg-red-900 px-1.5 text-[9px] text-red-300">
+                      削除済
+                    </span>
+                  ) : null}
+                  {isShareMeta ? (
+                    <span className="rounded border border-teal-700 bg-teal-900 px-1.5 text-[9px] text-teal-300">
+                      共有
+                    </span>
+                  ) : null}
+                  {isUnshareMeta ? (
+                    <span className="rounded border border-amber-700 bg-amber-900 px-1.5 text-[9px] text-amber-300">
+                      共有解除
+                    </span>
+                  ) : null}
+                  {!isNonVersionMeta && i === 0 ? (
                     <span className="rounded border border-emerald-700 bg-emerald-900 px-1.5 text-[9px] text-emerald-300">
                       最新
                     </span>
                   ) : null}
-                  {h.isMajor ? (
+                  {!isNonVersionMeta && h.isMajor ? (
                     <span className="rounded border border-green-700 bg-green-900 px-1.5 text-[9px] text-green-300">
                       確定版
                     </span>
                   ) : null}
                 </div>
               </div>
-              <div className="mb-0.5 flex items-center gap-2 text-sm font-bold text-white">
-                {h.ver} {h.action}{" "}
+              <div
+                className={`mb-0.5 flex items-center gap-2 text-sm font-bold ${
+                  isDeletion
+                    ? "text-red-200"
+                    : isShareMeta
+                      ? "text-teal-200"
+                      : isUnshareMeta
+                        ? "text-amber-200"
+                        : "text-white"
+                }`}
+              >
+                {isNonVersionMeta ? h.action : `${h.ver} ${h.action}`}{" "}
                 {h.status === "rejected" ? <AlertTriangle className="h-3 w-3 text-red-500" /> : null}
               </div>
               <div className="mb-2 flex items-center gap-1 text-[10px] text-slate-500">
@@ -100,7 +151,7 @@ export const HistoryPanel = ({
               </div>
             </div>
 
-            {i > 0 && onCompareWithCurrent ? (
+            {!isNonVersionMeta && i > 0 && onCompareWithCurrent ? (
               <button
                 type="button"
                 disabled={compareLoadingIdx === i}
@@ -112,6 +163,22 @@ export const HistoryPanel = ({
               >
                 <GitCompare className="h-3 w-3" />
                 {compareLoadingIdx === i ? "読み込み中…" : "最新と比較"}
+              </button>
+            ) : null}
+
+            {canDeleteThis ? (
+              <button
+                type="button"
+                disabled={versionDeleteBusyId === h.versionId}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteVersion(h.versionId, h.ver);
+                }}
+                className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-800/60 bg-red-950/30 px-2 py-1.5 text-[10px] font-bold text-red-200 hover:bg-red-900/40 disabled:opacity-50"
+                title="この版のみ削除（記録は残る）"
+              >
+                <Trash2 className="h-3 w-3" />
+                {versionDeleteBusyId === h.versionId ? "削除中…" : "この版を削除"}
               </button>
             ) : null}
 
@@ -146,7 +213,8 @@ export const HistoryPanel = ({
               ) : null}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
     </div>
   );

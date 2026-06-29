@@ -42,6 +42,15 @@ def is_production() -> bool:
     return get_app_env() in ("production", "prod")
 
 
+def staging_local_enabled() -> bool:
+    """
+    Local production-mode smoke (localhost only).
+    Skips Google OAuth requirement; allows password login. Never enable on public hosts.
+    """
+    raw = os.environ.get("DOCUGRID_STAGING_LOCAL", "").strip().lower()
+    return raw in ("1", "true", "yes")
+
+
 def get_jwt_exp_hours() -> float:
     try:
         return float(os.environ.get("DOCUGRID_JWT_EXP_HOURS", "24"))
@@ -51,6 +60,20 @@ def get_jwt_exp_hours() -> float:
 
 def get_jwt_exp_seconds() -> int:
     return int(get_jwt_exp_hours() * 3600)
+
+
+def get_mcp_jwt_exp_hours() -> float:
+    try:
+        return float(os.environ.get("DOCUGRID_MCP_JWT_EXP_HOURS", "1"))
+    except ValueError:
+        return 1.0
+
+
+def get_mcp_jwt_exp_seconds() -> int:
+    return max(300, int(get_mcp_jwt_exp_hours() * 3600))
+
+
+MCP_JWT_AUDIENCE = "docugrid-mcp"
 
 # Mirrors frontend STAKEHOLDER_MASTER id -> appRoleId
 STAKEHOLDER_ROLE_BY_ID: dict[str, str] = {
@@ -230,13 +253,32 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
         from services.google_oauth import get_google_oauth_client_id
         from services.member_directory import password_login_allowed
 
-        if not get_google_oauth_client_id():
+        if staging_local_enabled():
+            warnings.append(
+                "DOCUGRID_STAGING_LOCAL is enabled - password login OK; do not use on public hosts"
+            )
+        elif not get_google_oauth_client_id():
             msg = "GOOGLE_OAUTH_CLIENT_ID must be set in production"
             if strict:
                 raise RuntimeError(msg)
             warnings.append(msg)
-        if password_login_allowed():
+        elif "REPLACE" in get_google_oauth_client_id().upper():
+            msg = "GOOGLE_OAUTH_CLIENT_ID is still a placeholder - set real Web client ID from Google Console"
+            if strict:
+                raise RuntimeError(msg)
+            warnings.append(msg)
+        if password_login_allowed() and not staging_local_enabled():
             msg = "DOCUGRID_ALLOW_PASSWORD_LOGIN must be false in production"
+            if strict:
+                raise RuntimeError(msg)
+            warnings.append(msg)
+        from services.member_directory import member_directory_count
+
+        if member_directory_count() < 1:
+            msg = (
+                "member_directory.json must list at least one email for Google login - "
+                "run: python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
+            )
             if strict:
                 raise RuntimeError(msg)
             warnings.append(msg)
@@ -247,7 +289,7 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
             warnings.append(msg)
         if legacy_files_enabled():
             warnings.append(
-                "DOCUGRID_ALLOW_LEGACY_FILES should be false in production — "
+                "DOCUGRID_ALLOW_LEGACY_FILES should be false in production - "
                 "use slot document APIs instead of GET /files"
             )
     elif jwt_secret_is_dev_default():
@@ -282,9 +324,40 @@ def create_access_token(
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALG)
 
 
+def create_mcp_access_token(
+    *,
+    sub: str,
+    role: str,
+    stid: str,
+    firm_id: str | None = None,
+    member_id: str | None = None,
+) -> str:
+    """短命 JWT（aud=docugrid-mcp）。権限は通常セッションと同じ。"""
+    now = datetime.now(timezone.utc)
+    exp_seconds = get_mcp_jwt_exp_seconds()
+    fid = (firm_id or "").strip() or stakeholder_firm_id(stid)
+    mid = (member_id or "").strip() or stid
+    payload = {
+        "sub": sub,
+        "role": role,
+        "stid": stid,
+        "firm_id": fid,
+        "mid": mid,
+        "aud": MCP_JWT_AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(seconds=exp_seconds),
+    }
+    return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALG)
+
+
 def decode_access_token(token: str) -> dict | None:
     try:
-        return jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALG])
+        return jwt.decode(
+            token,
+            _jwt_secret(),
+            algorithms=[JWT_ALG],
+            options={"verify_aud": False},
+        )
     except jwt.PyJWTError:
         return None
 

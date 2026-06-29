@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import type { FirmClientTaskSummary } from "@/features/docugrid/lib/firm-tasks";
+import { formatAssigneeLabel } from "@/features/docugrid/lib/firm-tasks";
 
 type Props = {
   clients: FirmClientTaskSummary[];
@@ -50,6 +51,7 @@ export function FirmProgressWidget({
         <thead>
           <tr className="border-b border-indigo-200 text-indigo-700">
             <th className="pb-2 pr-3 font-bold">顧問先</th>
+            <th className="pb-2 pr-3 font-bold">担当</th>
             <th className="pb-2 pr-3 font-bold text-right">不足</th>
             <th className="pb-2 font-bold text-right">承認待ち</th>
           </tr>
@@ -71,6 +73,9 @@ export function FirmProgressWidget({
                     {clientNameById[row.client_id] ?? row.client_id}
                   </span>
                 )}
+              </td>
+              <td className="py-2 pr-3 text-[10px] font-semibold text-slate-600">
+                {formatAssigneeLabel(row.assignees)}
               </td>
               <td className="py-2 pr-3 text-right tabular-nums text-rose-700">
                 {row.missing_total}

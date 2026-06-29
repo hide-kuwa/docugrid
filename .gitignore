@@ -16,6 +16,10 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+backend/.env.production
+frontend/.env.production.local
+.cursor/mcp.json
+mcp-server/.env
 
 storage/
 

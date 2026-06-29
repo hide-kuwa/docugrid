@@ -41,6 +41,9 @@ def enrich_classify_metadata(
         "ranked": classify_meta.get("ranked"),
         "ai_reason": classify_meta.get("ai_reason"),
         "extracted_profile": classify_meta.get("extracted_profile"),
+        "field_extractions": classify_meta.get("field_extractions"),
+        "extraction_review_status": classify_meta.get("extraction_review_status"),
+        "schema_version": classify_meta.get("schema_version"),
     }
     return {k: v for k, v in out.items() if v is not None}
 

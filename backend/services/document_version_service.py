@@ -369,6 +369,61 @@ def set_logical_status(logical_id: str, status: str) -> None:
         )
 
 
+def redact_logical_document_filenames(logical_id: str) -> None:
+    """完全削除時 — 版メタデータからファイル名を除去する（他社名混入対策）。"""
+    init_document_versions_db()
+    with sqlite3.connect(VERSIONS_DB_PATH) as conn:
+        conn.execute(
+            "UPDATE document_versions SET original_name=? WHERE logical_document_id=?",
+            ("[deleted]", logical_id),
+        )
+
+
+def is_logical_purged(logical_id: str) -> bool:
+    logical = get_logical_by_id(logical_id)
+    return logical is not None and logical.status == "deleted"
+
+
+def is_logical_soft_deleted(logical_id: str) -> bool:
+    logical = get_logical_by_id(logical_id)
+    return logical is not None and logical.status == "soft_deleted"
+
+
+def is_logical_deleted(logical_id: str) -> bool:
+    """Mutations blocked (soft-deleted or purged)."""
+    logical = get_logical_by_id(logical_id)
+    return logical is not None and logical.status in ("deleted", "soft_deleted")
+
+
+def restore_logical_document(logical_id: str) -> LogicalDocument:
+    logical = get_logical_by_id(logical_id)
+    if not logical:
+        raise ValueError("logical_not_found")
+    if logical.status != "soft_deleted":
+        raise ValueError("not_soft_deleted")
+    if logical.approved_version_id:
+        new_status = "approved"
+    elif logical.current_version_id:
+        new_status = "uploaded"
+    else:
+        new_status = "empty"
+    init_document_versions_db()
+    now = _now_iso()
+    with sqlite3.connect(VERSIONS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "UPDATE logical_documents SET status=?, updated_at=? WHERE id=?",
+            (new_status, now, logical_id),
+        )
+        row = conn.execute(
+            "SELECT * FROM logical_documents WHERE id=?",
+            (logical_id,),
+        ).fetchone()
+    if not row:
+        raise ValueError("logical_not_found")
+    return _row_logical(row)
+
+
 def get_logical_by_id(logical_id: str) -> Optional[LogicalDocument]:
     init_document_versions_db()
     with sqlite3.connect(VERSIONS_DB_PATH) as conn:
@@ -431,6 +486,92 @@ def count_versions(logical_id: str) -> int:
             (logical_id,),
         ).fetchone()
     return int(row[0]) if row else 0
+
+
+def _latest_version_row_excluding(
+    conn: sqlite3.Connection,
+    logical_id: str,
+    exclude_version_id: str,
+) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM document_versions
+        WHERE logical_document_id=? AND id<>?
+        ORDER BY version_major DESC, version_minor DESC, version_patch DESC, created_at DESC
+        LIMIT 1
+        """,
+        (logical_id, exclude_version_id),
+    ).fetchone()
+
+
+def delete_document_version(version_id: str) -> tuple[LogicalDocument, DocumentVersion, Optional[DocumentVersion]]:
+    """版を1件削除し、論理資料の current / approved を繰り上げる。
+
+    Returns:
+        (logical_after, deleted_version, promoted_current_or_none)
+    """
+    init_document_versions_db()
+    version = get_version(version_id)
+    if not version:
+        raise ValueError("version_not_found")
+    logical = get_logical_by_id(version.logical_document_id)
+    if not logical:
+        raise ValueError("logical_not_found")
+    if logical.status in ("deleted", "soft_deleted"):
+        raise ValueError("logical_deleted")
+
+    now = _now_iso()
+    promoted: Optional[DocumentVersion] = None
+
+    with sqlite3.connect(VERSIONS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        next_row = _latest_version_row_excluding(conn, version.logical_document_id, version_id)
+        deleting_current = logical.current_version_id == version_id
+        if deleting_current:
+            new_current_id: Optional[str] = next_row["id"] if next_row else None
+        else:
+            new_current_id = logical.current_version_id
+        new_approved_id = logical.approved_version_id
+        if logical.approved_version_id == version_id:
+            new_approved_id = None
+        new_status = logical.status
+        if deleting_current:
+            if new_current_id:
+                if new_approved_id and new_approved_id == new_current_id:
+                    new_status = "approved"
+                elif logical.status == "approved" and not new_approved_id:
+                    new_status = "uploaded"
+                else:
+                    new_status = "uploaded" if logical.status != "approved" else logical.status
+            else:
+                new_status = "empty"
+        elif logical.approved_version_id == version_id:
+            new_status = "uploaded" if logical.status == "approved" else logical.status
+
+        conn.execute(
+            """
+            UPDATE logical_documents
+            SET current_version_id=?, approved_version_id=?, status=?, updated_at=?
+            WHERE id=?
+            """,
+            (new_current_id, new_approved_id, new_status, now, logical.id),
+        )
+        conn.execute("DELETE FROM document_versions WHERE id=?", (version_id,))
+        logical_row = conn.execute(
+            "SELECT * FROM logical_documents WHERE id=?", (logical.id,)
+        ).fetchone()
+
+    path = version_file_path(version)
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+    logical_after = _row_logical(logical_row)
+    if next_row:
+        promoted = _row_version(next_row)
+    return logical_after, version, promoted
 
 
 def version_file_path(version: DocumentVersion) -> Path:

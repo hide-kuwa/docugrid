@@ -1,0 +1,34 @@
+# Production-like stack: API with persistent storage.
+# Frontend is typically deployed separately (e.g. Vercel). See docs/production-deployment.md
+#
+# Setup:
+#   cp backend/.env.production.example backend/.env.production
+#   # edit backend/.env.production
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Pre-flight:
+#   docker compose -f docker-compose.prod.yml run --rm api \
+#     python scripts/validate_production_env.py --env-file .env.production
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - ./backend/.env.production
+    volumes:
+      - docugrid_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  docugrid_storage:
+    name: docugrid_storage

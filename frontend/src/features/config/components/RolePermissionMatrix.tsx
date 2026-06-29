@@ -14,6 +14,7 @@ const PERMISSION_LABELS: Partial<Record<AppPermission, string>> = {
   "client.edit": "顧客編集",
   "document.view": "書類閲覧",
   "document.upload": "アップロード",
+  "document.purge": "削除資料の閲覧・復元・完全削除（所長）",
   "document.annotate": "注釈",
   "document.comment": "コメント",
   "audit.link": "監査リンク",
@@ -21,6 +22,7 @@ const PERMISSION_LABELS: Partial<Record<AppPermission, string>> = {
   "dashboard.view": "ダッシュボード",
   "alert.view": "アラート閲覧",
   "alert.manage": "アラート管理",
+  "review_checklist.edit": "チェックリスト入力",
   "settings.manage": "設定管理",
   "settings.platform": "グローバル設定",
 };

@@ -9,6 +9,7 @@ import {
   Loader2,
   Minus,
   Plus,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { AuditApprovalBadge } from "@/features/audit/components/AuditApprovalBadge";
@@ -20,6 +21,7 @@ type SlotDocView = {
   versionCount?: number;
   workflowStatus?: string;
   logicalStatus?: string;
+  clientSharedAt?: string | null;
 };
 
 type Badge = { label: string; className: string; title?: string };
@@ -36,12 +38,16 @@ type Props = {
   workflowBadge: Badge | null;
   logicalBadge: Badge | null;
   classifyBadge?: Badge | null;
+  showClientShareStatus?: boolean;
+  slotTagsVisibility?: "hover" | "always";
   slotDragActive: boolean;
   uploadedCardClass: string;
   slotCardHeight: string;
   onOpenSlot: () => void;
   onOpenSlotForAudit: () => void;
   onClearSlot: () => void;
+  onRemoveSlot?: () => void;
+  canRemoveSlot?: boolean;
   onRenameSlot: (label: string) => void;
   onEmptyClick: () => void;
   onEmptyDrop: (e: React.DragEvent) => void;
@@ -62,12 +68,16 @@ export function SortableSlotCard({
   workflowBadge,
   logicalBadge,
   classifyBadge = null,
+  showClientShareStatus = false,
+  slotTagsVisibility = "hover",
   slotDragActive,
   uploadedCardClass,
   slotCardHeight,
   onOpenSlot,
   onOpenSlotForAudit,
   onClearSlot,
+  onRemoveSlot,
+  canRemoveSlot = false,
   onRenameSlot,
   onEmptyClick,
   onEmptyDrop,
@@ -107,6 +117,13 @@ export function SortableSlotCard({
   };
 
   if (filled) {
+    const isSharedWithClient = Boolean(showClientShareStatus && doc?.clientSharedAt);
+    const accentBorder = isSharedWithClient ? "border-teal-500" : "border-blue-600";
+    const accentRing = isSharedWithClient
+      ? "ring-teal-100 hover:ring-teal-300 focus-visible:outline-teal-500"
+      : "ring-blue-100 hover:ring-blue-300 focus-visible:outline-blue-500";
+    const accentIcon = isSharedWithClient ? "text-teal-600" : "text-blue-600";
+
     return (
       <div
         ref={setNodeRef}
@@ -115,11 +132,11 @@ export function SortableSlotCard({
         {...(slotEditMode ? { ...attributes, ...listeners } : {})}
       >
         <div
-          className={`h-full ${jiggleClass} ${uploadedCardClass} justify-between shadow-md ring-2 ring-blue-100 transition-shadow ${
+          className={`group/slot-card h-full ${jiggleClass} ${uploadedCardClass} ${accentBorder} justify-between shadow-md ring-2 ${accentRing} transition-shadow ${
             slotEditMode
               ? "cursor-grab active:cursor-grabbing ring-amber-200"
               : canView
-                ? "cursor-pointer hover:shadow-lg hover:ring-blue-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                ? `cursor-pointer hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`
                 : ""
           } ${isDragging ? "opacity-90 ring-2 ring-amber-400" : ""}`}
           role={!slotEditMode && canView ? "button" : undefined}
@@ -139,20 +156,33 @@ export function SortableSlotCard({
         {slotEditMode && canUpload ? (
           <button
             type="button"
-            title="資料を外す"
+            title="枠から外す（資料は未割当として保持・完全削除ではありません）"
             onClick={(e) => {
               e.stopPropagation();
               onClearSlot();
             }}
-            className="absolute -left-1.5 -top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-white shadow-md hover:bg-red-600"
+            className="absolute -left-1.5 -top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-white shadow-md hover:bg-amber-600"
           >
             <Minus className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />
+          </button>
+        ) : null}
+        {slotEditMode && canRemoveSlot && onRemoveSlot ? (
+          <button
+            type="button"
+            title="枠を削除"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveSlot();
+            }}
+            className="absolute -right-1.5 -top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700"
+          >
+            <Trash2 className="h-3 w-3" strokeWidth={2.5} aria-hidden />
           </button>
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-hidden pt-1">
           <div className="flex gap-2">
-            <FileText className="h-5 w-5 shrink-0 text-blue-600" />
+            <FileText className={`h-5 w-5 shrink-0 ${accentIcon}`} />
             <div className="min-w-0 flex-1">
               {editingTitle ? (
                 <input
@@ -194,7 +224,13 @@ export function SortableSlotCard({
             </div>
           </div>
           {!slotEditMode ? (
-            <div className="mt-1.5 flex max-h-12 flex-wrap gap-0.5 overflow-hidden">
+            <div
+              className={`mt-1.5 flex flex-wrap gap-0.5 overflow-hidden transition-all duration-150 ${
+                slotTagsVisibility === "always"
+                  ? "max-h-12 opacity-100"
+                  : "max-h-0 opacity-0 group-hover/slot-card:max-h-24 group-hover/slot-card:opacity-100 group-focus-within/slot-card:max-h-24 group-focus-within/slot-card:opacity-100"
+              }`}
+            >
               <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
                 収納済み
               </span>
@@ -239,6 +275,22 @@ export function SortableSlotCard({
                   {classifyBadge.label}
                 </span>
               ) : null}
+              {showClientShareStatus && doc ? (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                    doc.clientSharedAt
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-900"
+                  }`}
+                  title={
+                    doc.clientSharedAt
+                      ? "クライアントポータルで閲覧可能"
+                      : "クライアントには未共有（ビューアから共有できます）"
+                  }
+                >
+                  {doc.clientSharedAt ? "共有済" : "未共有"}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -275,7 +327,7 @@ export function SortableSlotCard({
       {...(slotEditMode ? { ...attributes, ...listeners } : {})}
     >
       <div
-        className={`h-full ${jiggleClass} ${slotCardHeight} group items-center justify-center rounded-xl border-2 border-dashed p-3 text-center transition-colors ${
+        className={`relative h-full ${jiggleClass} ${slotCardHeight} group items-center justify-center rounded-xl border-2 border-dashed p-3 text-center transition-colors ${
           slotEditMode
             ? "cursor-grab border-amber-300 bg-amber-50/50 active:cursor-grabbing"
             : slotDragActive
@@ -310,35 +362,50 @@ export function SortableSlotCard({
       }}
     >
       {slotEditMode && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditingTitle(true);
-          }}
-          className="absolute inset-x-2 top-2 z-10 line-clamp-2 rounded px-1 text-left text-xs font-bold text-slate-600 hover:bg-amber-100/80"
-        >
-          {editingTitle ? (
-            <input
-              ref={inputRef}
-              value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
+        <>
+          {canRemoveSlot && onRemoveSlot ? (
+            <button
+              type="button"
+              title="枠を削除"
+              onClick={(e) => {
                 e.stopPropagation();
-                if (e.key === "Enter") commitRename();
-                if (e.key === "Escape") {
-                  setDraftTitle(title);
-                  setEditingTitle(false);
-                }
+                onRemoveSlot();
               }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs font-bold outline-none ring-2 ring-amber-200"
-            />
-          ) : (
-            title
-          )}
-        </button>
+              className="absolute -right-1.5 -top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700"
+            >
+              <Trash2 className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingTitle(true);
+            }}
+            className="absolute inset-x-2 top-2 z-10 line-clamp-2 rounded px-1 text-left text-xs font-bold text-slate-600 hover:bg-amber-100/80"
+          >
+            {editingTitle ? (
+              <input
+                ref={inputRef}
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") {
+                    setDraftTitle(title);
+                    setEditingTitle(false);
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs font-bold outline-none ring-2 ring-amber-200"
+              />
+            ) : (
+              title
+            )}
+          </button>
+        </>
       )}
 
       {!canUpload ? (

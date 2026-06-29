@@ -42,6 +42,8 @@ import {
 import { mergeClientHistoryOnSave } from "@/lib/client-field-mutations";
 import { saveClientMaster } from "@/lib/client-master-api";
 import { ConfigMatrixCard } from "@/features/config/components/ConfigMatrixCard";
+import { KeyboardShortcutsPanel } from "@/features/config/components/KeyboardShortcutsPanel";
+import { DocuGridAppearancePanel } from "@/features/config/components/DocuGridAppearancePanel";
 import { DocumentCategoryMatrix } from "@/features/config/components/DocumentCategoryMatrix";
 import { RolePermissionMatrix } from "@/features/config/components/RolePermissionMatrix";
 import { StakeholderScopeMatrix } from "@/features/config/components/StakeholderScopeMatrix";
@@ -64,6 +66,11 @@ import { getPostLoginPath } from "@/lib/persona";
 import { FirmMembersPanel } from "@/features/org/FirmMembersPanel";
 import { AuthoringTemplatesPanel } from "@/features/authoring/components/AuthoringTemplatesPanel";
 import { ScreenDesignPanel } from "@/features/screen-design/ScreenDesignPanel";
+import { McpConnectPanel } from "@/features/mcp/McpConnectPanel";
+import { ReviewChecklistSettingsPanel } from "@/features/review-checklist/ReviewChecklistSettingsPanel";
+import { BillingSettingsPanel } from "@/features/billing/BillingSettingsPanel";
+import { MoneytreeFirmOverview } from "@/features/integrations/MoneytreeFirmOverview";
+import { groupedSettingsCategories } from "@/features/settings/settings-category-groups";
 import {
   DEFAULT_PACKAGE_SORT_ORDER,
   TAX_DOCUMENT_TYPE_LABELS,
@@ -85,9 +92,14 @@ const CATEGORIES: ConfigCategory[] = [
   { id: "roles", label: "権限ロール", subLabel: "ROLES" },
   { id: "documents", label: "書類カテゴリ", subLabel: "DOCS" },
   { id: "templates", label: "文書ひな形", subLabel: "TEMPLATES" },
+  { id: "reviewChecklist", label: "監査チェックリスト", subLabel: "CHECKLIST" },
+  { id: "shortcuts", label: "ショートカット", subLabel: "KEYS" },
+  { id: "appearance", label: "見た目", subLabel: "UI" },
+  { id: "billing", label: "プラン・決済", subLabel: "BILLING" },
   { id: "screens", label: "画面設計", subLabel: "SCREENS" },
   { id: "integrations", label: "外部連携", subLabel: "INTEGRATIONS" },
   { id: "audit", label: "操作履歴", subLabel: "AUDIT" },
+  { id: "mcp", label: "AI / MCP", subLabel: "MCP" },
 ];
 
 const stakeholderKindLabel: Record<StakeholderKind, string> = {
@@ -105,6 +117,8 @@ const relationTypeOptions: ClientRelationType[] = ["group_company", "shareholder
 export default function SettingsPage() {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<ConfigCategoryId>("clients");
+  const [billingCheckoutResult, setBillingCheckoutResult] = useState<string | null>(null);
+  const [billingTopupResult, setBillingTopupResult] = useState<string | null>(null);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
   const [driveRootFolderId, setDriveRootFolderId] = useState("");
   const [driveCredentialsConfigured, setDriveCredentialsConfigured] = useState(false);
@@ -168,12 +182,28 @@ export default function SettingsPage() {
     return CATEGORIES.filter((c) => ids.includes(c.id));
   }, [currentUser, settingsConsole]);
 
+  const settingsGroups = useMemo(
+    () =>
+      groupedSettingsCategories(
+        settingsConsole,
+        allowedCategories.map((c) => c.id),
+      ),
+    [settingsConsole, allowedCategories],
+  );
+
+  const categoryById = useMemo(
+    () => new Map(CATEGORIES.map((c) => [c.id, c])),
+    [],
+  );
+
   useEffect(() => {
     if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
     setSettingsConsole(resolveSettingsConsole(currentUser, params.get("console")));
     const tab = params.get("tab") as SettingsCategoryId | null;
     if (tab) setActiveCategory(tab);
+    setBillingCheckoutResult(params.get("checkout"));
+    setBillingTopupResult(params.get("topup"));
   }, [currentUser]);
 
   useEffect(() => {
@@ -255,6 +285,8 @@ export default function SettingsPage() {
     viewer_open_edit: "編集開始",
     viewer_close: "ビューア終了",
     audit_link_create: "監査リンク",
+    client_share: "クライアント共有",
+    client_unshare: "共有解除",
   };
 
   const AUDIT_ACTION_LABEL: Record<string, string> = {
@@ -822,12 +854,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 font-sans text-slate-600">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-100 font-sans text-slate-600">
       {settingsConsole === "dev" ? (
         <DevSurfaceStrip consoleLabel="開発コンフィグ（設計・プラットフォーム）" />
       ) : null}
-      <div className="flex min-h-0 flex-1">
-      <aside className="relative z-20 flex h-full min-h-screen w-28 flex-shrink-0 flex-col border-r border-slate-700 bg-slate-900 shadow-2xl">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <aside className="relative z-20 flex w-28 shrink-0 flex-col overflow-y-auto border-r border-slate-700 bg-slate-900 shadow-2xl">
         <button
           onClick={() => router.push(getPostLoginPath(currentUser))}
           className="mx-auto mt-4 w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/10 flex items-center justify-center text-white"
@@ -868,26 +900,37 @@ export default function SettingsPage() {
           ) : null}
         </div>
         <div className="v-drum-scroller no-scrollbar mt-4 flex-1 px-2 py-6">
-          {allowedCategories.map((category) => (
-            <button
-              key={category.id}
-              onClick={() => setActiveCategory(category.id)}
-              className={`v-item mb-4 w-full rounded-xl border px-2 py-3 text-center ${
-                activeCategory === category.id
-                  ? "active border-blue-500 bg-blue-600/20"
-                  : "border-white/10 bg-slate-800 text-slate-300"
-              }`}
-            >
-              <div className="text-xs font-bold">{category.label}</div>
-              <div className="text-[9px] font-semibold opacity-70">{category.subLabel}</div>
-            </button>
+          {settingsGroups.map((group) => (
+            <div key={group.title} className="mb-2">
+              <p className="mb-2 px-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                {group.title}
+              </p>
+              {group.ids.map((categoryId) => {
+                const category = categoryById.get(categoryId);
+                if (!category) return null;
+                return (
+                  <button
+                    key={category.id}
+                    onClick={() => setActiveCategory(category.id)}
+                    className={`v-item mb-3 w-full rounded-xl border px-2 py-3 text-center ${
+                      activeCategory === category.id
+                        ? "active border-blue-500 bg-blue-600/20"
+                        : "border-white/10 bg-slate-800 text-slate-300"
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{category.label}</div>
+                    <div className="text-[9px] font-semibold opacity-70">{category.subLabel}</div>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
         <div className="mask-v-top pointer-events-none absolute left-0 top-0 z-20 h-20 w-full"></div>
         <div className="mask-v-bottom pointer-events-none absolute bottom-0 left-0 z-20 h-20 w-full"></div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/90 px-8 py-4 backdrop-blur">
           <div>
             <h1 className="text-xl font-black text-slate-800">
@@ -1203,6 +1246,34 @@ export default function SettingsPage() {
             <AuthoringTemplatesPanel currentUser={currentUser} />
           )}
 
+          {activeCategory === "reviewChecklist" && (
+            <section className="fade-in-up">
+              <ReviewChecklistSettingsPanel currentUser={currentUser} />
+            </section>
+          )}
+
+          {activeCategory === "shortcuts" && (
+            <section className="fade-in-up">
+              <KeyboardShortcutsPanel />
+            </section>
+          )}
+
+          {activeCategory === "appearance" && (
+            <section className="fade-in-up">
+              <DocuGridAppearancePanel />
+            </section>
+          )}
+
+          {activeCategory === "billing" && (
+            <section className="fade-in-up">
+              <BillingSettingsPanel
+                checkoutResult={billingCheckoutResult}
+                topupResult={billingTopupResult}
+                isPlatformAdmin={canEditPlatformSettings}
+              />
+            </section>
+          )}
+
           {activeCategory === "screens" && <ScreenDesignPanel />}
 
           {activeCategory === "audit" && (
@@ -1478,9 +1549,32 @@ export default function SettingsPage() {
             </section>
           )}
 
+          {activeCategory === "mcp" && (
+            <section className="fade-in-up">
+              <McpConnectPanel user={currentUser} embedded />
+            </section>
+          )}
+
           {activeCategory === "integrations" && (
-            <section className="fade-in-up space-y-4">
-              <h2 className="text-lg font-bold text-slate-800">外部連携</h2>
+            <section className="fade-in-up space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">外部連携</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  プラットフォーム管理者向け。顧問先の口座連携は各クライアントのワークスペースで行います。
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  銀行・クレカ（Moneytree）
+                </h3>
+                <MoneytreeFirmOverview />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Google Drive
+                </h3>
               <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1560,6 +1654,12 @@ export default function SettingsPage() {
                   <p className="mt-3 text-xs text-slate-500">{driveTestMessage || configMessage}</p>
                 )}
               </article>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  AI / OCR
+                </h3>
               <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="text-sm font-bold text-slate-800">AI / OCR 分類（システム管理者）</div>
                 <p className="mt-1 text-xs text-slate-500">
@@ -1637,6 +1737,12 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </article>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  DocuGrid
+                </h3>
               <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1697,6 +1803,12 @@ export default function SettingsPage() {
                   <p className="mt-3 text-xs text-slate-500">{packageTemplateMessage}</p>
                 )}
               </article>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  通知・アラート
+                </h3>
               <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="text-sm font-bold text-slate-800">通知・アラート設定</div>
                 <div className="mt-3 space-y-3">
@@ -1730,6 +1842,7 @@ export default function SettingsPage() {
                   </label>
                 </div>
               </article>
+              </div>
             </section>
           )}
         </div>

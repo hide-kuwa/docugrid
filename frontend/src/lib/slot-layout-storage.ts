@@ -1,6 +1,8 @@
 export type SlotLayout = {
   labels: string[];
   order: number[];
+  /** labels と同じ長さの安定 slot_id（追加枠・定型枠用） */
+  slotIds?: string[];
 };
 
 const STORAGE_KEY = "taxx-slot-layout:v1";
@@ -46,6 +48,7 @@ export function persistSlotLayoutBulk(
   const snapshot: SlotLayout = {
     labels: [...layout.labels],
     order: [...layout.order],
+    ...(layout.slotIds ? { slotIds: [...layout.slotIds] } : {}),
   };
   try {
     const all = loadAllSlotLayouts();
@@ -70,7 +73,11 @@ export function resolveSlotLayout(
     saved.labels.length >= defaultLabels.length &&
     isValidOrder(saved.order, saved.labels.length)
   ) {
-    return { labels: [...saved.labels], order: [...saved.order] };
+    return {
+      labels: [...saved.labels],
+      order: [...saved.order],
+      ...(saved.slotIds ? { slotIds: [...saved.slotIds] } : {}),
+    };
   }
 
   const n = defaultLabels.length;
@@ -78,5 +85,9 @@ export function resolveSlotLayout(
   if (!saved || saved.labels.length !== n || !isValidOrder(saved.order, n)) {
     return { labels: [...defaultLabels], order: baseOrder };
   }
-  return { labels: [...saved.labels], order: [...saved.order] };
+  return {
+    labels: [...saved.labels],
+    order: [...saved.order],
+    ...(saved.slotIds ? { slotIds: [...saved.slotIds] } : {}),
+  };
 }

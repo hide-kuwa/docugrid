@@ -86,9 +86,10 @@ class NormalizeResult:
     conflicts: List[ConflictField] = field(default_factory=list)
     metrics_applied: List[dict] = field(default_factory=list)
     tax_alerts_created: List[str] = field(default_factory=list)
+    extraction_review: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "applied": [
                 {
                     "field_id": c.field_id,
@@ -118,6 +119,9 @@ class NormalizeResult:
             "metrics_applied": self.metrics_applied,
             "tax_alerts_created": self.tax_alerts_created,
         }
+        if self.extraction_review:
+            out["extraction_review"] = self.extraction_review
+        return out
 
 
 def _cleanse_value(field_id: str, value: str) -> str:

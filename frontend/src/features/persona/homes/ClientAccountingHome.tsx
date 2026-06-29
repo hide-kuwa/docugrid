@@ -11,6 +11,9 @@ import { slotIdForLabel } from "@/features/persona/lib/requirements";
 import { QuickUploadWidget } from "@/features/persona/widgets/QuickUploadWidget";
 import { RemandAlertsWidget } from "@/features/persona/widgets/RemandAlertsWidget";
 import { SubmissionChecklistWidget } from "@/features/persona/widgets/SubmissionChecklistWidget";
+import { ReviewChecklistWidget } from "@/features/review-checklist/ReviewChecklistWidget";
+import { MoneytreeLinkPanel } from "@/features/integrations/MoneytreeLinkPanel";
+import { canViewReviewChecklist } from "@/features/review-checklist/permissions";
 import type { SlotDocumentItem } from "@/features/docugrid/lib/slot-documents";
 import type { DocugridUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -20,9 +23,10 @@ type Props = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 };
 
-export function ClientAccountingHome({ persona, user, design }: Props) {
+export function ClientAccountingHome({ persona, user, design, demoMode }: Props) {
   const { clients } = useOrgDirectory();
   const clientId = user?.visibleClientIds?.[0] ?? clients[0]?.id ?? "";
   const [periodKey, setPeriodKey] = useState(CLIENT_PERIOD_OPTIONS[0].key);
@@ -35,6 +39,7 @@ export function ClientAccountingHome({ persona, user, design }: Props) {
   );
 
   const canUpload = hasPermission(user, "document.upload");
+  const showReviewChecklist = canViewReviewChecklist(user);
   const clientName = clients.find((c) => c.id === clientId)?.name ?? clientId;
 
   useEffect(() => {
@@ -56,7 +61,7 @@ export function ClientAccountingHome({ persona, user, design }: Props) {
   const periodLabel = useMemo(() => periodKeyLabel(periodKey), [periodKey]);
 
   return (
-    <PersonaWorkspaceLayout persona={persona} user={user} design={design}>
+    <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -91,6 +96,14 @@ export function ClientAccountingHome({ persona, user, design }: Props) {
         </div>
       </section>
 
+      {canUpload && (
+        <MoneytreeLinkPanel
+          clientId={clientId}
+          clientName={clientName}
+          returnPath="/workspace/client_accounting"
+        />
+      )}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-bold text-slate-800">提出チェックリスト</h2>
         <p className="mt-1 text-xs text-slate-500">税理士事務所から依頼された必須書類の提出状況です。</p>
@@ -105,6 +118,24 @@ export function ClientAccountingHome({ persona, user, design }: Props) {
           />
         </div>
       </section>
+
+      {showReviewChecklist && (
+        <section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-slate-800">確認チェックリスト</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            税理士事務所から依頼された確認事項に回答・チェックできます。保存内容は事務所と共有されます。
+          </p>
+          <div className="mt-4">
+            <ReviewChecklistWidget
+              clientId={clientId}
+              periodKey={periodKey}
+              periodLabel={periodLabel}
+              clientName={clientName}
+              user={user}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-bold text-red-900">差戻し対応</h2>

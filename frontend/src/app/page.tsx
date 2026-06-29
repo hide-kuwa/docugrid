@@ -41,6 +41,8 @@ import {
   DataWorkspace,
   profileFillPercent,
 } from "@/features/client-data/DataWorkspace";
+import { DocumentExtractionReview } from "@/features/client-data/components/DocumentExtractionReview";
+import type { ExtractionReviewPayload } from "@/features/client-data/lib/extraction-api";
 import { hasInsightsPanel, InsightsPanel } from "@/features/matrix/InsightsPanel";
 import { FeatureTourHost } from "@/features/onboarding/FeatureTourHost";
 import { hydrateDocugridForSlot } from "@/features/docugrid/lib/hydrate-docugrid-slot";
@@ -52,6 +54,13 @@ import {
   fetchSlotDocumentFile,
   listSlotDocuments,
   persistSlotDocument,
+  detachSlotDocument,
+  moveSlotDocument,
+  softDeleteSlotDocument,
+  purgeSlotDocument,
+  restoreSlotDocument,
+  shareSlotWithClient,
+  unshareSlotWithClient,
 } from "@/features/docugrid/lib/slot-documents";
 import { createReviewEvent, listReviewTimeline, type ReviewTimelineItem } from "@/features/pdf-viewer/lib/review-events";
 import { createDocumentVersionSnapshot } from "@/features/pdf-viewer/lib/document-versions";
@@ -78,17 +87,25 @@ import {
   type SlotLayout,
 } from "@/lib/slot-layout-storage";
 import {
+  appendCustomSlot,
+  appendPresetSlots,
+  removeSlotAtIndex,
+  resolveLayoutSlotIds,
+  slotIdAtIndex,
+  slotIndexFromLayoutSlotId,
+  isUnassignedSlotId,
+  isDeletedSlotId,
+} from "@/lib/slot-layout-ops";
+import { flattenPresetsForPeriod } from "@/lib/slot-layout-presets";
+import {
   applySlotLayoutWithScope,
   type SlotLayoutScope,
 } from "@/lib/slot-layout-scope";
 import {
-  buildSlotStorageKey,
   buildSlotStorageKeyFromSlotId,
   classifyCandidates,
   normalizeSlotId,
   slotIndexFromSlotKey,
-  slotIndexFromStableId,
-  stableSlotId,
 } from "@/lib/slot-ids";
 import {
   isDataPeriodIndex,
@@ -123,6 +140,21 @@ type SlotDoc = {
   logicalStatus?: string;
   docugridDocumentId?: string;
   classifyMeta?: ClassifyPersistMetadata;
+  clientSharedAt?: string | null;
+};
+
+type UnassignedSlotDoc = SlotDoc & {
+  docId: string;
+  label: string;
+  slotId: string;
+};
+
+type DeletedSlotDoc = SlotDoc & {
+  docId: string;
+  label: string;
+  slotId: string;
+  deletedFromSlotId?: string;
+  deletedFromSlotLabel?: string;
 };
 
 export default function DocuGridPage() {
@@ -146,6 +178,8 @@ export default function DocuGridPage() {
   const viewerSourceFile = useViewerUiStore((s) => s.sourceFile);
   const fileRef = useRef<File | null>(null);
   const [slotDocs, setSlotDocs] = useState<Record<string, SlotDoc>>({});
+  const [unassignedDocs, setUnassignedDocs] = useState<Record<string, UnassignedSlotDoc>>({});
+  const [deletedDocs, setDeletedDocs] = useState<Record<string, DeletedSlotDoc>>({});
   const [activeSlotKey, setActiveSlotKey] = useState<string | null>(null);
   const [isHydratingSlots, setIsHydratingSlots] = useState(false);
   const [pendingReview, setPendingReview] = useState<PendingReview[]>([]);
@@ -201,6 +235,9 @@ export default function DocuGridPage() {
   const stakeholder = resolveStakeholder(currentUser);
   const canViewDocument = hasPermission(currentUser, "document.view");
   const canUploadDocument = hasPermission(currentUser, "document.upload");
+  const canPurgeDocument = hasPermission(currentUser, "document.purge");
+  const isClientPortalUser = currentUser?.appRoleId === "client_uploader";
+  const canShareWithClient = canUploadDocument && !isClientPortalUser;
   const canAnnotateDocument = hasPermission(currentUser, "document.annotate");
   const canApproveAudit = hasPermission(currentUser, "audit.approve");
   const canEditClientData = hasPermission(currentUser, "settings.manage");
@@ -210,6 +247,12 @@ export default function DocuGridPage() {
   const [insightsPinned, setInsightsPinned] = useState(false);
   const [tourTriggerId, setTourTriggerId] = useState<string | null>(null);
   const [classifyHint, setClassifyHint] = useState<string | null>(null);
+  const [extractionReviewCtx, setExtractionReviewCtx] = useState<{
+    periodKey: string;
+    slotId: string;
+    slotLabel: string;
+    review: ExtractionReviewPayload;
+  } | null>(null);
   const scopedClientId = useMemo(() => {
     if (activeSlotKey) {
       const scope = parseSlotKey(activeSlotKey);
@@ -454,14 +497,25 @@ export default function DocuGridPage() {
     [navClients],
   );
 
-  const { labels: slotLabels, order: slotDisplayOrder } = useMemo(
+  const currentSlotLayout = useMemo(
     () => resolveSlotLayout(slotLayoutKey, defaultSlotLabels, slotLayoutStore),
     [slotLayoutKey, defaultSlotLabels, slotLayoutStore],
   );
+  const slotLabels = currentSlotLayout.labels;
+  const slotDisplayOrder = currentSlotLayout.order;
+  const layoutSlotIds = useMemo(
+    () => resolveLayoutSlotIds(currentSlotLayout, periodKey),
+    [currentSlotLayout, periodKey],
+  );
 
   const slotKeyFor = useCallback(
-    (slotIndex: number) => buildSlotStorageKey(currentClient.id, periodKey, slotIndex),
-    [currentClient.id, periodKey],
+    (slotIndex: number) =>
+      buildSlotStorageKeyFromSlotId(
+        currentClient.id,
+        periodKey,
+        slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
+      ),
+    [currentClient.id, periodKey, currentSlotLayout],
   );
 
   const applySlotLayout = useCallback(
@@ -490,17 +544,277 @@ export default function DocuGridPage() {
   );
 
   const handleClearSlot = useCallback(
-    (slotIndex: number) => {
+    async (slotIndex: number) => {
       const key = slotKeyFor(slotIndex);
+      const doc = slotDocs[key];
+      const label = slotLabels[slotIndex] ?? "枠";
+      if (doc?.docId && doc.persisted) {
+        try {
+          await detachSlotDocument(doc.docId, currentClient.id);
+          setUnassignedDocs((prev) => ({
+            ...prev,
+            [doc.docId!]: {
+              ...doc,
+              docId: doc.docId!,
+              label,
+              slotId: `unassigned_${doc.docId}`,
+            },
+          }));
+        } catch (err) {
+          console.error("Slot detach failed:", err);
+          setSlotNotice("資料の切り離しに失敗しました。もう一度お試しください。");
+          return;
+        }
+      }
       setSlotDocs((prev) => {
         if (!prev[key]) return prev;
         const next = { ...prev };
         delete next[key];
         return next;
       });
-      setSlotNotice(`「${slotLabels[slotIndex] ?? "枠"}」から資料を外しました。`);
+      if (activeSlotKey === key) {
+        setActiveSlotKey(null);
+        setFile(null);
+        setPdfUrl(null);
+      }
+      setSlotNotice(
+        doc?.docId
+          ? `「${label}」から資料を外しました。ファイルは未割当として保持されています。`
+          : `「${label}」から資料を外しました。`,
+      );
     },
-    [slotKeyFor, slotLabels],
+    [slotKeyFor, slotLabels, slotDocs, currentClient.id, activeSlotKey],
+  );
+
+  const handleSoftDeleteDocument = useCallback(
+    async (docId: string) => {
+      if (!canUploadDocument) return;
+      try {
+        await softDeleteSlotDocument(docId, currentClient.id);
+        setSlotDocs((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key]?.docId === docId) {
+              delete next[key];
+            }
+          }
+          return next;
+        });
+        setUnassignedDocs((prev) => {
+          const next = { ...prev };
+          delete next[docId];
+          return next;
+        });
+        if (activeSlotKey) {
+          const activeDocId =
+            slotDocs[activeSlotKey]?.docId ??
+            (activeSlotKey.startsWith("unassigned:")
+              ? activeSlotKey.split(":")[1]
+              : activeSlotKey.startsWith("deleted:")
+                ? activeSlotKey.split(":")[1]
+                : undefined);
+          if (activeDocId === docId) {
+            setActiveSlotKey(null);
+            setFile(null);
+            setPdfUrl(null);
+            useViewerUiStore.getState().close();
+          }
+        }
+        setStatusNonce((v) => v + 1);
+        setSlotNotice(
+          canPurgeDocument
+            ? "資料を削除しました。削除済み一覧から閲覧・復元できます。"
+            : "資料を削除しました。",
+        );
+      } catch (err) {
+        console.error("Soft delete failed:", err);
+        setSlotNotice("資料の削除に失敗しました。");
+      }
+    },
+    [canUploadDocument, canPurgeDocument, currentClient.id, activeSlotKey, slotDocs],
+  );
+
+  const handlePurgeDocument = useCallback(
+    async (docId: string) => {
+      if (!canPurgeDocument) return;
+      try {
+        await purgeSlotDocument(docId, currentClient.id);
+        setDeletedDocs((prev) => {
+          const next = { ...prev };
+          delete next[docId];
+          return next;
+        });
+        if (activeSlotKey?.startsWith(`deleted:${docId}`)) {
+          setActiveSlotKey(null);
+          setFile(null);
+          setPdfUrl(null);
+          useViewerUiStore.getState().close();
+        }
+        setStatusNonce((v) => v + 1);
+        setSlotNotice("資料を完全削除しました。履歴に記録のみ残ります。");
+      } catch (err) {
+        console.error("Purge failed:", err);
+        setSlotNotice("完全削除に失敗しました。");
+      }
+    },
+    [canPurgeDocument, currentClient.id, activeSlotKey],
+  );
+
+  const handleRestoreDocument = useCallback(
+    async (docId: string) => {
+      if (!canPurgeDocument) return;
+      const snapshot = deletedDocs[docId];
+      try {
+        const item = await restoreSlotDocument(docId, currentClient.id);
+        setDeletedDocs((prev) => {
+          const next = { ...prev };
+          delete next[docId];
+          return next;
+        });
+        if (activeSlotKey?.startsWith(`deleted:${docId}`)) {
+          setActiveSlotKey(null);
+          setFile(null);
+          setPdfUrl(null);
+          useViewerUiStore.getState().close();
+        }
+        setStatusNonce((v) => v + 1);
+        setSlotNotice(`「${snapshot?.label ?? item.original_name}」を復元しました。`);
+      } catch (err) {
+        console.error("Restore failed:", err);
+        setSlotNotice("資料の復元に失敗しました。枠が既に使われている可能性があります。");
+      }
+    },
+    [canPurgeDocument, currentClient.id, deletedDocs, activeSlotKey],
+  );
+
+  const handleShareWithClient = useCallback(
+    async (docId: string) => {
+      if (!canShareWithClient) return;
+      try {
+        const item = await shareSlotWithClient(docId, currentClient.id);
+        setSlotDocs((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key]?.docId === docId) {
+              next[key] = { ...next[key], clientSharedAt: item.client_shared_at ?? new Date().toISOString() };
+            }
+          }
+          return next;
+        });
+        setStatusNonce((v) => v + 1);
+        setSlotNotice("クライアントポータルへ共有しました。");
+      } catch (err) {
+        console.error("Client share failed:", err);
+        setSlotNotice("クライアント共有に失敗しました。");
+      }
+    },
+    [canShareWithClient, currentClient.id],
+  );
+
+  const handleUnshareWithClient = useCallback(
+    async (docId: string) => {
+      if (!canShareWithClient) return;
+      try {
+        await unshareSlotWithClient(docId, currentClient.id);
+        setSlotDocs((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key]?.docId === docId) {
+              next[key] = { ...next[key], clientSharedAt: null };
+            }
+          }
+          return next;
+        });
+        setStatusNonce((v) => v + 1);
+        setSlotNotice("クライアントへの共有を解除しました。");
+      } catch (err) {
+        console.error("Client unshare failed:", err);
+        setSlotNotice("共有解除に失敗しました。");
+      }
+    },
+    [canShareWithClient, currentClient.id],
+  );
+
+  const handleRemoveSlot = useCallback(
+    async (slotIndex: number) => {
+      const key = slotKeyFor(slotIndex);
+      const doc = slotDocs[key];
+      const label = slotLabels[slotIndex] ?? "枠";
+      if (currentSlotLayout.labels.length <= 1) {
+        setSlotNotice("枠は最低1つ必要です。");
+        return;
+      }
+      const confirmMsg = doc?.file
+        ? `「${label}」の枠を削除します。${
+            doc.docId ? "入っている資料は未割当として保持されます。" : "未保存の資料は表示から外れます。"
+          }`
+        : `「${label}」の枠を削除しますか？`;
+      if (!window.confirm(confirmMsg)) return;
+
+      if (doc?.docId && doc.persisted) {
+        try {
+          await detachSlotDocument(doc.docId, currentClient.id);
+          setUnassignedDocs((prev) => ({
+            ...prev,
+            [doc.docId!]: {
+              ...doc,
+              docId: doc.docId!,
+              label,
+              slotId: `unassigned_${doc.docId}`,
+            },
+          }));
+        } catch (err) {
+          console.error("Slot detach failed:", err);
+          setSlotNotice("枠削除前の資料切り離しに失敗しました。");
+          return;
+        }
+      }
+      setSlotDocs((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      if (activeSlotKey === key) {
+        setActiveSlotKey(null);
+        setFile(null);
+        setPdfUrl(null);
+      }
+
+      const { layout } = removeSlotAtIndex(currentSlotLayout, slotIndex, periodKey);
+      applySlotLayout(layout);
+      setSlotNotice(`「${label}」の枠を削除しました。`);
+    },
+    [
+      slotKeyFor,
+      slotDocs,
+      slotLabels,
+      currentSlotLayout,
+      periodKey,
+      applySlotLayout,
+      currentClient.id,
+      activeSlotKey,
+    ],
+  );
+
+  const handleAddCustomSlot = useCallback(
+    (label: string) => {
+      const next = appendCustomSlot(currentSlotLayout, label, periodKey);
+      applySlotLayout(next);
+      setSlotNotice(`「${label.trim()}」枠を追加しました。`);
+    },
+    [currentSlotLayout, periodKey, applySlotLayout],
+  );
+
+  const handleAddPresetSlots = useCallback(
+    (presetIds: string[]) => {
+      const presets = flattenPresetsForPeriod(periodKey).filter((p) => presetIds.includes(p.id));
+      if (presets.length === 0) return;
+      const next = appendPresetSlots(currentSlotLayout, presets, periodKey);
+      applySlotLayout(next);
+      setSlotNotice(`定型枠を ${presets.length} 件追加しました。`);
+    },
+    [currentSlotLayout, periodKey, applySlotLayout],
   );
 
   const onDocugridSaved = useCallback(
@@ -545,10 +859,92 @@ export default function DocuGridPage() {
     [assignPreviewFromFile, loadFromCloud],
   );
 
+  const handleOpenUnassigned = useCallback(
+    (docId: string) => {
+      const doc = unassignedDocs[docId];
+      if (!doc || !canViewDocument) return;
+      void activateDoc(doc.file, doc.pageCount, `unassigned:${docId}`, doc.docugridDocumentId);
+      useViewerUiStore.getState().open("preview", doc.file);
+    },
+    [unassignedDocs, canViewDocument, activateDoc],
+  );
+
+  const handleOpenDeleted = useCallback(
+    (docId: string) => {
+      const doc = deletedDocs[docId];
+      if (!doc || !canPurgeDocument) return;
+      void activateDoc(doc.file, doc.pageCount, `deleted:${docId}`, doc.docugridDocumentId);
+      useViewerUiStore.getState().open("preview", doc.file);
+    },
+    [deletedDocs, canPurgeDocument, activateDoc],
+  );
+
+  const handleAssignUnassigned = useCallback(
+    async (docId: string, slotIndex: number) => {
+      const doc = unassignedDocs[docId];
+      if (!doc) return;
+      const targetKey = slotKeyFor(slotIndex);
+      if (slotDocs[targetKey]?.file) {
+        setSlotNotice("移動先の枠に既に資料があります。先に外してください。");
+        return;
+      }
+      const targetLabel = slotLabels[slotIndex] ?? `枠 ${slotIndex + 1}`;
+      const targetSlotId = slotIdAtIndex(currentSlotLayout, periodKey, slotIndex);
+      try {
+        await moveSlotDocument(doc.docId, targetSlotId, targetLabel, currentClient.id);
+        setSlotDocs((prev) => ({
+          ...prev,
+          [targetKey]: { ...doc, persisted: true },
+        }));
+        setUnassignedDocs((prev) => {
+          const next = { ...prev };
+          delete next[docId];
+          return next;
+        });
+        setSlotNotice(`「${doc.label}」を「${targetLabel}」へ移しました。`);
+        setStatusNonce((v) => v + 1);
+      } catch (err) {
+        console.error("Move unassigned failed:", err);
+        setSlotNotice("資料の移動に失敗しました。");
+      }
+    },
+    [
+      unassignedDocs,
+      slotKeyFor,
+      slotDocs,
+      slotLabels,
+      currentSlotLayout,
+      periodKey,
+      currentClient.id,
+    ],
+  );
+
+  const unassignedDocsView = useMemo(
+    () =>
+      Object.values(unassignedDocs).map((d) => ({
+        docId: d.docId,
+        label: d.label,
+        fileName: d.file.name,
+      })),
+    [unassignedDocs],
+  );
+
+  const deletedDocsView = useMemo(
+    () =>
+      Object.values(deletedDocs).map((d) => ({
+        docId: d.docId,
+        label: d.deletedFromSlotLabel ?? d.label,
+        fileName: d.file.name,
+      })),
+    [deletedDocs],
+  );
+
   // 顧客/期が変わったら Docugrid セッションをリセット
   useEffect(() => {
     useDocugridStore.getState().resetDocugrid();
     setActiveSlotKey(null);
+    setUnassignedDocs({});
+    setExtractionReviewCtx(null);
   }, [currentClient.id, periodKey]);
 
   /** 1ファイルをスロットへ永続化（失敗時はローカルfallback）。activate=true で編集対象として開く。 */
@@ -575,7 +971,7 @@ export default function DocuGridPage() {
         const item = await persistSlotDocument({
           clientId: currentClient.id,
           periodKey,
-          slotId: stableSlotId(periodKey, slotIndex),
+          slotId: slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
           slotLabel,
           file: selectedFile,
           classifyMetadata: classifyMeta,
@@ -618,6 +1014,22 @@ export default function DocuGridPage() {
             );
           }
         }
+        const review = norm?.extraction_review;
+        const slotId = slotIdAtIndex(currentSlotLayout, periodKey, slotIndex);
+        if (
+          review &&
+          (review.review_status === "needs_review" ||
+            review.fields.some((f) => f.status !== "extracted"))
+        ) {
+          setExtractionReviewCtx({
+            periodKey,
+            slotId,
+            slotLabel,
+            review,
+          });
+        } else {
+          setExtractionReviewCtx(null);
+        }
         if (activate) void activateDoc(selectedFile, n, slotKey);
         setStatusNonce((v) => v + 1);
         return { persisted: true };
@@ -632,7 +1044,7 @@ export default function DocuGridPage() {
         return { persisted: false };
       }
     },
-    [currentClient.id, periodKey, slotKeyFor, activateDoc, uploadFile, slotDocs],
+    [currentClient.id, periodKey, slotKeyFor, activateDoc, uploadFile, slotDocs, currentSlotLayout],
   );
 
   const onFilesDroppedToSlot = useCallback(
@@ -655,10 +1067,10 @@ export default function DocuGridPage() {
       try {
         let classifyMeta: ClassifyPersistMetadata | undefined;
         try {
-          const candidates = classifyCandidates(periodKey, slotLabels);
+          const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
           const result = await classifyDocument(selectedFile, candidates, currentClient.id, {
             periodKey,
-            slotId: stableSlotId(periodKey, slotIndex),
+            slotId: slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
           });
           classifyMeta = toClassifyPersistMetadata(result);
         } catch {
@@ -701,7 +1113,7 @@ export default function DocuGridPage() {
         (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name),
       );
       if (pdfs.length === 0) return;
-      const candidates = classifyCandidates(periodKey, slotLabels);
+      const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
       const filledNow = new Set<number>();
       const queued: PendingReview[] = [];
       let autoCount = 0;
@@ -721,7 +1133,7 @@ export default function DocuGridPage() {
             classifyMeta = toClassifyPersistMetadata(result);
             setClassifyHint(describeClassifyCapabilities(result.capabilities));
             bestIdx = result.best
-              ? slotIndexFromStableId(periodKey, String(result.best.id))
+              ? slotIndexFromLayoutSlotId(currentSlotLayout, periodKey, String(result.best.id))
               : NaN;
             const bestScore = result.best?.score ?? 0;
             const targetEmpty =
@@ -733,7 +1145,7 @@ export default function DocuGridPage() {
               try {
                 const scoped = await classifyDocument(file, candidates, currentClient.id, {
                   periodKey,
-                  slotId: stableSlotId(periodKey, bestIdx),
+                  slotId: slotIdAtIndex(currentSlotLayout, periodKey, bestIdx),
                 });
                 metaForSlot = toClassifyPersistMetadata(scoped);
               } catch {
@@ -769,7 +1181,7 @@ export default function DocuGridPage() {
               engine: item.engine,
               suggestedSlotId:
                 item.suggestedIndex !== null && Number.isInteger(item.suggestedIndex)
-                  ? stableSlotId(periodKey, item.suggestedIndex)
+                  ? slotIdAtIndex(currentSlotLayout, periodKey, item.suggestedIndex)
                   : null,
               classifyMeta: item.classifyMeta,
               ranked: item.ranked,
@@ -785,7 +1197,7 @@ export default function DocuGridPage() {
               file,
               fileName: saved.file_name,
               suggestedIndex: saved.suggested_slot_id
-                ? slotIndexFromStableId(periodKey, saved.suggested_slot_id)
+                ? slotIndexFromLayoutSlotId(currentSlotLayout, periodKey, saved.suggested_slot_id)
                 : item.suggestedIndex,
               ranked: (saved.ranked as ClassifyRankedItem[]) ?? item.ranked,
               classifyMeta: saved.classify_metadata ?? item.classifyMeta,
@@ -807,7 +1219,7 @@ export default function DocuGridPage() {
         setIsClassifying(false);
       }
     },
-    [canUploadDocument, currentClient.id, slotLabels, slotDocs, slotKeyFor, persistFileToSlot],
+    [canUploadDocument, currentClient.id, slotLabels, slotDocs, slotKeyFor, persistFileToSlot, periodKey, layoutSlotIds, currentSlotLayout],
   );
 
   const onConfirmPending = useCallback(
@@ -816,10 +1228,10 @@ export default function DocuGridPage() {
       if (!item) return;
       let classifyMeta = item.classifyMeta;
       try {
-        const candidates = classifyCandidates(periodKey, slotLabels);
+        const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
         const scoped = await classifyDocument(item.file, candidates, currentClient.id, {
           periodKey,
-          slotId: stableSlotId(periodKey, slotIndex),
+          slotId: slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
         });
         classifyMeta = toClassifyPersistMetadata(scoped);
       } catch {
@@ -834,7 +1246,7 @@ export default function DocuGridPage() {
       setPendingReview((prev) => prev.filter((p) => p.id !== reviewId));
       setSlotNotice(`「${slotLabels[slotIndex]}」に確定しました。`);
     },
-    [pendingReview, slotLabels, persistFileToSlot, currentClient.id, periodKey],
+    [pendingReview, slotLabels, persistFileToSlot, currentClient.id, periodKey, layoutSlotIds, currentSlotLayout],
   );
 
   const onDismissPending = useCallback(
@@ -851,14 +1263,14 @@ export default function DocuGridPage() {
 
   const onAssignPackageToSlot = useCallback(
     async (file: File, slotId: string, label: string) => {
-      const slotIndex = slotIndexFromStableId(periodKey, slotId);
+      const slotIndex = slotIndexFromLayoutSlotId(currentSlotLayout, periodKey, slotId);
       if (!Number.isInteger(slotIndex) || slotIndex < 0) {
         setSlotNotice(`スロット「${label}」への配置に失敗しました。`);
         return;
       }
       let classifyMeta: ClassifyPersistMetadata | undefined;
       try {
-        const candidates = classifyCandidates(periodKey, slotLabels);
+        const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
         const result = await classifyDocument(file, candidates, currentClient.id, {
           periodKey,
           slotId,
@@ -876,7 +1288,7 @@ export default function DocuGridPage() {
       );
       setSlotNotice(`「${slotLabels[slotIndex] ?? label}」に配置しました。`);
     },
-    [periodKey, slotLabels, persistFileToSlot, currentClient.id],
+    [periodKey, slotLabels, persistFileToSlot, currentClient.id, layoutSlotIds, currentSlotLayout],
   );
 
   const onOpenSlot = useCallback(
@@ -950,7 +1362,7 @@ export default function DocuGridPage() {
               confidence: item.confidence,
               engine: item.engine,
               suggestedIndex: item.suggested_slot_id
-                ? slotIndexFromStableId(periodKey, item.suggested_slot_id)
+                ? slotIndexFromLayoutSlotId(currentSlotLayout, periodKey, item.suggested_slot_id)
                 : null,
               ranked: (item.ranked as ClassifyRankedItem[]) ?? [],
               classifyMeta: item.classify_metadata ?? undefined,
@@ -965,7 +1377,7 @@ export default function DocuGridPage() {
       }
     })();
     return () => controller.abort();
-  }, [canViewDocument, currentClient.id, periodKey]);
+  }, [canViewDocument, currentClient.id, periodKey, currentSlotLayout]);
 
   const onJumpToPeriod = useCallback((pk: string) => {
     const resolved = periodIndexFromKey(pk);
@@ -1252,34 +1664,68 @@ export default function DocuGridPage() {
     void (async () => {
       try {
         setIsHydratingSlots(true);
-        const items = await listSlotDocuments(currentClient.id, periodKey, controller.signal);
+        const items = await listSlotDocuments(currentClient.id, periodKey, controller.signal, {
+          includeDeleted: canPurgeDocument,
+        });
         if (!active) return;
         const entries = await Promise.all(
           items.map(async (item) => {
+            if (item.deleted_at && !canPurgeDocument) return null;
             try {
               const restored = await fetchSlotDocumentFile(item, controller.signal);
-              const key = buildSlotStorageKeyFromSlotId(
-                currentClient.id,
+              const doc: SlotDoc = {
+                file: restored,
+                pageCount: item.page_count,
+                docId: item.id,
+                persisted: true,
+                logicalDocumentId: item.logical_document_id ?? undefined,
+                currentVersionId: item.current_version_id ?? undefined,
+                currentVersionLabel: item.current_version_label ?? undefined,
+                versionCount: item.version_count ?? undefined,
+                workflowStatus: item.workflow_status ?? undefined,
+                logicalStatus: item.logical_status ?? undefined,
+                docugridDocumentId: item.docugrid_document_id ?? undefined,
+                classifyMeta: item.classify_metadata ?? undefined,
+                clientSharedAt: item.client_shared_at ?? null,
+              };
+              if (item.deleted_at || isDeletedSlotId(item.slot_id)) {
+                return {
+                  kind: "deleted" as const,
+                  docId: item.id,
+                  label: item.deleted_from_slot_label ?? item.slot_label ?? item.original_name,
+                  slotId: item.slot_id,
+                  deletedFromSlotId: item.deleted_from_slot_id ?? undefined,
+                  deletedFromSlotLabel: item.deleted_from_slot_label ?? undefined,
+                  doc,
+                };
+              }
+              if (isUnassignedSlotId(item.slot_id)) {
+                return {
+                  kind: "unassigned" as const,
+                  docId: item.id,
+                  label: item.slot_label ?? item.original_name,
+                  slotId: item.slot_id,
+                  doc,
+                };
+              }
+              const idx = slotIndexFromLayoutSlotId(
+                currentSlotLayout,
                 periodKey,
                 item.slot_id,
               );
-              return [
-                key,
-                {
-                  file: restored,
-                  pageCount: item.page_count,
-                  docId: item.id,
-                  persisted: true,
-                  logicalDocumentId: item.logical_document_id ?? undefined,
-                  currentVersionId: item.current_version_id ?? undefined,
-                  currentVersionLabel: item.current_version_label ?? undefined,
-                  versionCount: item.version_count ?? undefined,
-                  workflowStatus: item.workflow_status ?? undefined,
-                  logicalStatus: item.logical_status ?? undefined,
-                  docugridDocumentId: item.docugrid_document_id ?? undefined,
-                  classifyMeta: item.classify_metadata ?? undefined,
-                } satisfies SlotDoc,
-              ] as const;
+              const key =
+                idx >= 0
+                  ? buildSlotStorageKeyFromSlotId(
+                      currentClient.id,
+                      periodKey,
+                      slotIdAtIndex(currentSlotLayout, periodKey, idx),
+                    )
+                  : buildSlotStorageKeyFromSlotId(
+                      currentClient.id,
+                      periodKey,
+                      item.slot_id,
+                    );
+              return { kind: "slot" as const, key, doc };
             } catch {
               return null;
             }
@@ -1287,10 +1733,33 @@ export default function DocuGridPage() {
         );
         if (!active) return;
         const hydrated: Record<string, SlotDoc> = {};
+        const unassigned: Record<string, UnassignedSlotDoc> = {};
+        const deleted: Record<string, DeletedSlotDoc> = {};
         for (const entry of entries) {
-          if (entry) hydrated[entry[0]] = entry[1];
+          if (!entry) continue;
+          if (entry.kind === "deleted") {
+            deleted[entry.docId] = {
+              ...entry.doc,
+              docId: entry.docId,
+              label: entry.label,
+              slotId: entry.slotId,
+              deletedFromSlotId: entry.deletedFromSlotId,
+              deletedFromSlotLabel: entry.deletedFromSlotLabel,
+            };
+          } else if (entry.kind === "unassigned") {
+            unassigned[entry.docId] = {
+              ...entry.doc,
+              docId: entry.docId,
+              label: entry.label,
+              slotId: entry.slotId,
+            };
+          } else {
+            hydrated[entry.key] = entry.doc;
+          }
         }
         setSlotDocs((prev) => ({ ...prev, ...hydrated }));
+        setUnassignedDocs(unassigned);
+        setDeletedDocs(deleted);
       } catch (err) {
         if ((err as Error)?.name !== "AbortError") {
           console.warn("Slot hydration failed:", err);
@@ -1303,7 +1772,7 @@ export default function DocuGridPage() {
       active = false;
       controller.abort();
     };
-  }, [currentClient.id, periodKey, canViewDocument]);
+  }, [currentClient.id, periodKey, canViewDocument, canPurgeDocument, currentSlotLayout]);
 
   // 監査・版管理後にメタデータだけ更新（PDF再取得はしない）
   useEffect(() => {
@@ -1335,6 +1804,7 @@ export default function DocuGridPage() {
                   workflowStatus: item.workflow_status ?? undefined,
               logicalStatus: item.logical_status ?? undefined,
               docugridDocumentId: item.docugrid_document_id ?? undefined,
+              clientSharedAt: item.client_shared_at ?? null,
             };
           }
           return next;
@@ -1589,6 +2059,27 @@ export default function DocuGridPage() {
     return idx !== null && idx >= 0 ? slotLabels[idx] : undefined;
   }, [activeSlotKey, periodKey, slotLabels]);
 
+  const activePersistedDocId = useMemo(() => {
+    if (!activeSlotKey) return undefined;
+    if (activeSlotKey.startsWith("unassigned:") || activeSlotKey.startsWith("deleted:")) {
+      return activeSlotKey.split(":")[1];
+    }
+    return slotDocs[activeSlotKey]?.docId;
+  }, [activeSlotKey, slotDocs]);
+
+  const activeClientSharedAt = useMemo(() => {
+    if (!activeSlotKey) return null;
+    if (activeSlotKey.startsWith("unassigned:")) {
+      const docId = activeSlotKey.split(":")[1];
+      return unassignedDocs[docId]?.clientSharedAt ?? null;
+    }
+    if (activeSlotKey.startsWith("deleted:")) {
+      const docId = activeSlotKey.split(":")[1];
+      return deletedDocs[docId]?.clientSharedAt ?? null;
+    }
+    return slotDocs[activeSlotKey]?.clientSharedAt ?? null;
+  }, [activeSlotKey, slotDocs, unassignedDocs, deletedDocs]);
+
   const onVersionCreated = useCallback(
     (meta: {
       versionId: string;
@@ -1759,14 +2250,68 @@ export default function DocuGridPage() {
               </div>
             )
           ) : (
+          <>
+          {extractionReviewCtx ? (
+            <div className="shrink-0 border-b border-violet-100 bg-white px-4 py-3 md:px-6">
+              <DocumentExtractionReview
+                clientId={currentClient.id}
+                periodKey={extractionReviewCtx.periodKey}
+                slotId={extractionReviewCtx.slotId}
+                slotLabel={extractionReviewCtx.slotLabel}
+                review={extractionReviewCtx.review}
+                onDismiss={() => setExtractionReviewCtx(null)}
+                onApplied={() => {
+                  setExtractionReviewCtx(null);
+                  setStatusNonce((v) => v + 1);
+                }}
+              />
+            </div>
+          ) : null}
           <MatrixGrid
             currentClient={currentClient}
             activePeriodIdx={activePeriodIdx}
             activeMode={activeMode}
             slotLabels={slotLabels}
             displayOrder={slotDisplayOrder}
+            slotIds={layoutSlotIds}
             onSlotLayoutChange={applySlotLayout}
             onClearSlot={handleClearSlot}
+            onRemoveSlot={handleRemoveSlot}
+            onAddCustomSlot={handleAddCustomSlot}
+            onAddPresetSlots={handleAddPresetSlots}
+            unassignedDocs={unassignedDocsView}
+            onOpenUnassigned={handleOpenUnassigned}
+            onAssignUnassigned={handleAssignUnassigned}
+            onDeleteUnassigned={
+              canUploadDocument
+                ? (docId) => {
+                    const ok = window.confirm(
+                      "この未割当資料を削除します。所長のみ削除済み一覧から閲覧・復元できます。よろしいですか？",
+                    );
+                    if (ok) void handleSoftDeleteDocument(docId);
+                  }
+                : undefined
+            }
+            deletedDocs={canPurgeDocument ? deletedDocsView : undefined}
+            onOpenDeleted={canPurgeDocument ? handleOpenDeleted : undefined}
+            onRestoreDeleted={
+              canPurgeDocument
+                ? (docId) => {
+                    const ok = window.confirm("この資料を元の枠に復元しますか？");
+                    if (ok) void handleRestoreDocument(docId);
+                  }
+                : undefined
+            }
+            onPurgeDeleted={
+              canPurgeDocument
+                ? (docId) => {
+                    const ok = window.confirm(
+                      "完全削除します。PDF は表示できなくなりますが、誰がいつ削除したかの記録は残ります（元のファイル名は記録しません）。よろしいですか？",
+                    );
+                    if (ok) void handlePurgeDocument(docId);
+                  }
+                : undefined
+            }
             slotDocs={slotDocs}
             slotKeyFor={slotKeyFor}
             progressPercent={progressPercent}
@@ -1779,6 +2324,7 @@ export default function DocuGridPage() {
             relatedClients={relatedClients}
             onSelectRelatedClient={onSelectRelatedClient}
             canUpload={canUploadDocument}
+            canShareWithClient={canShareWithClient}
             canView={canViewDocument}
             onAutoSortFiles={onAutoSortFiles}
             isClassifying={isClassifying}
@@ -1811,6 +2357,7 @@ export default function DocuGridPage() {
               persistFileToSlot(file, slotIndex, slotLabel, false)
             }
           />
+          </>
           )}
     </MatrixShellLayout>
     <FeatureTourHost
@@ -1843,6 +2390,64 @@ export default function DocuGridPage() {
         onVersionCreated={onVersionCreated}
         onAuditStateChange={onAuditStateChange}
         slotWorkflowStatus={activeSlotWorkflowStatus}
+        persistedDocId={activePersistedDocId}
+        canSoftDeleteDocument={canUploadDocument && !activeSlotKey?.startsWith("deleted:")}
+        canPurgeDocument={canPurgeDocument}
+        onSoftDelete={
+          activePersistedDocId
+            ? () => {
+                const ok = window.confirm(
+                  canPurgeDocument
+                    ? "資料を削除します。削除済み一覧から閲覧・復元できます。よろしいですか？"
+                    : "資料を削除します。よろしいですか？",
+                );
+                if (ok) void handleSoftDeleteDocument(activePersistedDocId);
+              }
+            : undefined
+        }
+        onPurge={
+          canPurgeDocument && activePersistedDocId
+            ? () => {
+                const ok = window.confirm(
+                  "完全削除します。PDF は表示できなくなりますが、削除の記録は残ります。よろしいですか？",
+                );
+                if (ok) void handlePurgeDocument(activePersistedDocId);
+              }
+            : undefined
+        }
+        onRestore={
+          canPurgeDocument && activeSlotKey?.startsWith("deleted:") && activePersistedDocId
+            ? () => {
+                const ok = window.confirm("この資料を元の枠に復元しますか？");
+                if (ok) void handleRestoreDocument(activePersistedDocId);
+              }
+            : undefined
+        }
+        canShareWithClient={
+          canShareWithClient && !!activePersistedDocId && !activeClientSharedAt && !activeSlotKey?.startsWith("deleted:")
+        }
+        clientSharedAt={activeClientSharedAt}
+        onShareWithClient={
+          canShareWithClient && activePersistedDocId && !activeClientSharedAt
+            ? () => {
+                const ok = window.confirm(
+                  "この資料をクライアントポータルで閲覧できるように共有します。クライアント側の提出状況にも反映されます。よろしいですか？",
+                );
+                if (ok) void handleShareWithClient(activePersistedDocId);
+              }
+            : undefined
+        }
+        onUnshareWithClient={
+          canShareWithClient && activePersistedDocId && activeClientSharedAt && !activeSlotKey?.startsWith("deleted:")
+            ? () => {
+                const ok = window.confirm(
+                  "クライアントポータルからこの資料を非表示にします。クライアントは閲覧できなくなります。よろしいですか？",
+                );
+                if (ok) void handleUnshareWithClient(activePersistedDocId);
+              }
+            : undefined
+        }
+        historyRevision={statusNonce}
       />
     ) : null}
     </>

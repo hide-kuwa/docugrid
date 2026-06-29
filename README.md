@@ -67,6 +67,11 @@ python -m pytest
 - `DOCUGRID_ALLOW_HEADER_AUTH=false`
 - `DOCUGRID_LOGIN_PASSWORD`（デフォルト `password` から変更）
 
+**フェーズ順の本番手順**: [`docs/production-deployment.md`](docs/production-deployment.md)  
+**今すぐ試す（Google 不要）**: `npm run staging:local` → [`docs/staging-local.md`](docs/staging-local.md)  
+テンプレート: `backend/.env.production.example` · Docker: `docker-compose.prod.yml`  
+事前検証: `npm run validate:production`（`.env.production` 作成後）
+
 ### Frontend
 
 ```bash
@@ -104,7 +109,10 @@ npm run dev:frontend
 
 - Architecture baseline: `docs/architecture.md`
 - API contract (current runtime): `docs/api-contract.md`
-- 手動スモーク手順: `docs/smoke-checklist.md`
+- **Production deployment (phased)**: `docs/production-deployment.md`
+- Google OAuth: `docs/google-oauth-setup.md`
+- Stripe billing (production): `docs/stripe-production-setup.md`
+- 手動スモーク手順: `docs/smoke-checklist.md` · 本番: `docs/production-smoke-checklist.md`
 - プロダクトロードマップ: `docs/roadmap.md`
 
 ## Testing

@@ -26,9 +26,10 @@ type Props = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 };
 
-export function ClientControllerHome({ persona, user, design }: Props) {
+export function ClientControllerHome({ persona, user, design, demoMode }: Props) {
   const { clients } = useOrgDirectory();
   const clientId = user?.visibleClientIds?.[0] ?? clients[0]?.id ?? "";
   const clientName = clients.find((c) => c.id === clientId)?.name ?? clientId;
@@ -51,7 +52,7 @@ export function ClientControllerHome({ persona, user, design }: Props) {
   }, [periodStatus]);
 
   return (
-    <PersonaWorkspaceLayout persona={persona} user={user} design={design}>
+    <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
           <BarChart3 className="h-4 w-4 text-teal-600" />

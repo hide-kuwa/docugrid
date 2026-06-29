@@ -79,8 +79,9 @@ export const PERSONA_WORK_PROFILES: PersonaWorkProfile[] = [
     ],
     widgets: [
       { id: "submit_checklist", label: "提出チェックリスト", priority: 1, status: "implemented" },
-      { id: "remand_alerts", label: "差戻しアラート", priority: 2, status: "implemented" },
-      { id: "quick_upload", label: "簡易アップロード", priority: 3, status: "implemented" },
+      { id: "review_checklist", label: "確認チェックリスト", priority: 2, status: "implemented" },
+      { id: "remand_alerts", label: "差戻しアラート", priority: 3, status: "implemented" },
+      { id: "quick_upload", label: "簡易アップロード", priority: 4, status: "implemented" },
     ],
   },
   {
