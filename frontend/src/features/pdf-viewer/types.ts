@@ -49,6 +49,10 @@ export interface EnhancedDocVersion extends Omit<DocVersion, "status"> {
   actionsLog: string[];
   isMajor: boolean;
   versionId: string;
+  /** 完全削除イベント（PDF は参照不可・ファイル名は記録しない） */
+  isDeletion?: boolean;
+  /** 版に紐づかない監査メタイベント（共有・解除など） */
+  metaEventType?: "client_share" | "client_unshare";
 }
 
 export interface ViewerModalProps {
@@ -92,6 +96,19 @@ export interface ViewerModalProps {
   onAuditStateChange?: () => void;
   /** スロットの最新ワークフロー（review_events）。ビューア未同期時の表示用。 */
   slotWorkflowStatus?: string;
+  /** サーバー保存済み資料の doc_id */
+  persistedDocId?: string;
+  canSoftDeleteDocument?: boolean;
+  onSoftDelete?: () => void;
+  canPurgeDocument?: boolean;
+  onPurge?: () => void;
+  onRestore?: () => void;
+  canShareWithClient?: boolean;
+  clientSharedAt?: string | null;
+  onShareWithClient?: () => void;
+  onUnshareWithClient?: () => void;
+  /** 親画面の操作（共有解除など）後に版履歴を再取得する */
+  historyRevision?: number;
 }
 
 export function isPersistedDocumentVersionId(versionId: string | undefined): boolean {

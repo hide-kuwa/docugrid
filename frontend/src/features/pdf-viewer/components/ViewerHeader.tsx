@@ -13,8 +13,11 @@ import {
   PlayCircle,
   Save,
   Send,
+  Share2,
   Square,
   Stamp,
+  Trash2,
+  Unlink,
 } from "lucide-react";
 import { EnhancedDocVersion, ToolType, ViewerMode, WorkflowStatus } from "../types";
 
@@ -46,6 +49,15 @@ type ViewerHeaderProps = {
   onStartEdit: () => void;
   /** マトリクス「監査する」から開いたときなど、監査開始ボタンを目立たせる */
   highlightAuditStart?: boolean;
+  canSoftDeleteDocument?: boolean;
+  onSoftDelete?: () => void;
+  canPurgeDocument?: boolean;
+  onPurge?: () => void;
+  onRestore?: () => void;
+  canShareWithClient?: boolean;
+  clientSharedAt?: string | null;
+  onShareWithClient?: () => void;
+  onUnshareWithClient?: () => void;
 };
 
 export const ViewerHeader = ({
@@ -75,6 +87,15 @@ export const ViewerHeader = ({
   viewerMode,
   onStartEdit,
   highlightAuditStart = false,
+  canSoftDeleteDocument = false,
+  onSoftDelete,
+  canPurgeDocument = false,
+  onPurge,
+  onRestore,
+  canShareWithClient = false,
+  clientSharedAt = null,
+  onShareWithClient,
+  onUnshareWithClient,
 }: ViewerHeaderProps) => {
   const isReadOnly = viewerMode === "preview";
   const isDraft =
@@ -82,6 +103,8 @@ export const ViewerHeader = ({
   const isReviewPending = workflowStatus === "review_pending";
   const isAuditing = workflowStatus === "auditing";
   const isDone = workflowStatus === "done";
+  /** 2画面照合中は左/右どちらの資料か不明なため、枠単位の操作を出さない */
+  const showSlotDocumentActions = !isSplitView;
 
   return (
     <header className="z-20 flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-700 bg-slate-800 px-4">
@@ -118,13 +141,78 @@ export const ViewerHeader = ({
       </div>
       <div className="flex items-center gap-3">
         {isReadOnly ? (
-          <button
-            type="button"
-            onClick={onStartEdit}
-            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
-          >
-            編集を開始
-          </button>
+          <>
+            {onRestore ? (
+              <button
+                type="button"
+                onClick={onRestore}
+                disabled={isLoading}
+                className="mr-2 flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-900/50 disabled:opacity-50"
+              >
+                復元
+              </button>
+            ) : null}
+            {showSlotDocumentActions && canSoftDeleteDocument && onSoftDelete ? (
+              <button
+                type="button"
+                onClick={onSoftDelete}
+                disabled={isLoading}
+                title="資料を削除（所長のみ削除済み一覧から閲覧・復元可能）"
+                className="mr-2 flex items-center gap-1 rounded-lg border border-amber-800 bg-amber-950/40 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3 w-3" />
+                削除
+              </button>
+            ) : null}
+            {showSlotDocumentActions && canPurgeDocument && onPurge ? (
+              <button
+                type="button"
+                onClick={onPurge}
+                disabled={isLoading}
+                title="資料を完全削除（履歴に記録のみ残る）"
+                className="mr-2 flex items-center gap-1 rounded-lg border border-red-800 bg-red-950/60 px-3 py-1.5 text-xs font-bold text-red-200 hover:bg-red-900/60 disabled:opacity-50"
+              >
+                <Trash2 className="h-3 w-3" />
+                完全削除
+              </button>
+            ) : null}
+            {showSlotDocumentActions && canShareWithClient && onShareWithClient ? (
+              <button
+                type="button"
+                onClick={onShareWithClient}
+                disabled={isLoading}
+                title="クライアントポータルへ共有"
+                className="mr-2 flex items-center gap-1 rounded-lg border border-sky-700 bg-sky-950/40 px-3 py-1.5 text-xs font-bold text-sky-200 hover:bg-sky-900/50 disabled:opacity-50"
+              >
+                <Share2 className="h-3 w-3" />
+                クライアント共有
+              </button>
+            ) : null}
+            {showSlotDocumentActions && clientSharedAt ? (
+              <span className="mr-2 rounded-full bg-emerald-900/50 px-2 py-1 text-[10px] font-bold text-emerald-200">
+                共有済
+              </span>
+            ) : null}
+            {showSlotDocumentActions && clientSharedAt && onUnshareWithClient ? (
+              <button
+                type="button"
+                onClick={onUnshareWithClient}
+                disabled={isLoading}
+                title="クライアントポータルへの共有を解除"
+                className="mr-2 flex items-center gap-1 rounded-lg border border-amber-700 bg-amber-950/40 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50"
+              >
+                <Unlink className="h-3 w-3" />
+                共有解除
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onStartEdit}
+              className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
+            >
+              編集を開始
+            </button>
+          </>
         ) : (
         <>
         <div className="flex items-center bg-slate-900 rounded-lg p-1 mr-2 border border-slate-700">
@@ -192,7 +280,7 @@ export const ViewerHeader = ({
           </button>
         </div>
 
-        {isDraft && (
+        {showSlotDocumentActions && isDraft && (
           <>
             <button
               onClick={handleWorkSave}
@@ -215,7 +303,7 @@ export const ViewerHeader = ({
           </>
         )}
 
-        {isReviewPending && (
+        {showSlotDocumentActions && isReviewPending && (
             <button
               type="button"
               onClick={handleStartAudit}
@@ -229,7 +317,7 @@ export const ViewerHeader = ({
             </button>
         )}
 
-        {isAuditing && (
+        {showSlotDocumentActions && isAuditing && (
           <>
             <button
               onClick={handleAuditSuspend}
@@ -260,7 +348,7 @@ export const ViewerHeader = ({
           </>
         )}
 
-        {isDone && (
+        {showSlotDocumentActions && isDone && (
           <div className="flex items-center gap-1 px-3 py-1.5 bg-green-900/50 rounded-lg border border-green-800 text-green-400">
             <Check className="h-3 w-3" />
             <span className="text-xs font-bold">承認済み</span>
@@ -275,6 +363,69 @@ export const ViewerHeader = ({
         >
           <History className="h-4 w-4" />
         </button>
+        {showSlotDocumentActions && canShareWithClient && onShareWithClient && !isReadOnly ? (
+          <button
+            type="button"
+            onClick={onShareWithClient}
+            disabled={isLoading}
+            title="クライアントポータルへ共有"
+            className="flex h-9 items-center gap-1 rounded-lg border border-sky-700 bg-sky-950/40 px-2.5 text-[10px] font-bold text-sky-200 hover:bg-sky-900/50 disabled:opacity-50"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">クライアント共有</span>
+          </button>
+        ) : null}
+        {showSlotDocumentActions && clientSharedAt ? (
+          <span className="hidden rounded-full bg-emerald-900/50 px-2 py-1 text-[10px] font-bold text-emerald-200 sm:inline">
+            共有済
+          </span>
+        ) : null}
+        {showSlotDocumentActions && clientSharedAt && onUnshareWithClient && !isReadOnly ? (
+          <button
+            type="button"
+            onClick={onUnshareWithClient}
+            disabled={isLoading}
+            title="クライアントポータルへの共有を解除"
+            className="flex h-9 items-center gap-1 rounded-lg border border-amber-700 bg-amber-950/40 px-2.5 text-[10px] font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50"
+          >
+            <Unlink className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">共有解除</span>
+          </button>
+        ) : null}
+        {onRestore ? (
+          <button
+            type="button"
+            onClick={onRestore}
+            disabled={isLoading}
+            className="flex h-9 items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-950/40 px-2.5 text-[10px] font-bold text-emerald-200 hover:bg-emerald-900/50 disabled:opacity-50"
+          >
+            復元
+          </button>
+        ) : null}
+        {showSlotDocumentActions && canSoftDeleteDocument && onSoftDelete && !isReadOnly ? (
+          <button
+            type="button"
+            onClick={onSoftDelete}
+            disabled={isLoading}
+            title="資料を削除"
+            className="flex h-9 items-center gap-1 rounded-lg border border-amber-800 bg-amber-950/40 px-2.5 text-[10px] font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">削除</span>
+          </button>
+        ) : null}
+        {showSlotDocumentActions && canPurgeDocument && onPurge && !isReadOnly ? (
+          <button
+            type="button"
+            onClick={onPurge}
+            disabled={isLoading}
+            title="資料を完全削除（履歴に記録のみ残る）"
+            className="flex h-9 items-center gap-1 rounded-lg border border-red-800 bg-red-950/60 px-2.5 text-[10px] font-bold text-red-200 hover:bg-red-900/60 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">完全削除</span>
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onToggleSplitView}

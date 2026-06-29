@@ -8,14 +8,14 @@ import os
 import sqlite3
 import urllib.parse
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import fitz  # PyMuPDF
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.pdf_annotations import (
@@ -28,16 +28,19 @@ from services.pdf_annotations import (
 )
 
 from docugrid_auth import (
+    MCP_JWT_AUDIENCE,
     SESSION_COOKIE_NAME,
     STAKEHOLDER_ROLE_BY_ID,
     attach_csrf_cookie,
     clear_csrf_cookie,
     create_access_token,
+    create_mcp_access_token,
     csrf_protection_enabled,
     csrf_validation_failed,
     ensure_csrf_cookie_on_response,
     get_cors_origins,
     get_jwt_exp_seconds,
+    get_mcp_jwt_exp_seconds,
     is_production,
     legacy_files_enabled,
     peek_identity_for_audit,
@@ -94,6 +97,21 @@ from services.authoring_templates import (
     list_all_for_firm,
     update_template,
 )
+from services.review_checklist_service import (
+    create_template as create_review_checklist_template,
+    delete_template as delete_review_checklist_template,
+    evaluate_alerts,
+    export_checklist_pdf,
+    get_instance,
+    get_template as get_review_checklist_template,
+    list_templates as list_review_checklist_templates,
+    prefill_header,
+    save_instance,
+    save_instance_checks,
+    save_template as save_review_checklist_template,
+    set_default_template as set_default_review_checklist_template,
+    update_template as update_review_checklist_template,
+)
 from services.text_to_pdf import text_to_pdf_bytes
 from services.template_variable_parser import (
     extract_variable_names,
@@ -145,7 +163,7 @@ from services.capture_service import (
     get_capture_file_bytes,
 )
 from services.capture_normalize import build_marufu_parsed_from_capture
-from services.ssot_ingest import ingest_from_slot_document, ingest_result_for_response
+from services.ssot_ingest import ingest_from_slot_document, ingest_result_for_response, ingest_from_confirmed_fields
 from services.profile_extractors import profile_fields_from_text
 from services.extracted_document_meta import enrich_classify_metadata
 from services.document_catalog_service import (
@@ -237,13 +255,62 @@ from services.client_profile_fields import (
 )
 from services.client_assignments import (
     backfill_assignments_from_legacy,
+    build_client_assignee_index,
+    build_member_client_index,
     init_client_assignments_db,
     load_assignment_scope_map,
     sync_assignments_from_scope_map,
     validate_assignments_for_clients,
 )
+from services.stripe_billing_service import (
+    create_ai_topup_checkout,
+    create_checkout_session,
+    create_portal_session,
+    frontend_base_url,
+    get_billing_status,
+    handle_webhook,
+    is_stripe_configured,
+    sync_firm_billing_usage,
+)
+from services.ai_usage_service import (
+    check_ai_allowed,
+    enable_paygo,
+    estimate_tokens_from_text,
+    get_firm_ai_summary,
+    init_ai_usage_db,
+    list_client_usages,
+    record_ai_usage,
+)
+from services.stripe_connect_service import (
+    attach_partner_to_firm,
+    create_onboarding_link,
+    create_partner,
+    list_partners,
+)
+from services.platform_analytics_service import (
+    build_executive_dashboard,
+    build_firm_detail,
+    init_platform_metrics_db,
+)
+from services.ma_goals_service import build_ma_goals, save_ma_assumptions
+from services.moneytree_link_service import (
+    build_authorize_url,
+    build_vault_url,
+    callback_redirect_url,
+    disconnect as disconnect_moneytree,
+    firm_clients_status,
+    handle_oauth_callback,
+    is_mock_mode,
+    is_moneytree_configured,
+    list_accounts as list_moneytree_accounts,
+    list_transactions as list_moneytree_transactions,
+    mock_connect,
+    status_payload as moneytree_status_payload,
+    sync_accounts as sync_moneytree_accounts,
+)
 from services.document_version_service import (
     create_document_version,
+    delete_document_version,
     ensure_logical_document,
     get_logical_by_id,
     get_logical_by_slot,
@@ -251,9 +318,14 @@ from services.document_version_service import (
     init_document_versions_db,
     list_versions,
     count_versions,
+    is_logical_deleted,
+    is_logical_purged,
+    is_logical_soft_deleted,
     mark_approved,
     mark_remanded,
     migrate_logical_firm_id_backfill,
+    redact_logical_document_filenames,
+    restore_logical_document,
     set_logical_status,
     slot_status_map,
     version_file_path,
@@ -284,7 +356,7 @@ from services.tenancy import (
     resolve_version_firm_id,
     visible_client_ids,
 )
-from services.login_rate_limit import login_rate_limit_exceeded
+from services.login_rate_limit import login_rate_limit_exceeded, mcp_token_rate_limit_exceeded
 from services.storage_paths import resolve_storage_path
 
 app = FastAPI()
@@ -381,6 +453,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "client.view",
         "document.view",
         "document.upload",
+        "review_checklist.edit",
         "dashboard.view",
     },
     "operator": {
@@ -391,6 +464,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "document.annotate",
         "document.comment",
         "audit.link",
+        "review_checklist.edit",
         "dashboard.view",
         "alert.view",
     },
@@ -400,6 +474,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "document.annotate",
         "document.comment",
         "audit.link",
+        "review_checklist.edit",
         "dashboard.view",
         "alert.view",
     },
@@ -417,6 +492,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "alert.view",
         "alert.manage",
         "settings.manage",
+        "document.purge",
     },
     "firm_admin": {
         "client.view",
@@ -431,6 +507,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "alert.view",
         "alert.manage",
         "settings.manage",
+        "document.purge",
     },
     "platform_admin": {
         "client.view",
@@ -550,9 +627,23 @@ def _require_permission(request: Request, required_permission: str) -> str:
     return identity.role
 
 
+def _require_any_permission(request: Request, *required_permissions: str) -> tuple[str, set[str]]:
+    identity = resolve_identity(request)
+    permissions = _get_role_permissions().get(identity.role, set())
+    if not any(p in permissions for p in required_permissions):
+        names = ", ".join(required_permissions)
+        raise HTTPException(status_code=403, detail=f"Permission denied: need one of {names}")
+    return identity.role, permissions
+
+
 def _require_platform_settings(request: Request) -> str:
     """Global settings (role matrix, AI keys) — platform_admin only in production."""
     return _require_permission(request, "settings.platform")
+
+
+def _require_platform(request: Request) -> str:
+    """Alias for platform-only endpoints (billing partners, executive dashboard)."""
+    return _require_platform_settings(request)
 
 
 def _auth_context(request: Request) -> AuthContext:
@@ -578,6 +669,25 @@ def _require_client_access(request: Request, role: str, client_id: str) -> None:
     authorize_client_access(ctx, client_id, _get_stakeholder_client_scope_map())
 
 
+def _require_moneytree_client(
+    request: Request,
+    client_id: str,
+    *,
+    write: bool = False,
+) -> AuthContext:
+    """顧問先スコープの Moneytree 連携（接続は顧問先ユーザーが実施）。"""
+    cid = (client_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="client_id_required")
+    if write:
+        _require_permission(request, "document.upload")
+    else:
+        _require_any_permission(request, "client.view")
+    ctx = _auth_context(request)
+    authorize_client_access(ctx, cid, _get_stakeholder_client_scope_map())
+    return ctx
+
+
 def _format_http_detail(detail: object) -> str:
     if isinstance(detail, str):
         return detail
@@ -599,9 +709,78 @@ def _attachment_content_disposition(filename: str) -> str:
     return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
+def _audit_detail(request: Request, detail: str = "") -> str:
+    """Annotate audit rows when the caller is DocuGrid MCP (AI channel)."""
+    if (request.headers.get("X-Docugrid-MCP") or "").strip():
+        return f"channel=mcp; {detail}" if detail else "channel=mcp"
+    return detail
+
+
+def _can_manage_deleted_documents(request: Request) -> bool:
+    identity = resolve_identity(request)
+    return "document.purge" in _get_role_permissions().get(identity.role, set())
+
+
+def _slot_row_is_soft_deleted(row: sqlite3.Row) -> bool:
+    deleted_at = row["deleted_at"] if "deleted_at" in row.keys() else None
+    if deleted_at:
+        return True
+    return str(row["slot_id"]).startswith("deleted_")
+
+
+def _deny_soft_deleted_row_unless_purge(request: Request, row: sqlite3.Row) -> None:
+    if _slot_row_is_soft_deleted(row) and not _can_manage_deleted_documents(request):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+_DIRECTOR_ONLY_REVIEW_EVENT_TYPES = frozenset({"document_soft_delete", "document_restore"})
+
+
+def _is_client_portal_role(role: str) -> bool:
+    return role == "client_uploader"
+
+
+def _slot_access_sql_filters(request: Request, *, include_deleted: bool = False) -> str:
+    parts: list[str] = []
+    if not include_deleted:
+        parts.append("(deleted_at IS NULL OR deleted_at = '')")
+    identity = resolve_identity(request)
+    if _is_client_portal_role(identity.role):
+        parts.append("(client_shared_at IS NOT NULL AND client_shared_at != '')")
+    if not parts:
+        return ""
+    return " AND " + " AND ".join(parts)
+
+
+def _deny_client_slot_unless_shared(request: Request, row: sqlite3.Row) -> None:
+    identity = resolve_identity(request)
+    if not _is_client_portal_role(identity.role):
+        return
+    shared_at = row["client_shared_at"] if "client_shared_at" in row.keys() else None
+    if not shared_at:
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+def _filter_review_event_rows(request: Request, rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
+    if _can_manage_deleted_documents(request):
+        return rows
+    return [r for r in rows if r["event_type"] not in _DIRECTOR_ONLY_REVIEW_EVENT_TYPES]
+
+
+def _deny_if_logical_purged(logical_id: Optional[str]) -> None:
+    if logical_id and is_logical_purged(logical_id):
+        raise HTTPException(status_code=410, detail="Document deleted")
+
+
+def _deny_if_logical_deleted(logical_id: Optional[str]) -> None:
+    if logical_id and is_logical_deleted(logical_id):
+        raise HTTPException(status_code=410, detail="Document deleted")
+
+
 def _log_audit_event(request: Request, action: str, result: str, detail: str = "") -> None:
     identity = resolve_identity(request)
     _init_audit_events_db()
+    detail = _audit_detail(request, detail)
     with sqlite3.connect(AUDIT_EVENTS_DB_PATH) as conn:
         conn.execute(
             """
@@ -634,6 +813,7 @@ def _log_audit_denial(request: Request, status_code: int, detail: str) -> None:
         firm_id = _auth_context(request).firm_id
     except HTTPException:
         pass
+    detail = _audit_detail(request, detail)
     _init_audit_events_db()
     with sqlite3.connect(AUDIT_EVENTS_DB_PATH) as conn:
         conn.execute(
@@ -860,9 +1040,23 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
+class McpTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    expires_at: str
+    audience: str = MCP_JWT_AUDIENCE
+
+
 class RolePermissionsPayload(BaseModel):
     permissionsByRole: dict[str, list[str]]
     updated_at: str | None = None
+
+
+class FirmTaskAssignee(BaseModel):
+    member_id: str
+    display_name: str
+    assignment_role: str = "main"
 
 
 class FirmTaskItem(BaseModel):
@@ -870,6 +1064,8 @@ class FirmTaskItem(BaseModel):
     period_key: str
     slot_label: str
     kind: str
+    assignees: List[FirmTaskAssignee] = []
+    primary_assignee_id: str | None = None
 
 
 class FirmClientTaskSummary(BaseModel):
@@ -877,6 +1073,17 @@ class FirmClientTaskSummary(BaseModel):
     missing_total: int
     pending_approval_total: int
     incomplete_period_count: int
+    assignees: List[FirmTaskAssignee] = []
+
+
+class FirmStaffTaskSummary(BaseModel):
+    member_id: str
+    display_name: str
+    missing_total: int
+    pending_approval_total: int
+    open_client_count: int
+    assigned_client_count: int
+    assigned_client_ids: List[str] = []
 
 
 class FirmTasksResponse(BaseModel):
@@ -886,6 +1093,32 @@ class FirmTasksResponse(BaseModel):
     client_count: int
     clients: List[FirmClientTaskSummary]
     items: List[FirmTaskItem]
+    staff: List[FirmStaffTaskSummary] = []
+    unassigned_missing_total: int = 0
+    unassigned_pending_total: int = 0
+
+
+class BillingCheckoutBody(BaseModel):
+    plan_id: str
+
+
+class BillingPortalBody(BaseModel):
+    return_path: str = "/settings?tab=billing"
+
+
+class BillingAiTopupBody(BaseModel):
+    packs: int = 1
+
+
+class BillingPartnerCreateBody(BaseModel):
+    name: str
+    email: str
+    commission_percent: float | None = None
+
+
+class BillingPartnerAttachBody(BaseModel):
+    partner_id: str
+    contract_years: int = 1
 
 
 class PayrollEmployeeItem(BaseModel):
@@ -1169,7 +1402,18 @@ def _init_slot_documents_db() -> None:
             )
             """
         )
-        for col in ("logical_document_id", "current_version_id", "docugrid_document_id", "firm_id", "google_drive_file_id"):
+        for col in (
+            "logical_document_id",
+            "current_version_id",
+            "docugrid_document_id",
+            "firm_id",
+            "google_drive_file_id",
+            "deleted_at",
+            "deleted_from_slot_id",
+            "deleted_from_slot_label",
+            "client_shared_at",
+            "client_shared_by",
+        ):
             try:
                 conn.execute(f"ALTER TABLE slot_documents ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
@@ -1366,6 +1610,11 @@ def _merge_client_master_for_firm(ctx: AuthContext, payload: ClientMasterPayload
         if get_client_firm_id(c.id) != firm
     ]
     other_client_ids = {c.id for c in other_clients}
+    firm_clients_by_id = {
+        c.id: c
+        for c in existing.clients
+        if get_client_firm_id(c.id) == firm
+    }
     for c in payload.clients:
         if c.id in other_client_ids:
             raise HTTPException(
@@ -1379,11 +1628,11 @@ def _merge_client_master_for_firm(ctx: AuthContext, payload: ClientMasterPayload
                 detail=f"Client {c.id!r} firmId must be {firm!r}",
             )
         c.firmId = firm
-    payload_ids = {c.id for c in payload.clients}
-    merged_clients = other_clients + list(payload.clients)
+        firm_clients_by_id[c.id] = c
+    merged_clients = other_clients + list(firm_clients_by_id.values())
     if len({c.id for c in merged_clients}) != len(merged_clients):
         raise HTTPException(status_code=400, detail="Duplicate client id across firms")
-    payload_client_ids = {c.id for c in payload.clients}
+    payload_client_ids = set(firm_clients_by_id.keys())
     kept_groups = [
         g
         for g in existing.groups
@@ -2284,6 +2533,81 @@ async def delete_dev_metric_mapping(request: Request, metric_key: str):
     return {"status": "deleted", "metric_key": metric_key}
 
 
+@app.get("/api/platform/executive/dashboard")
+async def get_platform_executive_dashboard(request: Request):
+    """DocuGrid 経営者向け — 全テナント MRR/ARR/チャーン等。"""
+    _require_platform_settings(request)
+    payload = build_executive_dashboard(record_snapshot=True)
+    _log_audit_event(request, "platform.executive.dashboard", "success")
+    return payload
+
+
+@app.get("/api/platform/executive/ma-goals")
+async def get_platform_ma_goals(
+    request: Request,
+    target_arr_yen: int = 1_000_000_000,
+    horizon_months: int = 60,
+    annual_logo_churn: float = 0.05,
+    avg_clients_per_firm: int | None = None,
+    avg_clients_mode: str | None = None,
+    partner_attach_rate: float = 0.5,
+):
+    """MA 目標逆算 — 10億円 ARR 達成に必要な事務所数・獲得ペース等。"""
+    _require_platform_settings(request)
+    if target_arr_yen < 1:
+        raise HTTPException(status_code=400, detail="invalid_target_arr")
+    if horizon_months < 1 or horizon_months > 240:
+        raise HTTPException(status_code=400, detail="invalid_horizon_months")
+    if annual_logo_churn < 0 or annual_logo_churn > 0.5:
+        raise HTTPException(status_code=400, detail="invalid_churn")
+    if partner_attach_rate < 0 or partner_attach_rate > 1:
+        raise HTTPException(status_code=400, detail="invalid_partner_rate")
+    if avg_clients_mode is not None and avg_clients_mode not in ("planning", "actual", "auto"):
+        raise HTTPException(status_code=400, detail="invalid_avg_clients_mode")
+    payload = build_ma_goals(
+        target_arr_yen=target_arr_yen,
+        horizon_months=horizon_months,
+        annual_logo_churn=annual_logo_churn,
+        avg_clients_per_firm=avg_clients_per_firm,
+        avg_clients_mode=avg_clients_mode,
+        partner_attach_rate=partner_attach_rate,
+    )
+    _log_audit_event(request, "platform.executive.ma_goals", "success")
+    return payload
+
+
+class MaAssumptionsBody(BaseModel):
+    planning_avg_clients_per_firm: int | None = None
+    avg_clients_mode: str | None = None
+
+
+@app.put("/api/platform/executive/ma-assumptions")
+async def put_platform_ma_assumptions(request: Request, body: MaAssumptionsBody):
+    """MA 計画仮定（平均顧問先数・実績/仮定モード）を保存。"""
+    _require_platform_settings(request)
+    try:
+        saved = save_ma_assumptions(
+            planning_avg_clients_per_firm=body.planning_avg_clients_per_firm,
+            avg_clients_mode=body.avg_clients_mode,
+        )
+    except ValueError as exc:
+        if str(exc) == "invalid_avg_clients_mode":
+            raise HTTPException(status_code=400, detail="invalid_avg_clients_mode") from exc
+        raise
+    _log_audit_event(request, "platform.executive.ma_assumptions", "success")
+    return saved
+
+
+@app.get("/api/platform/executive/firms/{firm_id}")
+async def get_platform_executive_firm(request: Request, firm_id: str):
+    _require_platform_settings(request)
+    detail = build_firm_detail(firm_id.strip())
+    if not detail:
+        raise HTTPException(status_code=404, detail="firm_not_found")
+    _log_audit_event(request, "platform.executive.firm", "success", firm_id)
+    return detail
+
+
 def _require_authenticated(request: Request) -> None:
     identity = resolve_identity(request)
     if not identity.email and not identity.role:
@@ -2377,6 +2701,212 @@ async def delete_drive_credentials(request: Request):
     return {"ok": True}
 
 
+class MoneytreeStatusPayload(BaseModel):
+    configured: bool
+    mock_mode: bool
+    connected: bool
+    guest_label: Optional[str] = None
+    connected_at: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    accounts_count: int = 0
+    environment: str = "staging"
+    vault_url: Optional[str] = None
+    client_id_scope: Optional[str] = None
+
+
+class MoneytreeConnectPayload(BaseModel):
+    mock: bool
+    authorize_url: Optional[str] = None
+    state: Optional[str] = None
+
+
+class MoneytreeSyncPayload(BaseModel):
+    accounts_synced: int
+    transactions_synced: int
+    synced_at: str
+
+
+class MoneytreeFirmClientStatusItem(BaseModel):
+    client_id: str
+    connected: bool
+    guest_label: Optional[str] = None
+    connected_at: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    accounts_count: int = 0
+
+
+class MoneytreeFirmStatusPayload(BaseModel):
+    clients: list[MoneytreeFirmClientStatusItem]
+
+
+@app.get("/api/integrations/moneytree/firm-status", response_model=MoneytreeFirmStatusPayload)
+async def get_moneytree_firm_status(request: Request):
+    """事務所側: 顧問先ごとの連携状況（閲覧のみ。接続操作は顧問先ワークスペース）。"""
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    scope_map = _get_stakeholder_client_scope_map()
+    client_ids = sorted(visible_client_ids(ctx, scope_map))
+    rows = firm_clients_status(ctx.firm_id, client_ids)
+    _log_audit_event(request, "moneytree.firm_status", "success", f"count={len(rows)}")
+    return MoneytreeFirmStatusPayload(
+        clients=[MoneytreeFirmClientStatusItem(**row) for row in rows],
+    )
+
+
+@app.get("/api/integrations/moneytree/status", response_model=MoneytreeStatusPayload)
+async def get_moneytree_status(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    ctx = _require_moneytree_client(request, client_id)
+    try:
+        payload = moneytree_status_payload(ctx.firm_id, client_id)
+    except ValueError as exc:
+        if str(exc) == "client_id_required":
+            raise HTTPException(status_code=400, detail="client_id_required") from exc
+        raise
+    _log_audit_event(request, "moneytree.status", "success", client_id)
+    return MoneytreeStatusPayload(**payload)
+
+
+@app.get("/api/integrations/moneytree/connect", response_model=MoneytreeConnectPayload)
+async def get_moneytree_connect(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+    return_path: Optional[str] = Query(None),
+):
+    ctx = _require_moneytree_client(request, client_id, write=True)
+    if not is_moneytree_configured():
+        raise HTTPException(status_code=503, detail="moneytree_not_configured")
+    try:
+        result = build_authorize_url(
+            ctx.firm_id,
+            client_id,
+            return_path=(return_path or "").strip(),
+        )
+    except ValueError as exc:
+        if str(exc) == "client_id_required":
+            raise HTTPException(status_code=400, detail="client_id_required") from exc
+        raise
+    except RuntimeError as exc:
+        if str(exc) == "moneytree_not_configured":
+            raise HTTPException(status_code=503, detail="moneytree_not_configured") from exc
+        raise
+    _log_audit_event(request, "moneytree.connect", "success", client_id)
+    return MoneytreeConnectPayload(**result)
+
+
+@app.get("/api/integrations/moneytree/callback")
+async def moneytree_oauth_callback(
+    request: Request,
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    return_path: str | None = None
+    if error:
+        return RedirectResponse(callback_redirect_url(False, error, return_path=return_path))
+    if not code or not state:
+        return RedirectResponse(callback_redirect_url(False, "missing_code_or_state"))
+    try:
+        _, _, return_path = handle_oauth_callback(code, state)
+    except KeyError:
+        return RedirectResponse(callback_redirect_url(False, "invalid_state"))
+    except RuntimeError as exc:
+        return RedirectResponse(callback_redirect_url(False, str(exc), return_path=return_path))
+    _log_audit_event(request, "moneytree.callback", "success")
+    return RedirectResponse(callback_redirect_url(True, return_path=return_path))
+
+
+@app.post("/api/integrations/moneytree/mock-connect")
+async def moneytree_mock_connect(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    ctx = _require_moneytree_client(request, client_id, write=True)
+    if not is_mock_mode():
+        raise HTTPException(status_code=403, detail="mock_mode_disabled")
+    try:
+        mock_connect(ctx.firm_id, client_id)
+    except ValueError as exc:
+        if str(exc) == "client_id_required":
+            raise HTTPException(status_code=400, detail="client_id_required") from exc
+        raise
+    _log_audit_event(request, "moneytree.mock_connect", "success", client_id)
+    return {"ok": True}
+
+
+@app.post("/api/integrations/moneytree/sync", response_model=MoneytreeSyncPayload)
+async def moneytree_sync(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    ctx = _require_moneytree_client(request, client_id, write=True)
+    try:
+        result = sync_moneytree_accounts(ctx.firm_id, client_id)
+    except KeyError:
+        raise HTTPException(status_code=400, detail="not_connected") from None
+    _log_audit_event(
+        request,
+        "moneytree.sync",
+        "success",
+        f"client={client_id} accounts={result['accounts_synced']} txns={result['transactions_synced']}",
+    )
+    return MoneytreeSyncPayload(**result)
+
+
+@app.get("/api/integrations/moneytree/accounts")
+async def moneytree_accounts(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    ctx = _require_moneytree_client(request, client_id)
+    rows = list_moneytree_accounts(ctx.firm_id, client_id)
+    _log_audit_event(request, "moneytree.accounts", "success", f"client={client_id} count={len(rows)}")
+    return {"accounts": rows}
+
+
+@app.get("/api/integrations/moneytree/transactions")
+async def moneytree_transactions(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+    account_external_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    ctx = _require_moneytree_client(request, client_id)
+    rows = list_moneytree_transactions(
+        ctx.firm_id,
+        client_id,
+        account_external_id=account_external_id,
+        limit=limit,
+    )
+    _log_audit_event(request, "moneytree.transactions", "success", f"client={client_id} count={len(rows)}")
+    return {"transactions": rows}
+
+
+@app.get("/api/integrations/moneytree/vault-url")
+async def moneytree_vault_url(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    _require_moneytree_client(request, client_id, write=True)
+    url = build_vault_url()
+    if not url:
+        raise HTTPException(status_code=503, detail="vault_url_unavailable")
+    return {"vault_url": url}
+
+
+@app.delete("/api/integrations/moneytree/disconnect")
+async def moneytree_disconnect(
+    request: Request,
+    client_id: str = Query(..., min_length=1),
+):
+    ctx = _require_moneytree_client(request, client_id, write=True)
+    disconnect_moneytree(ctx.firm_id, client_id)
+    _log_audit_event(request, "moneytree.disconnect", "success", client_id)
+    return {"ok": True}
+
+
 @app.get("/api/client-master", response_model=ClientMasterPayload)
 async def get_client_master(request: Request):
     # 全ロール（viewer 含む）が顧客名・関係グループを参照できる必要があるため client.view で許可。
@@ -2404,9 +2934,22 @@ async def get_client_master(request: Request):
 async def update_client_master(request: Request, payload: ClientMasterPayload):
     role = _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
+    scope_map = _get_stakeholder_client_scope_map()
+    for client in payload.clients:
+        if get_client_firm_id(client.id) != ctx.firm_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot modify client {client.id!r} belonging to another firm",
+            )
+        authorize_client_access(ctx, client.id, scope_map)
     _validate_client_master(payload)
     merged = _merge_client_master_for_firm(ctx, payload)
     saved = _save_client_master(merged)
+    client_count, _ = _firm_usage_counts(ctx.firm_id)
+    try:
+        sync_firm_billing_usage(ctx.firm_id, client_count)
+    except Exception:
+        pass
     _log_audit_event(request, "client_master.put", "success", f"clients={len(saved.clients)} groups={len(saved.groups)}")
     return saved
 
@@ -2789,6 +3332,31 @@ async def auth_me(request: Request):
     resp = JSONResponse(content=me.model_dump())
     ensure_csrf_cookie_on_response(request, resp)
     return resp
+
+
+@app.post("/api/auth/mcp-token", response_model=McpTokenResponse)
+async def issue_mcp_token(request: Request):
+    """Issue a short-lived JWT for DocuGrid MCP (Cursor / Claude Desktop). Same permissions as the current user."""
+    identity = resolve_identity(request)
+    actor_key = f"{identity.member_id}:{identity.email}"
+    if mcp_token_rate_limit_exceeded(actor_key):
+        _log_audit_event(request, "auth.mcp_token.issue", "denied", "rate_limit")
+        raise HTTPException(status_code=429, detail="MCP token issuance rate limit exceeded")
+    exp_seconds = get_mcp_jwt_exp_seconds()
+    token = create_mcp_access_token(
+        sub=identity.email,
+        role=identity.role,
+        stid=identity.stakeholder_id,
+        firm_id=identity.firm_id,
+        member_id=identity.member_id,
+    )
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=exp_seconds)).isoformat()
+    _log_audit_event(request, "auth.mcp_token.issue", "success", f"expires_in={exp_seconds}")
+    return McpTokenResponse(
+        access_token=token,
+        expires_in=exp_seconds,
+        expires_at=expires_at,
+    )
 
 
 @app.get("/api/audit-events", response_model=List[AuditEventItem])
@@ -3230,6 +3798,11 @@ class SlotDocumentItem(BaseModel):
     version_count: Optional[int] = None
     normalize_result: Optional[dict] = None
     ocr_job_id: Optional[str] = None
+    deleted_at: Optional[str] = None
+    deleted_from_slot_id: Optional[str] = None
+    deleted_from_slot_label: Optional[str] = None
+    client_shared_at: Optional[str] = None
+    client_shared_by: Optional[str] = None
 
 
 class DocumentVersionItem(BaseModel):
@@ -3267,6 +3840,11 @@ def _row_to_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
         docugrid_document_id=row["docugrid_document_id"] if "docugrid_document_id" in row.keys() else None,
         logical_status=None,
         google_drive_file_id=row["google_drive_file_id"] if "google_drive_file_id" in row.keys() else None,
+        deleted_at=row["deleted_at"] if "deleted_at" in row.keys() else None,
+        deleted_from_slot_id=row["deleted_from_slot_id"] if "deleted_from_slot_id" in row.keys() else None,
+        deleted_from_slot_label=row["deleted_from_slot_label"] if "deleted_from_slot_label" in row.keys() else None,
+        client_shared_at=row["client_shared_at"] if "client_shared_at" in row.keys() else None,
+        client_shared_by=row["client_shared_by"] if "client_shared_by" in row.keys() else None,
     )
 
 
@@ -3297,8 +3875,15 @@ def _enrich_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
                     item.classify_metadata = json.loads(version.metadata_json)
                 except json.JSONDecodeError:
                     item.classify_metadata = None
-    item.workflow_status = _latest_workflow_status(row["client_id"], row["period_key"], row["slot_id"])
-    logical = get_logical_by_slot(row["client_id"], row["period_key"], row["slot_id"])
+    item.workflow_status = _latest_workflow_status(
+        row["client_id"],
+        row["period_key"],
+        row["deleted_from_slot_id"] if row["deleted_from_slot_id"] else row["slot_id"],
+    )
+    logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
+    logical = get_logical_by_id(logical_id) if logical_id else get_logical_by_slot(
+        row["client_id"], row["period_key"], row["slot_id"]
+    )
     if logical:
         item.logical_status = logical.status
         item.version_count = count_versions(logical.id)
@@ -3478,6 +4063,9 @@ async def upsert_slot_document(
     identity = resolve_identity(request)
     uploaded_by = identity.stakeholder_id or identity.email or ""
     now = datetime.utcnow().isoformat()
+    auto_share_with_client = _is_client_portal_role(identity.role)
+    client_shared_at = now if auto_share_with_client else None
+    client_shared_by = uploaded_by if auto_share_with_client else None
     title = slot_label or f"slot-{slot_id}"
 
     metadata_json: Optional[str] = None
@@ -3554,7 +4142,8 @@ async def upsert_slot_document(
                 UPDATE slot_documents SET
                     slot_label=?, original_name=?, storage_key=?,
                     page_count=?, content_sha256=?, byte_size=?, uploaded_by=?, uploaded_at=?,
-                    logical_document_id=?, current_version_id=?, firm_id=?, google_drive_file_id=?
+                    logical_document_id=?, current_version_id=?, firm_id=?, google_drive_file_id=?,
+                    client_shared_at=?, client_shared_by=?
                 WHERE id=?
                 """,
                 (
@@ -3570,6 +4159,8 @@ async def upsert_slot_document(
                     version.id,
                     client_firm,
                     drive_file_id,
+                    client_shared_at,
+                    client_shared_by,
                     doc_id,
                 ),
             )
@@ -3580,8 +4171,9 @@ async def upsert_slot_document(
                 INSERT INTO slot_documents
                     (id, client_id, period_key, slot_id, slot_label, original_name, storage_key,
                      page_count, content_sha256, byte_size, uploaded_by, uploaded_at,
-                     logical_document_id, current_version_id, firm_id, google_drive_file_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     logical_document_id, current_version_id, firm_id, google_drive_file_id,
+                     client_shared_at, client_shared_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc_id,
@@ -3600,6 +4192,8 @@ async def upsert_slot_document(
                     version.id,
                     client_firm,
                     drive_file_id,
+                    client_shared_at,
+                    client_shared_by,
                 ),
             )
         row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
@@ -3626,6 +4220,22 @@ async def upsert_slot_document(
         logical_document_id=logical.id,
         document_version_id=version.id,
     )
+    if auto_share_with_client:
+        _append_review_event(
+            client_id=client_id,
+            period_key=period_key,
+            slot_id=slot_id,
+            event_type="client_share",
+            action_title="クライアントへ共有（自動）",
+            reason=f"枠「{title}」· クライアント提出",
+            actor_stakeholder_id=identity.stakeholder_id or None,
+            actor_email=identity.email or None,
+            actor_role=role,
+            is_major=True,
+            logical_document_id=logical.id,
+            document_version_id=version.id,
+            detail=f"doc_id={doc_id}; auto_share=1",
+        )
     defer_normalize = async_classify is not None and async_classify.strip().lower() in (
         "1",
         "true",
@@ -3669,6 +4279,32 @@ async def upsert_slot_document(
                 f"client={client_id} applied={len(norm.applied)} metrics={len(norm.metrics_applied)}",
             )
         item.normalize_result = ingest_result_for_response(norm)
+        if norm.extraction_review:
+            try:
+                from services.ocr_job_service import update_version_metadata
+
+                review = norm.extraction_review
+                base_meta: dict = {}
+                if metadata_json:
+                    base_meta = json.loads(metadata_json)
+                enriched = enrich_classify_metadata(
+                    {
+                        **base_meta,
+                        "confidence": float(base_meta.get("confidence") or 1.0),
+                        "engine": base_meta.get("engine") or "schema",
+                        "extracted_profile": review.get("extracted_profile"),
+                        "field_extractions": review.get("fields"),
+                        "extraction_review_status": review.get("review_status"),
+                        "schema_version": review.get("schema_version"),
+                    },
+                    client_id=client_id,
+                    period_key=period_key,
+                    slot_id=slot_id,
+                )
+                update_version_metadata(version.id, enriched)
+                item.classify_metadata = enriched
+            except Exception:
+                pass
     return item
 
 
@@ -3677,20 +4313,24 @@ async def list_slot_documents(
     request: Request,
     client_id: str = Query(...),
     period_key: Optional[str] = Query(None),
+    include_deleted: bool = Query(False),
 ):
     role = _require_permission(request, "document.view")
     _require_client_access(request, role, client_id)
+    if include_deleted:
+        _require_permission(request, "document.purge")
     _init_slot_documents_db()
+    access_clause = _slot_access_sql_filters(request, include_deleted=include_deleted)
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         if period_key:
             rows = conn.execute(
-                "SELECT * FROM slot_documents WHERE client_id=? AND period_key=? ORDER BY slot_id",
+                f"SELECT * FROM slot_documents WHERE client_id=? AND period_key=?{access_clause} ORDER BY slot_id",
                 (client_id, period_key),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM slot_documents WHERE client_id=? ORDER BY period_key, slot_id",
+                f"SELECT * FROM slot_documents WHERE client_id=?{access_clause} ORDER BY period_key, slot_id",
                 (client_id,),
             ).fetchall()
     return [_enrich_slot_item(r) for r in rows]
@@ -3706,6 +4346,10 @@ async def get_slot_document_file(request: Request, doc_id: str):
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
     _require_client_access(request, role, row["client_id"])
+    _deny_soft_deleted_row_unless_purge(request, row)
+    _deny_client_slot_unless_shared(request, row)
+    logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
+    _deny_if_logical_purged(logical_id)
     ctx = _auth_context(request)
     row_firm = row["firm_id"] if "firm_id" in row.keys() and row["firm_id"] else None
     if row_firm:
@@ -3737,8 +4381,13 @@ async def get_slot_document_file(request: Request, doc_id: str):
 
 
 @app.delete("/api/slots/{doc_id}")
-async def delete_slot_document(request: Request, doc_id: str):
-    role = _require_permission(request, "document.upload")
+async def delete_slot_document(request: Request, doc_id: str, mode: str = "delete"):
+    if mode == "purge":
+        role = _require_permission(request, "document.purge")
+    elif mode == "detach":
+        role = _require_permission(request, "document.upload")
+    else:
+        role = _require_permission(request, "document.upload")
     _init_slot_documents_db()
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -3746,17 +4395,326 @@ async def delete_slot_document(request: Request, doc_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
         _require_client_access(request, role, row["client_id"])
-        # immutable 版ファイル（*/versions/*）は削除しない
-        if "/versions/" not in str(row["storage_key"]):
-            path = resolve_storage_path(row["storage_key"])
-            try:
-                if path.exists():
-                    path.unlink()
-            except OSError:
-                pass
-        conn.execute("DELETE FROM slot_documents WHERE id=?", (doc_id,))
-    _log_audit_event(request, "slot.delete", "success", f"id={doc_id} client={row['client_id']}")
-    return {"ok": True}
+        if mode == "detach":
+            if row["deleted_at"] if "deleted_at" in row.keys() else None:
+                raise HTTPException(status_code=409, detail="Cannot detach deleted document")
+            unassigned_id = f"unassigned_{doc_id}"
+            conn.execute(
+                """
+                UPDATE slot_documents
+                SET slot_id=?, slot_label=COALESCE(slot_label, original_name)
+                WHERE id=?
+                """,
+                (unassigned_id, doc_id),
+            )
+            _log_audit_event(
+                request,
+                "slot.detach",
+                "success",
+                f"doc_id={doc_id} slot={unassigned_id} period={row['period_key']}",
+            )
+            return {"ok": True, "mode": "detach", "slot_id": unassigned_id}
+
+        identity = resolve_identity(request)
+        logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
+        origin_slot_id = (
+            row["deleted_from_slot_id"]
+            if row["deleted_from_slot_id"]
+            else row["slot_id"]
+        )
+        slot_label = (
+            (row["deleted_from_slot_label"] or row["slot_label"] or "").strip()
+            if ("deleted_from_slot_label" in row.keys() and row["deleted_from_slot_label"])
+            or ("slot_label" in row.keys() and row["slot_label"])
+            else str(origin_slot_id)
+        )
+
+        if mode == "purge":
+            _append_review_event(
+                client_id=row["client_id"],
+                period_key=row["period_key"],
+                slot_id=origin_slot_id,
+                event_type="document_delete",
+                action_title="資料を完全削除",
+                reason=f"枠「{slot_label}」",
+                actor_stakeholder_id=identity.stakeholder_id,
+                actor_email=identity.email,
+                actor_role=identity.role,
+                is_major=True,
+                logical_document_id=logical_id,
+                detail=f"slot_id={origin_slot_id}; period={row['period_key']}",
+            )
+            if logical_id:
+                set_logical_status(logical_id, "deleted")
+                redact_logical_document_filenames(logical_id)
+            if "/versions/" not in str(row["storage_key"]):
+                path = resolve_storage_path(row["storage_key"])
+                try:
+                    if path.exists():
+                        path.unlink()
+                except OSError:
+                    pass
+            conn.execute("DELETE FROM slot_documents WHERE id=?", (doc_id,))
+            _log_audit_event(
+                request,
+                "slot.purge",
+                "success",
+                f"doc_id={doc_id} slot={origin_slot_id} period={row['period_key']}",
+            )
+            return {"ok": True, "mode": "purge"}
+
+        # Soft delete (default) — 復元可能
+        if row["deleted_at"] if "deleted_at" in row.keys() else None:
+            raise HTTPException(status_code=409, detail="Already deleted")
+        now = datetime.utcnow().isoformat()
+        deleted_slot_id = f"deleted_{doc_id}"
+        conn.execute(
+            """
+            UPDATE slot_documents
+            SET slot_id=?,
+                deleted_at=?,
+                deleted_from_slot_id=?,
+                deleted_from_slot_label=COALESCE(slot_label, original_name),
+                client_shared_at=NULL,
+                client_shared_by=NULL
+            WHERE id=?
+            """,
+            (deleted_slot_id, now, row["slot_id"], doc_id),
+        )
+        if logical_id:
+            set_logical_status(logical_id, "soft_deleted")
+        _append_review_event(
+            client_id=row["client_id"],
+            period_key=row["period_key"],
+            slot_id=row["slot_id"],
+            event_type="document_soft_delete",
+            action_title="資料を削除（復元可能）",
+            reason=f"枠「{slot_label}」",
+            actor_stakeholder_id=identity.stakeholder_id,
+            actor_email=identity.email,
+            actor_role=identity.role,
+            is_major=True,
+            logical_document_id=logical_id,
+            detail=f"slot_id={row['slot_id']}; period={row['period_key']}; doc_id={doc_id}",
+        )
+    _log_audit_event(
+        request,
+        "slot.soft_delete",
+        "success",
+        f"doc_id={doc_id} slot={row['slot_id']} period={row['period_key']}",
+    )
+    return {"ok": True, "mode": "delete"}
+
+
+@app.post("/api/slots/{doc_id}/restore")
+async def restore_slot_document(request: Request, doc_id: str):
+    role = _require_permission(request, "document.purge")
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        _require_client_access(request, role, row["client_id"])
+        deleted_at = row["deleted_at"] if "deleted_at" in row.keys() else None
+        if not deleted_at:
+            raise HTTPException(status_code=409, detail="Document is not deleted")
+        restore_slot_id = row["deleted_from_slot_id"] if "deleted_from_slot_id" in row.keys() else None
+        if not restore_slot_id:
+            raise HTTPException(status_code=409, detail="Restore origin missing")
+        logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
+        if logical_id and not is_logical_soft_deleted(logical_id):
+            raise HTTPException(status_code=409, detail="Document cannot be restored")
+        conflict = conn.execute(
+            """
+            SELECT id FROM slot_documents
+            WHERE client_id=? AND period_key=? AND slot_id=? AND id<>?
+              AND (deleted_at IS NULL OR deleted_at = '')
+            """,
+            (row["client_id"], row["period_key"], restore_slot_id, doc_id),
+        ).fetchone()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Slot already occupied")
+        restore_label = row["deleted_from_slot_label"] if "deleted_from_slot_label" in row.keys() else None
+        conn.execute(
+            """
+            UPDATE slot_documents
+            SET slot_id=?,
+                slot_label=COALESCE(?, slot_label),
+                deleted_at=NULL,
+                deleted_from_slot_id=NULL,
+                deleted_from_slot_label=NULL
+            WHERE id=?
+            """,
+            (restore_slot_id, restore_label, doc_id),
+        )
+        updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    if logical_id:
+        try:
+            restore_logical_document(logical_id)
+        except ValueError as exc:
+            if str(exc) == "not_soft_deleted":
+                raise HTTPException(status_code=409, detail="Document cannot be restored")
+            raise
+    identity = resolve_identity(request)
+    slot_label = (restore_label or restore_slot_id or "").strip() or restore_slot_id
+    _append_review_event(
+        client_id=row["client_id"],
+        period_key=row["period_key"],
+        slot_id=restore_slot_id,
+        event_type="document_restore",
+        action_title="資料を復元",
+        reason=f"枠「{slot_label}」",
+        actor_stakeholder_id=identity.stakeholder_id,
+        actor_email=identity.email,
+        actor_role=identity.role,
+        is_major=True,
+        logical_document_id=logical_id,
+        detail=f"slot_id={restore_slot_id}; period={row['period_key']}; doc_id={doc_id}",
+    )
+    _log_audit_event(
+        request,
+        "slot.restore",
+        "success",
+        f"doc_id={doc_id} slot={restore_slot_id} period={row['period_key']}",
+    )
+    return {"ok": True, "item": _enrich_slot_item(updated)}
+
+
+@app.post("/api/slots/{doc_id}/share-with-client")
+async def share_slot_with_client(request: Request, doc_id: str):
+    """事務所アップロード資料をクライアントポータルへ明示的に公開する。"""
+    role = _require_permission(request, "document.upload")
+    identity = resolve_identity(request)
+    if _is_client_portal_role(identity.role):
+        raise HTTPException(status_code=403, detail="Firm users only")
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        _require_client_access(request, role, row["client_id"])
+        if row["deleted_at"] if "deleted_at" in row.keys() else None:
+            raise HTTPException(status_code=409, detail="Cannot share deleted document")
+        if row["client_shared_at"] if "client_shared_at" in row.keys() else None:
+            return {"ok": True, "already_shared": True, "item": _enrich_slot_item(row)}
+        now = datetime.utcnow().isoformat()
+        shared_by = identity.stakeholder_id or identity.email or ""
+        conn.execute(
+            "UPDATE slot_documents SET client_shared_at=?, client_shared_by=? WHERE id=?",
+            (now, shared_by, doc_id),
+        )
+        updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    slot_label = (
+        (row["slot_label"] or "").strip()
+        if "slot_label" in row.keys() and row["slot_label"]
+        else str(row["slot_id"])
+    )
+    _append_review_event(
+        client_id=row["client_id"],
+        period_key=row["period_key"],
+        slot_id=row["slot_id"],
+        event_type="client_share",
+        action_title="クライアントへ共有",
+        reason=f"枠「{slot_label}」",
+        actor_stakeholder_id=identity.stakeholder_id,
+        actor_email=identity.email,
+        actor_role=identity.role,
+        is_major=True,
+        logical_document_id=row["logical_document_id"] if "logical_document_id" in row.keys() else None,
+        detail=f"doc_id={doc_id}; period={row['period_key']}",
+    )
+    _log_audit_event(request, "slot.client_share", "success", f"doc_id={doc_id} client={row['client_id']}")
+    return {"ok": True, "item": _enrich_slot_item(updated)}
+
+
+@app.post("/api/slots/{doc_id}/unshare-with-client")
+async def unshare_slot_with_client(request: Request, doc_id: str):
+    """クライアントポータルへの共有を解除する（事務所のみ）。"""
+    role = _require_permission(request, "document.upload")
+    identity = resolve_identity(request)
+    if _is_client_portal_role(identity.role):
+        raise HTTPException(status_code=403, detail="Firm users only")
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        _require_client_access(request, role, row["client_id"])
+        if row["deleted_at"] if "deleted_at" in row.keys() else None:
+            raise HTTPException(status_code=409, detail="Cannot unshare deleted document")
+        if not (row["client_shared_at"] if "client_shared_at" in row.keys() else None):
+            return {"ok": True, "already_unshared": True, "item": _enrich_slot_item(row)}
+        conn.execute(
+            "UPDATE slot_documents SET client_shared_at=NULL, client_shared_by=NULL WHERE id=?",
+            (doc_id,),
+        )
+        updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    slot_label = (
+        (row["slot_label"] or "").strip()
+        if "slot_label" in row.keys() and row["slot_label"]
+        else str(row["slot_id"])
+    )
+    _append_review_event(
+        client_id=row["client_id"],
+        period_key=row["period_key"],
+        slot_id=row["slot_id"],
+        event_type="client_unshare",
+        action_title="クライアント共有を解除",
+        reason=f"枠「{slot_label}」",
+        actor_stakeholder_id=identity.stakeholder_id,
+        actor_email=identity.email,
+        actor_role=identity.role,
+        is_major=True,
+        logical_document_id=row["logical_document_id"] if "logical_document_id" in row.keys() else None,
+        detail=f"doc_id={doc_id}; period={row['period_key']}",
+    )
+    _log_audit_event(request, "slot.client_unshare", "success", f"doc_id={doc_id} client={row['client_id']}")
+    return {"ok": True, "item": _enrich_slot_item(updated)}
+
+
+@app.patch("/api/slots/{doc_id}")
+async def move_slot_document(request: Request, doc_id: str):
+    role = _require_permission(request, "document.upload")
+    body = await request.json()
+    slot_id = str(body.get("slot_id") or "").strip()
+    slot_label = str(body.get("slot_label") or "").strip() or None
+    if not slot_id:
+        raise HTTPException(status_code=400, detail="slot_id required")
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        _require_client_access(request, role, row["client_id"])
+        conflict = conn.execute(
+            """
+            SELECT id FROM slot_documents
+            WHERE client_id=? AND period_key=? AND slot_id=? AND id<>?
+            """,
+            (row["client_id"], row["period_key"], slot_id, doc_id),
+        ).fetchone()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Slot already occupied")
+        conn.execute(
+            """
+            UPDATE slot_documents
+            SET slot_id=?, slot_label=COALESCE(?, slot_label)
+            WHERE id=?
+            """,
+            (slot_id, slot_label, doc_id),
+        )
+        updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    _log_audit_event(
+        request,
+        "slot.move",
+        "success",
+        f"id={doc_id} client={row['client_id']} slot={slot_id}",
+    )
+    return dict(updated)
 
 
 def _update_slot_current_version(
@@ -3841,7 +4799,7 @@ async def list_logical_document_versions(
     role = _require_permission(request, "document.view")
     _require_client_access(request, role, client_id)
     logical = get_logical_by_slot(client_id, period_key, slot_id)
-    if not logical:
+    if not logical or logical.status == "deleted":
         return []
     return [_version_to_item(v) for v in list_versions(logical.id)]
 
@@ -3864,6 +4822,7 @@ async def get_document_version_file(request: Request, version_id: str):
     if not lrow:
         raise HTTPException(status_code=404, detail="Logical document not found")
     _require_client_access(request, role, lrow["client_id"])
+    _deny_if_logical_purged(version.logical_document_id)
     vfirm = resolve_version_firm_id(version_id)
     if vfirm:
         authorize_firm_resource(_auth_context(request), vfirm)
@@ -3872,6 +4831,96 @@ async def get_document_version_file(request: Request, version_id: str):
         raise HTTPException(status_code=404, detail="File missing")
     _log_audit_event(request, "version.download", "success", f"version={version_id}")
     return FileResponse(str(path), media_type="application/pdf", filename=version.original_name)
+
+
+@app.delete("/api/document-versions/{version_id}")
+async def delete_document_version_endpoint(request: Request, version_id: str):
+    role = _require_permission(request, "document.upload")
+    version = get_version(version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    logical = get_logical_by_id(version.logical_document_id)
+    if not logical:
+        raise HTTPException(status_code=404, detail="Logical document not found")
+    _require_client_access(request, role, logical.client_id)
+    _deny_if_logical_deleted(logical.id)
+    ctx = _auth_context(request)
+    authorize_firm_resource(ctx, logical.firm_id)
+
+    try:
+        logical_after, deleted, promoted = delete_document_version(version_id)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "logical_deleted":
+            raise HTTPException(status_code=410, detail="Document deleted")
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    _init_audit_links_db()
+    with sqlite3.connect(AUDIT_LINKS_DB_PATH) as conn:
+        conn.execute("DELETE FROM audit_links WHERE version_id=?", (version_id,))
+
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        slot_row = conn.execute(
+            """
+            SELECT id FROM slot_documents
+            WHERE client_id=? AND period_key=? AND slot_id=? AND current_version_id=?
+            """,
+            (logical.client_id, logical.period_key, logical.slot_id, version_id),
+        ).fetchone()
+        if slot_row:
+            if promoted:
+                conn.execute(
+                    """
+                    UPDATE slot_documents SET
+                        storage_key=?, page_count=?, content_sha256=?, byte_size=?,
+                        current_version_id=?, uploaded_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        promoted.storage_key,
+                        promoted.page_count,
+                        promoted.content_sha256,
+                        promoted.byte_size,
+                        promoted.id,
+                        datetime.utcnow().isoformat(),
+                        slot_row["id"],
+                    ),
+                )
+            else:
+                conn.execute("DELETE FROM slot_documents WHERE id=?", (slot_row["id"],))
+
+    identity = resolve_identity(request)
+    slot_label = logical.title or logical.slot_id
+    _append_review_event(
+        client_id=logical.client_id,
+        period_key=logical.period_key,
+        slot_id=logical.slot_id,
+        event_type="version_delete",
+        version_label=deleted.version_label,
+        action_title=f"版 {deleted.version_label} を削除",
+        reason=f"枠「{slot_label}」",
+        actor_stakeholder_id=identity.stakeholder_id,
+        actor_email=identity.email,
+        actor_role=identity.role,
+        is_major=True,
+        logical_document_id=logical.id,
+        detail=f"version_label={deleted.version_label}; slot_id={logical.slot_id}; period={logical.period_key}",
+    )
+    _log_audit_event(
+        request,
+        "version.delete",
+        "success",
+        f"version_label={deleted.version_label} slot={logical.slot_id} period={logical.period_key}",
+    )
+    return {
+        "ok": True,
+        "deleted_version_id": version_id,
+        "deleted_version_label": deleted.version_label,
+        "current_version_id": logical_after.current_version_id,
+        "remaining_versions": count_versions(logical.id),
+    }
 
 
 @app.post("/api/document-versions", response_model=DocumentVersionItem)
@@ -4008,7 +5057,8 @@ async def list_review_events(
             f"SELECT * FROM review_events WHERE {where} ORDER BY created_at DESC, rowid DESC",
             params,
         ).fetchall()
-    return [_row_to_review_event(r) for r in rows]
+    filtered = _filter_review_event_rows(request, rows)
+    return [_row_to_review_event(r) for r in filtered]
 
 
 def _query_review_events(
@@ -4137,7 +5187,10 @@ async def get_review_timeline(
     role = _require_permission(request, "document.view")
     _require_client_access(request, role, client_id)
     ctx = _auth_context(request)
-    rows = _query_review_timeline(client_id, period_key, limit, firm_id=ctx.firm_id)
+    rows = _filter_review_event_rows(
+        request,
+        _query_review_timeline(client_id, period_key, limit, firm_id=ctx.firm_id),
+    )
     label_cache: dict[tuple[str, str, str], Optional[str]] = {}
     items: List[ReviewTimelineItem] = []
     for row in rows:
@@ -4171,7 +5224,10 @@ async def export_review_events(
     role = _require_permission(request, "audit.approve")
     _require_client_access(request, role, client_id)
     ctx = _auth_context(request)
-    rows = _query_review_events(client_id, period_key, slot_id, firm_id=ctx.firm_id)
+    rows = _filter_review_event_rows(
+        request,
+        _query_review_events(client_id, period_key, slot_id, firm_id=ctx.firm_id),
+    )
     items = [_row_to_review_event(r) for r in rows]
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     base_name = f"review-events_{client_id}_{period_key or 'all'}_{stamp}"
@@ -4264,6 +5320,20 @@ async def classify_document(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    ctx = _auth_context(request)
+    ai_gate: dict | None = None
+    if client_id:
+        ai_gate = check_ai_allowed(ctx.firm_id, client_id)
+        if not ai_gate.get("allowed"):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": ai_gate.get("code"),
+                    "message": ai_gate.get("message"),
+                    "clientUsage": ai_gate.get("clientUsage"),
+                },
+            )
+
     logical_for_classify = None
     if client_id and period_key and slot_id:
         logical_for_classify = get_logical_by_slot(client_id, period_key, slot_id)
@@ -4272,7 +5342,6 @@ async def classify_document(
 
     try:
         result = classify_pdf(content, file.filename, norm_candidates)
-        ctx = _auth_context(request)
         cfg = _load_system_config(ctx.firm_id)
         excerpt = str(result.get("text_excerpt") or "")
         conf = float(result.get("confidence") or 0)
@@ -4321,9 +5390,24 @@ async def classify_document(
         if slot_id:
             full_text, _ = extract_text_from_pdf(content)
             if full_text and len(full_text.strip()) >= 8:
-                extracted = profile_fields_from_text(slot_id, full_text)
-                if extracted:
-                    result["extracted_profile"] = extracted
+                from services.document_extraction_schema import extract_from_schema, has_extraction_schema
+
+                if has_extraction_schema(slot_id):
+                    schema_result = extract_from_schema(slot_id, full_text)
+                    result["extracted_profile"] = schema_result.extracted_profile
+                    result["extraction_review"] = schema_result.to_dict()
+                else:
+                    extracted = profile_fields_from_text(slot_id, full_text)
+                    if extracted:
+                        result["extracted_profile"] = extracted
+        if client_id:
+            excerpt_for_tokens = str(result.get("text_excerpt") or "")
+            tokens = estimate_tokens_from_text(excerpt_for_tokens)
+            if result.get("engine") in ("openai", "gemini"):
+                usage = record_ai_usage(ctx.firm_id, client_id, tokens, feature="classify")
+                result["aiUsage"] = usage.get("clientUsage")
+            elif ai_gate and ai_gate.get("announce"):
+                result["aiAnnouncement"] = ai_gate.get("message")
         _log_audit_event(
             request,
             "document.classify",
@@ -4334,6 +5418,43 @@ async def classify_document(
     finally:
         if logical_for_classify and logical_for_classify.current_version_id:
             set_logical_status(logical_for_classify.id, "uploaded")
+
+
+class ExtractionApplyBody(BaseModel):
+    client_id: str
+    period_key: str
+    slot_id: str
+    slot_label: Optional[str] = None
+    fields: dict[str, str]
+
+
+@app.post("/api/extraction/apply")
+async def apply_extraction_fields(request: Request, body: ExtractionApplyBody):
+    """人が確認・補完した抽出フィールドを client-master へ反映する。"""
+    role = _require_permission(request, "document.upload")
+    _require_client_access(request, role, body.client_id)
+    if not body.fields:
+        raise HTTPException(status_code=400, detail="fields must be non-empty")
+    ctx = _auth_context(request)
+    identity = resolve_identity(request)
+    norm = ingest_from_confirmed_fields(
+        firm_id=ctx.firm_id,
+        client_id=body.client_id,
+        period_key=body.period_key,
+        slot_id=body.slot_id,
+        slot_label=body.slot_label,
+        fields=body.fields,
+        updated_by=identity.email or None,
+        updated_by_id=identity.stakeholder_id or None,
+    )
+    if norm.applied or norm.metrics_applied:
+        _log_audit_event(
+            request,
+            "extraction.apply",
+            "success",
+            f"client={body.client_id} slot={body.slot_id} applied={len(norm.applied)}",
+        )
+    return ingest_result_for_response(norm)
 
 
 class DocumentTemplateUpdateBody(BaseModel):
@@ -4550,6 +5671,299 @@ async def export_authoring_pdf(request: Request, body: AuthoringExportPdfBody):
         "authoring_templates.export_pdf",
         "success",
         f"client={body.client_id} title={safe_title}",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _attachment_content_disposition(filename)},
+    )
+
+
+class ReviewChecklistReturnAnchorBody(BaseModel):
+    documentType: str = ""
+    slotId: str = ""
+    scheduleRef: str = ""
+    keywords: List[str] = Field(default_factory=list)
+
+
+class ReviewChecklistItemBody(BaseModel):
+    id: Optional[str] = None
+    label: str
+    description: str = ""
+    category: str = "一般"
+    sortOrder: int = 0
+    returnAnchor: Optional[ReviewChecklistReturnAnchorBody] = None
+    alertRule: str = "presence_in_return"
+
+
+class ReviewChecklistTemplateBody(BaseModel):
+    title: str
+    description: str = ""
+    periodTypes: List[str] = Field(default_factory=lambda: ["year"])
+    sections: Optional[List[Dict[str, object]]] = None
+    items: List[ReviewChecklistItemBody] = Field(default_factory=list)
+
+
+class ReviewChecklistChecksBody(BaseModel):
+    client_id: str
+    period_key: str
+    template_id: Optional[str] = None
+    checks: Dict[str, Dict[str, object]] = Field(default_factory=dict)
+    header: Optional[Dict[str, str]] = None
+    itemStates: Optional[Dict[str, Dict[str, object]]] = None
+    workflowStatus: Optional[str] = None
+    circulationMemo: Optional[str] = None
+
+
+class ReviewChecklistCreateBody(BaseModel):
+    title: str
+    description: str = ""
+    periodTypes: List[str] = Field(default_factory=lambda: ["year"])
+    sourceTemplateId: Optional[str] = None
+    sections: Optional[List[Dict[str, object]]] = None
+
+
+class ReviewChecklistDefaultBody(BaseModel):
+    template_id: str
+
+
+class ReviewChecklistExportPdfBody(BaseModel):
+    client_id: str
+    period_key: str
+    template_id: Optional[str] = None
+
+
+@app.get("/api/review-checklists/templates")
+async def list_review_checklist_templates_endpoint(request: Request):
+    _require_permission(request, "document.view")
+    ctx = _auth_context(request)
+    payload = list_review_checklist_templates(ctx.firm_id)
+    _log_audit_event(request, "review_checklist.templates.list", "success")
+    return payload
+
+
+@app.get("/api/review-checklists/templates/{template_id}")
+async def get_review_checklist_template_by_id_endpoint(request: Request, template_id: str):
+    _require_permission(request, "document.view")
+    ctx = _auth_context(request)
+    template = get_review_checklist_template(ctx.firm_id, template_id)
+    _log_audit_event(request, "review_checklist.template.get", "success", template_id)
+    return template
+
+
+@app.post("/api/review-checklists/templates")
+async def post_review_checklist_template_endpoint(request: Request, body: ReviewChecklistCreateBody):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    created = create_review_checklist_template(
+        ctx.firm_id,
+        title=body.title.strip(),
+        description=body.description.strip(),
+        period_types=body.periodTypes,
+        sections=body.sections,
+        source_template_id=body.sourceTemplateId,
+    )
+    _log_audit_event(request, "review_checklist.template.create", "success", created.get("id", ""))
+    return created
+
+
+@app.put("/api/review-checklists/templates/{template_id}")
+async def put_review_checklist_template_by_id_endpoint(
+    request: Request, template_id: str, body: ReviewChecklistTemplateBody
+):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    payload = body.model_dump(exclude_none=True)
+    try:
+        saved = update_review_checklist_template(ctx.firm_id, template_id, payload)
+    except PermissionError as exc:
+        if str(exc) == "global_template_readonly":
+            raise HTTPException(status_code=403, detail="global_template_readonly") from exc
+        raise
+    except KeyError as exc:
+        if str(exc) == "template_not_found":
+            raise HTTPException(status_code=404, detail="template_not_found") from exc
+        raise
+    _log_audit_event(request, "review_checklist.template.put", "success", template_id)
+    return saved
+
+
+@app.delete("/api/review-checklists/templates/{template_id}")
+async def delete_review_checklist_template_endpoint(request: Request, template_id: str):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    try:
+        ok = delete_review_checklist_template(ctx.firm_id, template_id)
+    except PermissionError as exc:
+        if str(exc) == "global_template_readonly":
+            raise HTTPException(status_code=403, detail="global_template_readonly") from exc
+        raise
+    except ValueError as exc:
+        if str(exc) == "cannot_delete_default":
+            raise HTTPException(status_code=400, detail="cannot_delete_default") from exc
+        raise
+    if not ok:
+        raise HTTPException(status_code=404, detail="template_not_found")
+    _log_audit_event(request, "review_checklist.template.delete", "success", template_id)
+    return {"ok": True}
+
+
+@app.put("/api/review-checklists/templates/default")
+async def put_review_checklist_default_template_endpoint(
+    request: Request, body: ReviewChecklistDefaultBody
+):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    try:
+        payload = set_default_review_checklist_template(ctx.firm_id, body.template_id)
+    except KeyError as exc:
+        if str(exc) == "template_not_found":
+            raise HTTPException(status_code=404, detail="template_not_found") from exc
+        raise
+    _log_audit_event(request, "review_checklist.template.default", "success", body.template_id)
+    return payload
+
+
+@app.get("/api/review-checklists/template")
+async def get_review_checklist_template_endpoint(request: Request):
+    _require_permission(request, "document.view")
+    ctx = _auth_context(request)
+    template = get_review_checklist_template(ctx.firm_id)
+    _log_audit_event(request, "review_checklist.template.get", "success")
+    return template
+
+
+@app.put("/api/review-checklists/template")
+async def put_review_checklist_template_endpoint(
+    request: Request, body: ReviewChecklistTemplateBody
+):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    payload = body.model_dump(exclude_none=True)
+    if body.items:
+        payload["items"] = [item.model_dump() for item in body.items]
+    saved = save_review_checklist_template(ctx.firm_id, payload)
+    _log_audit_event(request, "review_checklist.template.put", "success")
+    return saved
+
+
+@app.get("/api/review-checklists/prefill")
+async def get_review_checklist_prefill_endpoint(
+    request: Request,
+    client_id: str,
+    period_key: str,
+):
+    role = _require_permission(request, "document.view")
+    _require_client_access(request, role, client_id)
+    ctx = _auth_context(request)
+    client = _client_record_for_render(ctx, client_id)
+    header = prefill_header(client, period_key)
+    return {"header": header, "clientId": client_id, "periodKey": period_key}
+
+
+@app.get("/api/review-checklists/instance")
+async def get_review_checklist_instance_endpoint(
+    request: Request,
+    client_id: str,
+    period_key: str,
+    template_id: Optional[str] = None,
+):
+    role = _require_permission(request, "document.view")
+    _require_client_access(request, role, client_id)
+    ctx = _auth_context(request)
+    instance = get_instance(ctx.firm_id, client_id, period_key, template_id)
+    tid = instance.get("templateId") or template_id
+    template = get_review_checklist_template(ctx.firm_id, tid)
+    return {"template": template, "instance": instance}
+
+
+@app.put("/api/review-checklists/instance")
+async def put_review_checklist_instance_endpoint(
+    request: Request, body: ReviewChecklistChecksBody
+):
+    role, permissions = _require_any_permission(
+        request, "document.annotate", "review_checklist.edit"
+    )
+    firm_workflow = "document.annotate" in permissions
+    _require_client_access(request, role, body.client_id)
+    ctx = _auth_context(request)
+    try:
+        if body.itemStates is not None or body.header is not None:
+            instance = save_instance(
+                ctx.firm_id,
+                body.client_id,
+                body.period_key,
+                template_id=body.template_id,
+                header=body.header,
+                item_states=body.itemStates,
+                workflow_status=body.workflowStatus if firm_workflow else None,
+                circulation_memo=body.circulationMemo if firm_workflow else None,
+                actor_email=ctx.email,
+            )
+        else:
+            instance = save_instance_checks(
+                ctx.firm_id,
+                body.client_id,
+                body.period_key,
+                body.checks,
+                template_id=body.template_id,
+                actor_email=ctx.email,
+            )
+    except ValueError as exc:
+        if str(exc) == "period_not_applicable":
+            raise HTTPException(status_code=400, detail="period_not_applicable") from exc
+        raise
+    _log_audit_event(
+        request,
+        "review_checklist.instance.put",
+        "success",
+        f"client={body.client_id} period={body.period_key}",
+    )
+    return instance
+
+
+@app.get("/api/review-checklists/alerts")
+async def get_review_checklist_alerts_endpoint(
+    request: Request,
+    client_id: str,
+    period_key: str,
+    template_id: Optional[str] = None,
+):
+    role = _require_permission(request, "document.view")
+    _require_client_access(request, role, client_id)
+    ctx = _auth_context(request)
+    result = evaluate_alerts(ctx.firm_id, client_id, period_key, template_id)
+    _log_audit_event(
+        request,
+        "review_checklist.alerts",
+        "success",
+        f"client={client_id} period={period_key} n={result['summary']['total']}",
+    )
+    return result
+
+
+@app.post("/api/review-checklists/export-pdf")
+async def post_review_checklist_export_pdf_endpoint(
+    request: Request, body: ReviewChecklistExportPdfBody
+):
+    role = _require_permission(request, "document.view")
+    _require_client_access(request, role, body.client_id)
+    ctx = _auth_context(request)
+    client = _client_record_for_render(ctx, body.client_id)
+    pdf_bytes = export_checklist_pdf(
+        ctx.firm_id,
+        body.client_id,
+        body.period_key,
+        template_id=body.template_id,
+        client_name=str(client.get("name") or ""),
+    )
+    safe_name = str(client.get("name") or body.client_id).replace('"', "_")
+    filename = f"checklist-{safe_name}.pdf"
+    _log_audit_event(
+        request,
+        "review_checklist.export_pdf",
+        "success",
+        f"client={body.client_id} period={body.period_key}",
     )
     return Response(
         content=pdf_bytes,
@@ -5730,27 +7144,40 @@ async def get_document_status(
     _require_client_access(request, role, client_id)
     _init_slot_documents_db()
     logical_status = slot_status_map(client_id, period_key)
+    access_clause = _slot_access_sql_filters(request)
 
     def approved_slots(pk: str) -> set[str]:
         return {sid for sid, st in logical_status.get(pk, {}).items() if st == "approved"}
+
+    def _active_slot_ids(rows: list[sqlite3.Row]) -> set[str]:
+        out: set[str] = set()
+        for r in rows:
+            sid = str(r["slot_id"])
+            if sid.startswith("unassigned_") or sid.startswith("deleted_"):
+                continue
+            out.add(sid)
+        return out
 
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         if period_key:
             rows = conn.execute(
-                "SELECT slot_id FROM slot_documents WHERE client_id=? AND period_key=?",
+                f"SELECT slot_id FROM slot_documents WHERE client_id=? AND period_key=?{access_clause}",
                 (client_id, period_key),
             ).fetchall()
-            filled = {str(r["slot_id"]) for r in rows}
+            filled = _active_slot_ids(rows)
             return compute_period_status(period_key, filled, approved_slots(period_key))
         rows = conn.execute(
-            "SELECT period_key, slot_id FROM slot_documents WHERE client_id=?",
+            f"SELECT period_key, slot_id FROM slot_documents WHERE client_id=?{access_clause}",
             (client_id,),
         ).fetchall()
 
     by_period: Dict[str, set] = {}
     for r in rows:
-        by_period.setdefault(r["period_key"], set()).add(str(r["slot_id"]))
+        sid = str(r["slot_id"])
+        if sid.startswith("unassigned_") or sid.startswith("deleted_"):
+            continue
+        by_period.setdefault(r["period_key"], set()).add(sid)
 
     periods = [
         compute_period_status(pk, ids, approved_slots(pk))
@@ -5779,10 +7206,42 @@ async def get_firm_tasks(request: Request):
     client_ids = sorted(visible_client_ids(ctx, scope_map))
     _init_slot_documents_db()
 
+    assignee_index = build_client_assignee_index(ctx.firm_id)
+    member_client_index = build_member_client_index(ctx.firm_id)
+    member_names: dict[str, str] = {}
+    for member in list_members_for_firm(ctx.firm_id):
+        if member.status != MEMBER_STATUS_ACTIVE:
+            continue
+        label = (member.display_name or member.email or member.stakeholder_id or member.id).strip()
+        member_names[member.stakeholder_id] = label
+        member_names[member.id] = label
+
+    def _assignees_for_client(client_id: str) -> List[FirmTaskAssignee]:
+        pairs = assignee_index.get(client_id, [])
+        out: List[FirmTaskAssignee] = []
+        for member_id, assignment_role in pairs:
+            out.append(
+                FirmTaskAssignee(
+                    member_id=member_id,
+                    display_name=member_names.get(member_id, member_id),
+                    assignment_role=assignment_role,
+                )
+            )
+        return out
+
+    def _primary_assignee_id(client_id: str) -> str | None:
+        pairs = assignee_index.get(client_id, [])
+        if not pairs:
+            return None
+        return pairs[0][0]
+
     items: List[FirmTaskItem] = []
     client_summaries: List[FirmClientTaskSummary] = []
+    client_task_totals: dict[str, tuple[int, int]] = {}
     missing_total = 0
     pending_total = 0
+    unassigned_missing = 0
+    unassigned_pending = 0
 
     for cid in client_ids:
         logical_status = slot_status_map(cid, None)
@@ -5799,6 +7258,8 @@ async def get_firm_tasks(request: Request):
         client_missing = 0
         client_pending = 0
         incomplete_periods = 0
+        client_assignees = _assignees_for_client(cid)
+        primary_id = _primary_assignee_id(cid)
 
         for pk in sorted(by_period.keys()):
             filled = by_period[pk]
@@ -5811,26 +7272,35 @@ async def get_firm_tasks(request: Request):
             if not status.get("complete"):
                 incomplete_periods += 1
             for label in missing:
+                if not client_assignees:
+                    unassigned_missing += 1
                 items.append(
                     FirmTaskItem(
                         client_id=cid,
                         period_key=pk,
                         slot_label=str(label),
                         kind="missing",
+                        assignees=client_assignees,
+                        primary_assignee_id=primary_id,
                     )
                 )
             for label in pending:
+                if not client_assignees:
+                    unassigned_pending += 1
                 items.append(
                     FirmTaskItem(
                         client_id=cid,
                         period_key=pk,
                         slot_label=str(label),
                         kind="pending_approval",
+                        assignees=client_assignees,
+                        primary_assignee_id=primary_id,
                     )
                 )
 
         missing_total += client_missing
         pending_total += client_pending
+        client_task_totals[cid] = (client_missing, client_pending)
         if client_missing or client_pending:
             client_summaries.append(
                 FirmClientTaskSummary(
@@ -5838,14 +7308,51 @@ async def get_firm_tasks(request: Request):
                     missing_total=client_missing,
                     pending_approval_total=client_pending,
                     incomplete_period_count=incomplete_periods,
+                    assignees=client_assignees,
                 )
             )
+
+    role_map = _get_stakeholder_role_map()
+    staff_summaries: List[FirmStaffTaskSummary] = []
+    for member_id in sorted(member_client_index.keys()):
+        if role_map.get(member_id) == "client_uploader":
+            continue
+        assigned = member_client_index.get(member_id, set())
+        staff_missing = 0
+        staff_pending = 0
+        open_clients = 0
+        for cid in assigned:
+            if cid not in client_ids:
+                continue
+            m, p = client_task_totals.get(cid, (0, 0))
+            staff_missing += m
+            staff_pending += p
+            if m or p:
+                open_clients += 1
+        visible_assigned = [c for c in assigned if c in client_ids]
+        if not visible_assigned:
+            continue
+        staff_summaries.append(
+            FirmStaffTaskSummary(
+                member_id=member_id,
+                display_name=member_names.get(member_id, member_id),
+                missing_total=staff_missing,
+                pending_approval_total=staff_pending,
+                open_client_count=open_clients,
+                assigned_client_count=len(visible_assigned),
+                assigned_client_ids=sorted(visible_assigned),
+            )
+        )
+    staff_summaries.sort(
+        key=lambda row: row.missing_total + row.pending_approval_total,
+        reverse=True,
+    )
 
     _log_audit_event(
         request,
         "firm_tasks.list",
         "success",
-        f"clients={len(client_ids)} items={len(items)}",
+        f"clients={len(client_ids)} items={len(items)} staff={len(staff_summaries)}",
     )
     return FirmTasksResponse(
         firm_id=ctx.firm_id,
@@ -5854,7 +7361,212 @@ async def get_firm_tasks(request: Request):
         client_count=len(client_ids),
         clients=client_summaries,
         items=items,
+        staff=staff_summaries,
+        unassigned_missing_total=unassigned_missing,
+        unassigned_pending_total=unassigned_pending,
     )
+
+
+def _firm_usage_counts(firm_id: str) -> tuple[int, int]:
+    master = _load_client_master()
+    client_count = sum(1 for c in master.clients if get_client_firm_id(c.id) == firm_id)
+    seat_count = sum(1 for m in list_members_for_firm(firm_id) if m.status == MEMBER_STATUS_ACTIVE)
+    return client_count, seat_count
+
+
+@app.get("/api/billing/status")
+async def get_billing_status_endpoint(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    client_count, seat_count = _firm_usage_counts(ctx.firm_id)
+    from services.stripe_connect_service import get_partner, partner_commission_active
+
+    ai_summary = get_firm_ai_summary(ctx.firm_id)
+    partner_info = partner_commission_active(ctx.firm_id)
+    referral_partner = None
+    from services.stripe_billing_service import load_billing_record
+
+    billing_rec = load_billing_record(ctx.firm_id)
+    if billing_rec.get("referralPartnerId"):
+        p = get_partner(str(billing_rec["referralPartnerId"]))
+        if p:
+            referral_partner = {"id": p["id"], "name": p.get("name"), "onboardingComplete": p.get("onboardingComplete")}
+    payload = get_billing_status(
+        ctx.firm_id,
+        client_count=client_count,
+        seat_count=seat_count,
+        ai_summary=ai_summary,
+        partner=partner_info or referral_partner,
+    )
+    _log_audit_event(request, "billing.status", "success")
+    return payload
+
+
+@app.post("/api/billing/sync-usage")
+async def post_billing_sync_usage_endpoint(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    client_count, _ = _firm_usage_counts(ctx.firm_id)
+    result = sync_firm_billing_usage(ctx.firm_id, client_count)
+    _log_audit_event(request, "billing.sync_usage", "success")
+    return result
+
+
+@app.get("/api/billing/ai-usage")
+async def get_billing_ai_usage_endpoint(request: Request, client_id: str | None = None):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    if client_id:
+        from services.ai_usage_service import get_client_usage
+
+        return get_client_usage(ctx.firm_id, client_id)
+    master = _load_client_master()
+    client_ids = [c.id for c in master.clients if get_client_firm_id(c.id) == ctx.firm_id]
+    return {"summary": get_firm_ai_summary(ctx.firm_id), "clients": list_client_usages(ctx.firm_id, client_ids)}
+
+
+@app.post("/api/billing/ai/paygo")
+async def post_billing_ai_paygo_endpoint(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    result = enable_paygo(ctx.firm_id)
+    _log_audit_event(request, "billing.ai.paygo", "success")
+    return result
+
+
+@app.post("/api/billing/ai/topup")
+async def post_billing_ai_topup_endpoint(request: Request, body: BillingAiTopupBody):
+    _require_permission(request, "settings.manage")
+    if not is_stripe_configured():
+        raise HTTPException(status_code=503, detail="stripe_not_configured")
+    ctx = _auth_context(request)
+    packs = max(1, min(body.packs, 100))
+    base = frontend_base_url()
+    try:
+        url = create_ai_topup_checkout(
+            ctx.firm_id,
+            packs=packs,
+            email=ctx.email,
+            success_url=f"{base}/settings?tab=billing&topup=success",
+            cancel_url=f"{base}/settings?tab=billing&topup=cancel",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_audit_event(request, "billing.ai.topup", "success", f"packs={packs}")
+    return {"url": url}
+
+
+@app.get("/api/billing/partners")
+async def get_billing_partners_endpoint(request: Request):
+    _require_platform(request)
+    return {"partners": list_partners()}
+
+
+@app.post("/api/billing/partners")
+async def post_billing_partners_endpoint(request: Request, body: BillingPartnerCreateBody):
+    _require_platform(request)
+    partner = create_partner(
+        name=body.name,
+        email=body.email,
+        commission_percent=body.commission_percent,
+    )
+    _log_audit_event(request, "billing.partner.create", "success", partner["id"])
+    return partner
+
+
+@app.post("/api/billing/partners/{partner_id}/onboard")
+async def post_billing_partner_onboard_endpoint(request: Request, partner_id: str):
+    _require_platform(request)
+    if not is_stripe_configured():
+        raise HTTPException(status_code=503, detail="stripe_not_configured")
+    try:
+        url = create_onboarding_link(partner_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="partner_not_found") from exc
+    _log_audit_event(request, "billing.partner.onboard", "success", partner_id)
+    return {"url": url}
+
+
+@app.post("/api/billing/partners/attach")
+async def post_billing_partner_attach_endpoint(request: Request, body: BillingPartnerAttachBody):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    try:
+        record = attach_partner_to_firm(ctx.firm_id, body.partner_id, contract_years=body.contract_years)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="partner_not_found") from exc
+    except ValueError as exc:
+        if str(exc) == "invalid_contract_years":
+            raise HTTPException(status_code=400, detail="invalid_contract_years") from exc
+        raise
+    _log_audit_event(request, "billing.partner.attach", "success", body.partner_id)
+    return record
+
+
+@app.post("/api/billing/checkout")
+async def post_billing_checkout_endpoint(request: Request, body: BillingCheckoutBody):
+    _require_permission(request, "settings.manage")
+    if not is_stripe_configured():
+        raise HTTPException(status_code=503, detail="stripe_not_configured")
+    ctx = _auth_context(request)
+    plan_id = body.plan_id.strip().lower()
+    base = frontend_base_url()
+    try:
+        url = create_checkout_session(
+            ctx.firm_id,
+            plan_id,
+            email=ctx.email,
+            firm_label=ctx.firm_id,
+            success_url=f"{base}/settings?tab=billing&checkout=success",
+            cancel_url=f"{base}/settings?tab=billing&checkout=cancel",
+        )
+    except ValueError as exc:
+        if str(exc) == "plan_price_not_configured":
+            raise HTTPException(status_code=400, detail="plan_price_not_configured") from exc
+        raise
+    except RuntimeError as exc:
+        if str(exc) == "stripe_not_configured":
+            raise HTTPException(status_code=503, detail="stripe_not_configured") from exc
+        raise
+    _log_audit_event(request, "billing.checkout", "success", plan_id)
+    return {"url": url}
+
+
+@app.post("/api/billing/portal")
+async def post_billing_portal_endpoint(request: Request, body: BillingPortalBody):
+    _require_permission(request, "settings.manage")
+    if not is_stripe_configured():
+        raise HTTPException(status_code=503, detail="stripe_not_configured")
+    ctx = _auth_context(request)
+    return_path = body.return_path if body.return_path.startswith("/") else "/settings?tab=billing"
+    base = frontend_base_url()
+    try:
+        url = create_portal_session(ctx.firm_id, return_url=f"{base}{return_path}")
+    except ValueError as exc:
+        if str(exc) == "no_stripe_customer":
+            raise HTTPException(status_code=400, detail="no_stripe_customer") from exc
+        raise
+    _log_audit_event(request, "billing.portal", "success")
+    return {"url": url}
+
+
+@app.post("/api/billing/webhook")
+async def post_billing_webhook_endpoint(request: Request):
+    payload = await request.body()
+    signature = request.headers.get("Stripe-Signature")
+    try:
+        result = handle_webhook(payload, signature)
+    except RuntimeError as exc:
+        code = str(exc)
+        if code in ("stripe_not_configured", "webhook_secret_missing"):
+            raise HTTPException(status_code=503, detail=code) from exc
+        raise
+    except ValueError as exc:
+        if str(exc) == "invalid_webhook_signature":
+            raise HTTPException(status_code=400, detail="invalid_webhook_signature") from exc
+        raise
+    _log_audit_event(request, "billing.webhook", "success", str(result.get("type", "")))
+    return result
 
 
 @app.on_event("startup")
@@ -5869,6 +7581,8 @@ async def on_startup() -> None:
     _init_review_events_db()
     init_document_versions_db()
     init_client_assignments_db()
+    init_ai_usage_db()
+    init_platform_metrics_db()
     init_firm_members_db()
     bootstrap_member_directory_example()
     bootstrap_firm_members()

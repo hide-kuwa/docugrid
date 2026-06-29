@@ -1,9 +1,14 @@
-"""スロット PDF テキストから profile フィールドを抽出（ルールベース v1）。"""
+"""スロット PDF テキストから profile フィールドを抽出（ルールベース v1）。
+
+定款・謄本は `data/extraction_schemas/*.json` のスキーマ駆動。
+"""
 
 from __future__ import annotations
 
 import re
 from typing import Callable, Dict, Tuple
+
+from services.document_extraction_schema import extract_from_schema, has_extraction_schema
 
 Extracted = Dict[str, Tuple[str, float]]
 
@@ -192,6 +197,8 @@ SLOT_EXTRACTORS: dict[str, Callable[[str], Extracted]] = {
 def extract_profile_fields(slot_id: str, text: str) -> Extracted:
     if not text or len(text.strip()) < 8:
         return {}
+    if has_extraction_schema(slot_id):
+        return extract_from_schema(slot_id, text).extracted_with_confidence
     fn = SLOT_EXTRACTORS.get(slot_id)
     if not fn:
         return {}

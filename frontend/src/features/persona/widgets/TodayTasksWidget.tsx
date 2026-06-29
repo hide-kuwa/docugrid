@@ -2,6 +2,7 @@
 
 import { Circle, Loader2 } from "lucide-react";
 import type { FirmTaskItem } from "@/features/docugrid/lib/firm-tasks";
+import { formatAssigneeLabel } from "@/features/docugrid/lib/firm-tasks";
 import { periodKeyLabel } from "@/features/persona/lib/period-keys";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   error: string | null;
   maxItems?: number;
   onSelect?: (item: FirmTaskItem) => void;
+  showAssignee?: boolean;
 };
 
 export function TodayTasksWidget({
@@ -20,6 +22,7 @@ export function TodayTasksWidget({
   error,
   maxItems = 12,
   onSelect,
+  showAssignee = true,
 }: Props) {
   const missing = items.filter((i) => i.kind === "missing").slice(0, maxItems);
 
@@ -64,6 +67,11 @@ export function TodayTasksWidget({
               <span className="font-mono text-[10px] text-slate-500">
                 {periodKeyLabel(item.period_key)}
               </span>
+              {showAssignee && (
+                <span className="mt-1 block text-[10px] font-bold text-sky-700">
+                  担当: {formatAssigneeLabel(item.assignees)}
+                </span>
+              )}
             </span>
           </button>
         </li>

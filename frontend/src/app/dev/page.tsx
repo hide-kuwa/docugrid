@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Database,
+  LineChart,
   Loader2,
   Monitor,
   Plug,
+  Presentation,
   Scale,
   Shield,
   Table2,
@@ -154,6 +156,18 @@ export default function DevConsolePage() {
   }
   if (canAccessPlatformSettings(user)) {
     links.push({
+      href: "/dev/executive/ma-goals",
+      label: "MA ロードマップ",
+      description: "10億円 ARR · 獲得ペース · チャーン目標",
+      icon: LineChart,
+    });
+    links.push({
+      href: "/dev/executive",
+      label: "経営ダッシュボード",
+      description: "MRR / ARR / チャーン · 全事務所・顧問先",
+      icon: LineChart,
+    });
+    links.push({
       href: "/dev/integration-ports",
       label: "連携ポートカタログ",
       description: "API-first 連携の port_id 正本（YAML）",
@@ -190,6 +204,26 @@ export default function DevConsolePage() {
         subtitle="優先: 税理士事務所 · クライアント · 設計ツール（銀行・税務署は保留）"
       />
       <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+        <section className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-950/50 to-slate-900 p-5">
+          <div className="flex items-start gap-3">
+            <Presentation className="mt-0.5 h-6 w-6 shrink-0 text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold text-amber-100">ロール画面デモ（営業用）</h2>
+              <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                資料マトリクスと同じカード感覚で、所長・担当・クライアント各ロールの画面を切り替えてプレビューできます。
+                本番データは変更されません。
+              </p>
+              <Link
+                href="/dev/demo"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-amber-950 hover:bg-amber-400"
+              >
+                <Presentation className="h-4 w-4" />
+                ロール画面デモを開く
+              </Link>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-2xl border border-blue-800/50 bg-slate-900/80 p-5">
           <h2 className="text-sm font-bold text-blue-200">{audienceLabel("firm")}（業務）</h2>
           <p className="mt-1 text-xs text-slate-400">マトリクス中心の事務所向け画面です。</p>

@@ -82,6 +82,46 @@
 
 ---
 
+## D. MCP（AI チャネル）— 公開前に必須
+
+MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リスクが高い**チャネルとして扱う。
+
+### D-1. 実装済み（`mcp-server/`）
+
+| 項目 | 内容 |
+|------|------|
+| ツールごと `/auth/me` 再取得 | `visible_client_ids` / `permissions` を毎回照合 |
+| 担当外 `client_id` | MCP 層で API 呼び出し前に拒否 |
+| 返却データ再フィルタ | カタログ行・顧問先一覧を二重で絞り込み |
+| 本番設定検証 | 非 localhost API または `DOCUGRID_ENV=production` で厳格モード |
+| 本番必須 JWT | `DOCUGRID_ACCESS_TOKEN` のみ（パスワードログイン禁止） |
+| 本番 HTTPS 強制 | `http://` API は起動拒否 |
+| JWT 有効期限 | 期限切れトークンは起動・リクエスト時に拒否 |
+| 監査 | API に `X-Docugrid-MCP: 1` → `audit_events.detail` に `channel=mcp` |
+
+### D-2. 公開前チェックリスト
+
+```
+[ ] ユーザーごとに DOCUGRID_ACCESS_TOKEN（短命 JWT）— 共有 admin 禁止
+[ ] DOCUGRID_MCP_STRICT=true（本番では変更不可）
+[ ] DOCUGRID_MCP_ALLOW_DEV_LOGIN=false
+[ ] .cursor/mcp.json を git に含めない（.gitignore 済み）
+[ ] MCP サーバーをインターネット公開しない（stdio / ローカル IDE 専用）
+[ ] バックエンド本番: DOCUGRID_ALLOW_PASSWORD_LOGIN=false
+[ ] バックエンド本番: DOCUGRID_ALLOW_HEADER_AUTH=false
+[ ] audit_events で channel=mcp のアクセスを定期レビュー
+```
+
+### D-3. 将来（公開サービス化時）
+
+| 項目 | 推奨 |
+|------|------|
+| MCP 用 OAuth / デバイスコード | ログイン UI から短命トークンをユーザーごとに発行 |
+| MCP 専用スコープ | `mcp.read` / `mcp.write` 等、API 権限をさらに細分化 |
+| レート制限 | ユーザー単位の MCP API クォータ |
+
+---
+
 ## C. 認証（なりすまし・権限昇格）— 現フェーズ最大リスク
 
 ### C-1. 開発用認証の危険性（本番前に必ず潰す）
@@ -182,6 +222,9 @@
 ---
 
 ## I. 本番デプロイ前チェックリスト（必須）
+
+**手順書**: [`production-deployment.md`](production-deployment.md)（フェーズ 1→8）  
+**事前検証**: `cd backend && python scripts/validate_production_env.py --env-file .env.production`
 
 ```
 [ ] DOCUGRID_ENV=production

@@ -15,6 +15,19 @@
     "start:frontend": "cd frontend && npm run start",
     "test:backend": "cd backend && python -m pytest",
     "test:frontend": "cd frontend && npx tsc --noEmit",
-    "test": "npm run test:backend && npm run test:frontend"
+    "test": "npm run test:backend && npm run test:frontend",
+    "validate:production": "cd backend && python scripts/validate_production_env.py --env-file .env.production",
+    "validate:production:stripe": "cd backend && python scripts/validate_production_env.py --env-file .env.production --check-stripe",
+    "bootstrap:production": "cd backend && python scripts/bootstrap_production.py",
+    "bootstrap:staging": "cd backend && python scripts/bootstrap_production.py --staging-local",
+    "staging:local": "node scripts/run-staging-local.mjs",
+    "stripe:setup-catalog": "cd backend && python scripts/setup_stripe_catalog.py --env-file .env --write-env",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml up -d --build",
+    "docker:staging:up": "docker compose -f docker-compose.staging.yml up -d --build",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml down",
+    "member:add": "cd backend && python scripts/seed_member_directory.py add",
+    "mcp:install": "cd mcp-server && npm install",
+    "mcp:build": "cd mcp-server && npm run build",
+    "mcp:dev": "cd mcp-server && npm run dev"
   }
 }

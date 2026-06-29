@@ -293,6 +293,392 @@ def test_slot_document_persist_list_fetch_and_delete() -> None:
     assert d.status_code == 200
 
 
+def test_slot_document_detach_and_move() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "tax_proxy",
+            "slot_label": "税務代理権限証書",
+        },
+        files={"file": ("proxy.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+
+    detached = client.delete(
+        f"/api/slots/{doc_id}",
+        params={"mode": "detach"},
+        headers=_admin_headers(),
+    )
+    assert detached.status_code == 200, detached.text
+    body = detached.json()
+    assert body.get("mode") == "detach"
+    unassigned_id = body.get("slot_id")
+    assert unassigned_id and str(unassigned_id).startswith("unassigned_")
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=_admin_headers(),
+    ).json()
+    row = next(d for d in listed if d["id"] == doc_id)
+    assert row["slot_id"] == unassigned_id
+
+    f = client.get(f"/api/slots/{doc_id}/file", headers=_admin_headers())
+    assert f.status_code == 200
+    assert f.content.startswith(b"%PDF")
+
+    moved = client.patch(
+        f"/api/slots/{doc_id}",
+        json={"slot_id": "ledger", "slot_label": "総勘定元帳"},
+        headers=_admin_headers(),
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["slot_id"] == "ledger"
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
+def _firm_admin_headers() -> dict[str, str]:
+    return {
+        "X-Docugrid-Role": "firm_admin",
+        "X-Docugrid-User": "yamamoto@tax.co.jp",
+        "X-Docugrid-Stakeholder": "actor-s3",
+        "X-Docugrid-Client": "c1",
+    }
+
+
+def test_client_share_requires_explicit_firm_action() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "client_share_gate",
+            "slot_label": "共有ゲート",
+        },
+        files={"file": ("firm-only.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+    assert not up.json().get("client_shared_at")
+
+    client_headers = {
+        "X-Docugrid-Role": "client_uploader",
+        "X-Docugrid-User": "c1@client.example",
+        "X-Docugrid-Stakeholder": "actor-c1",
+        "X-Docugrid-Client": "c1",
+    }
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=client_headers,
+    )
+    assert listed.status_code == 200
+    assert not any(d["id"] == doc_id for d in listed.json())
+
+    shared = client.post(f"/api/slots/{doc_id}/share-with-client", headers=_admin_headers())
+    assert shared.status_code == 200, shared.text
+    assert shared.json()["item"].get("client_shared_at")
+
+    listed2 = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=client_headers,
+    )
+    assert any(d["id"] == doc_id for d in listed2.json())
+
+    file_res = client.get(f"/api/slots/{doc_id}/file", headers=client_headers)
+    assert file_res.status_code == 200
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
+def test_client_unshare_hides_from_client_portal() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "client_unshare_gate",
+            "slot_label": "共有解除テスト",
+        },
+        files={"file": ("firm-unshare.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+
+    client_headers = {
+        "X-Docugrid-Role": "client_uploader",
+        "X-Docugrid-User": "c1@client.example",
+        "X-Docugrid-Stakeholder": "actor-c1",
+        "X-Docugrid-Client": "c1",
+    }
+
+    shared = client.post(f"/api/slots/{doc_id}/share-with-client", headers=_admin_headers())
+    assert shared.status_code == 200, shared.text
+    assert shared.json()["item"].get("client_shared_at")
+
+    file_res = client.get(f"/api/slots/{doc_id}/file", headers=client_headers)
+    assert file_res.status_code == 200
+
+    unshared = client.post(f"/api/slots/{doc_id}/unshare-with-client", headers=_admin_headers())
+    assert unshared.status_code == 200, unshared.text
+    assert not unshared.json()["item"].get("client_shared_at")
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=client_headers,
+    )
+    assert listed.status_code == 200
+    assert not any(d["id"] == doc_id for d in listed.json())
+
+    file_after = client.get(f"/api/slots/{doc_id}/file", headers=client_headers)
+    assert file_after.status_code == 404
+
+    events = client.get(
+        "/api/review-events",
+        params={"client_id": "c1", "period_key": "year:9", "slot_id": "client_unshare_gate"},
+        headers=_admin_headers(),
+    )
+    assert events.status_code == 200
+    event_types = [e["event_type"] for e in events.json()]
+    assert "client_share" in event_types
+    assert "client_unshare" in event_types
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
+def test_client_upload_auto_shared_with_client_portal() -> None:
+    pdf = _minimal_pdf_bytes()
+    client_headers = {
+        "X-Docugrid-Role": "client_uploader",
+        "X-Docugrid-User": "c1@client.example",
+        "X-Docugrid-Stakeholder": "actor-c1",
+        "X-Docugrid-Client": "c1",
+    }
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "client_self_share",
+            "slot_label": "クライアント提出",
+        },
+        files={"file": ("client.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=client_headers,
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+    assert up.json().get("client_shared_at")
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=client_headers,
+    )
+    assert any(d["id"] == doc_id for d in listed.json())
+
+    events = client.get(
+        "/api/review-events",
+        params={"client_id": "c1", "period_key": "year:9", "slot_id": "client_self_share"},
+        headers=client_headers,
+    )
+    assert events.status_code == 200
+    event_types = [e["event_type"] for e in events.json()]
+    assert "client_share" in event_types
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
+def test_slot_document_soft_delete_hidden_from_operator() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "soft_del_op",
+            "slot_label": "担当削除テスト",
+        },
+        files={"file": ("visible.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+
+    soft = client.delete(f"/api/slots/{doc_id}", headers=_operator_headers())
+    assert soft.status_code == 200
+    assert soft.json().get("mode") == "delete"
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9", "include_deleted": "true"},
+        headers=_operator_headers(),
+    )
+    assert listed.status_code == 403
+
+    listed_normal = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=_operator_headers(),
+    )
+    assert listed_normal.status_code == 200
+    assert not any(d["id"] == doc_id for d in listed_normal.json())
+
+    file_res = client.get(f"/api/slots/{doc_id}/file", headers=_operator_headers())
+    assert file_res.status_code == 404
+
+    restore = client.post(f"/api/slots/{doc_id}/restore", headers=_operator_headers())
+    assert restore.status_code == 403
+
+    purge_denied = client.delete(
+        f"/api/slots/{doc_id}?mode=purge",
+        headers=_operator_headers(),
+    )
+    assert purge_denied.status_code == 403
+
+    listed_director = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9", "include_deleted": "true"},
+        headers=_firm_admin_headers(),
+    )
+    assert listed_director.status_code == 200
+    assert any(d["id"] == doc_id for d in listed_director.json())
+
+    restored = client.post(f"/api/slots/{doc_id}/restore", headers=_firm_admin_headers())
+    assert restored.status_code == 200, restored.text
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
+def test_slot_document_permanent_delete_leaves_tombstone() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "delete_tomb",
+            "slot_label": "削除テスト枠",
+        },
+        files={"file": ("secret-co.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+
+    deleted = client.delete(
+        f"/api/slots/{doc_id}?mode=purge",
+        headers=_admin_headers(),
+    )
+    assert deleted.status_code == 200
+    assert deleted.json().get("mode") == "purge"
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:9"},
+        headers=_admin_headers(),
+    )
+    assert listed.status_code == 200
+    assert not any(d["id"] == doc_id for d in listed.json())
+
+    events = client.get(
+        "/api/review-events",
+        params={"client_id": "c1", "period_key": "year:9", "slot_id": "delete_tomb"},
+        headers=_admin_headers(),
+    )
+    assert events.status_code == 200
+    tombstones = [e for e in events.json() if e.get("event_type") == "document_delete"]
+    assert len(tombstones) >= 1
+    assert tombstones[0].get("action_title") == "資料を完全削除"
+    assert "secret-co" not in json.dumps(tombstones[0])
+    assert tombstones[0].get("actor_email")
+
+    file_res = client.get(f"/api/slots/{doc_id}/file", headers=_admin_headers())
+    assert file_res.status_code == 404
+
+
+def test_delete_single_document_version() -> None:
+    pdf = _minimal_pdf_bytes()
+    slot = {
+        "client_id": "c1",
+        "period_key": "year:9",
+        "slot_id": "ver_delete_one",
+        "slot_label": "版削除テスト",
+    }
+    up1 = client.post(
+        "/api/slots",
+        data=slot,
+        files={"file": ("first.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up1.status_code == 200, up1.text
+    up2 = client.post(
+        "/api/slots",
+        data=slot,
+        files={"file": ("second.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up2.status_code == 200, up2.text
+
+    listed = client.get(
+        "/api/logical-documents/versions",
+        params={"client_id": slot["client_id"], "period_key": slot["period_key"], "slot_id": slot["slot_id"]},
+        headers=_admin_headers(),
+    )
+    assert listed.status_code == 200
+    versions = sorted(listed.json(), key=lambda v: v["created_at"])
+    assert len(versions) >= 2
+    older, newer = versions[0], versions[-1]
+
+    deleted = client.delete(f"/api/document-versions/{older['id']}", headers=_admin_headers())
+    assert deleted.status_code == 200, deleted.text
+    body = deleted.json()
+    assert body.get("deleted_version_id") == older["id"]
+    assert body.get("current_version_id") == newer["id"]
+
+    listed2 = client.get(
+        "/api/logical-documents/versions",
+        params={"client_id": slot["client_id"], "period_key": slot["period_key"], "slot_id": slot["slot_id"]},
+        headers=_admin_headers(),
+    )
+    assert listed2.status_code == 200
+    remaining = listed2.json()
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == newer["id"]
+
+    old_file = client.get(f"/api/document-versions/{older['id']}/file", headers=_admin_headers())
+    assert old_file.status_code == 404
+
+    events = client.get(
+        "/api/review-events",
+        params={
+            "client_id": slot["client_id"],
+            "period_key": slot["period_key"],
+            "slot_id": slot["slot_id"],
+        },
+        headers=_admin_headers(),
+    )
+    assert events.status_code == 200
+    tombstones = [e for e in events.json() if e.get("event_type") == "version_delete"]
+    assert len(tombstones) >= 1
+    assert older["version_label"] in (tombstones[0].get("action_title") or "")
+    assert "first.pdf" not in json.dumps(tombstones[0])
+    assert "second.pdf" not in json.dumps(tombstones[0])
+
+    client.delete(f"/api/slots/{up2.json()['id']}", headers=_admin_headers())
+
+
 def test_slot_upload_persists_classify_metadata() -> None:
     meta = json.dumps(
         {

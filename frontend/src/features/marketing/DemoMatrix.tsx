@@ -18,6 +18,7 @@ import {
 import { DemoSlotCard, type DemoSlotState } from "./DemoSlotCard";
 import { DemoFileOrb } from "./DemoFileOrb";
 import { DemoMatrixHeader, DemoMatrixNav, DemoMatrixSidebar } from "./DemoMatrixChrome";
+import { DemoAuditTourView } from "./DemoAuditTourView";
 
 const DRAG_MIME = "application/x-docugrid-demo-sample";
 
@@ -59,6 +60,8 @@ export function DemoMatrix() {
   const [usedSamples, setUsedSamples] = useState<Set<string>>(new Set());
   const [activeDragSampleId, setActiveDragSampleId] = useState<string | null>(null);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
+  const [auditMode, setAuditMode] = useState(false);
+  const auditAutoOpenedRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const isPlayCell = isDemoPlayCell(clientIdx, periodIdx);
@@ -97,6 +100,8 @@ export function DemoMatrix() {
     setUsedSamples(new Set());
     setActiveDragSampleId(null);
     setSelectedSampleId(null);
+    setAuditMode(false);
+    auditAutoOpenedRef.current = false;
   };
 
   const runProcessingSequence = (cellKey: string, slot: DemoSlotDef, sampleId: string) => {
@@ -192,6 +197,22 @@ export function DemoMatrix() {
     return cellStates[key]?.phase === "filled";
   }).length;
 
+  const playCellAllFilled =
+    isPlayCell &&
+    usedSamples.size === DEMO_SAMPLES.length &&
+    filledCount === DEMO_SLOTS.length &&
+    DEMO_SLOTS.every((_, i) => cellStates[demoCellKey(clientIdx, periodIdx, i)]?.phase === "filled");
+
+  useEffect(() => {
+    if (!playCellAllFilled || auditMode || auditAutoOpenedRef.current) return;
+    const t = setTimeout(() => {
+      auditAutoOpenedRef.current = true;
+      setAuditMode(true);
+    }, 1400);
+    timersRef.current.push(t);
+    return () => clearTimeout(t);
+  }, [playCellAllFilled, auditMode]);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/50">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3 md:px-5">
@@ -199,7 +220,9 @@ export function DemoMatrix() {
           <p className="text-xs font-bold uppercase tracking-wider text-blue-600">ライブデモ</p>
           <h3 className="text-lg font-bold text-slate-900">顧問先 × 期間のマトリクスを体験</h3>
           <p className="mt-0.5 text-sm text-slate-500">
-            丸い資料をドラッグ、またはクリックしてから枠をクリック
+            {auditMode
+              ? "2画面照合 — 試算表と内訳書をクリックして紐づけ"
+              : "丸い資料をドラッグ、またはクリックしてから枠をクリック"}
           </p>
         </div>
         <button
@@ -213,141 +236,153 @@ export function DemoMatrix() {
       </div>
 
       <div className="flex h-[min(640px,75vh)] min-h-[480px] flex-col bg-slate-100">
-        <DemoMatrixNav activeClientIdx={clientIdx} onClientChange={setClientIdx} />
-        <div className="flex min-h-0 flex-1">
-          <DemoMatrixSidebar activePeriodIdx={periodIdx} onPeriodChange={setPeriodIdx} />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <DemoMatrixHeader
-              clientIdx={clientIdx}
-              periodIdx={periodIdx}
-              filledCount={filledCount}
-              slotCount={DEMO_SLOTS.length}
-              isPlayCell={isPlayCell}
-            />
-            <div
-              className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4"
-              onDragOver={(e) => {
-                if (activeDragSampleId) e.preventDefault();
-              }}
-            >
-              <div className={`mb-4 flex flex-wrap justify-center gap-5 md:gap-6 ${isPlayCell ? "" : "opacity-70"}`}>
-                {DEMO_SAMPLES.map((sample) => {
-                  const used = usedSamples.has(sample.id);
-                  const target = slotForSample(sample.id);
-                  const selected = selectedSampleId === sample.id;
-                  return (
-                    <div
-                      key={sample.id}
-                      draggable={isPlayCell && !used}
-                      onDragStart={(e) => onSampleDragStart(e, sample.id)}
-                      onDragEnd={onSampleDragEnd}
-                      onClick={() => onSampleClick(sample.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onSampleClick(sample.id);
-                        }
-                      }}
-                      role="button"
-                      tabIndex={used ? -1 : 0}
-                      className={`select-none rounded-full outline-none transition-transform ${
-                        used
-                          ? "cursor-default opacity-60"
-                          : "cursor-grab hover:scale-105 active:cursor-grabbing active:scale-95 focus-visible:ring-2 focus-visible:ring-blue-500"
-                      } ${selected ? "ring-4 ring-blue-400 ring-offset-2" : ""}`}
-                      title={
-                        !isPlayCell
-                          ? `クリックで ${DEMO_CLIENTS[DEMO_PLAY_CLIENT_IDX].name} × ${DEMO_PERIODS[DEMO_PLAY_PERIOD_IDX]} へ`
-                          : used
-                            ? "配置済み"
-                            : selected
-                              ? "枠をクリックして配置"
-                              : target
-                                ? `${target.title} にドロップ（またはクリック選択）`
-                                : undefined
-                      }
-                    >
-                      <DemoFileOrb
-                        label={sample.shortLabel}
-                        sublabel={
-                          !isPlayCell ? "タップで3月へ" : used ? "配置済" : selected ? "選択中" : "ドラッグ"
-                        }
-                        size="lg"
-                        variant={used ? "used" : "idle"}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+        {auditMode ? (
+          <DemoAuditTourView onBack={() => setAuditMode(false)} />
+        ) : (
+          <>
+            <DemoMatrixNav activeClientIdx={clientIdx} onClientChange={setClientIdx} />
+            <div className="flex min-h-0 flex-1">
+              <DemoMatrixSidebar activePeriodIdx={periodIdx} onPeriodChange={setPeriodIdx} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <DemoMatrixHeader
+                  clientIdx={clientIdx}
+                  periodIdx={periodIdx}
+                  filledCount={filledCount}
+                  slotCount={DEMO_SLOTS.length}
+                  isPlayCell={isPlayCell}
+                />
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4"
+                  onDragOver={(e) => {
+                    if (activeDragSampleId) e.preventDefault();
+                  }}
+                >
+                  <div className={`mb-4 flex flex-wrap justify-center gap-5 md:gap-6 ${isPlayCell ? "" : "opacity-70"}`}>
+                    {DEMO_SAMPLES.map((sample) => {
+                      const used = usedSamples.has(sample.id);
+                      const target = slotForSample(sample.id);
+                      const selected = selectedSampleId === sample.id;
+                      return (
+                        <div
+                          key={sample.id}
+                          draggable={isPlayCell && !used}
+                          onDragStart={(e) => onSampleDragStart(e, sample.id)}
+                          onDragEnd={onSampleDragEnd}
+                          onClick={() => onSampleClick(sample.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onSampleClick(sample.id);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={used ? -1 : 0}
+                          className={`select-none rounded-full outline-none transition-transform ${
+                            used
+                              ? "cursor-default opacity-60"
+                              : "cursor-grab hover:scale-105 active:cursor-grabbing active:scale-95 focus-visible:ring-2 focus-visible:ring-blue-500"
+                          } ${selected ? "ring-4 ring-blue-400 ring-offset-2" : ""}`}
+                          title={
+                            !isPlayCell
+                              ? `クリックで ${DEMO_CLIENTS[DEMO_PLAY_CLIENT_IDX].name} × ${DEMO_PERIODS[DEMO_PLAY_PERIOD_IDX]} へ`
+                              : used
+                                ? "配置済み"
+                                : selected
+                                  ? "枠をクリックして配置"
+                                  : target
+                                    ? `${target.title} にドロップ（またはクリック選択）`
+                                    : undefined
+                          }
+                        >
+                          <DemoFileOrb
+                            label={sample.shortLabel}
+                            sublabel={
+                              !isPlayCell ? "タップで3月へ" : used ? "配置済" : selected ? "選択中" : "ドラッグ"
+                            }
+                            size="lg"
+                            variant={used ? "used" : "idle"}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
 
-              {selectedSampleId && isPlayCell ? (
-                <p className="mb-3 text-center text-xs font-bold text-blue-600">
-                  「{slotForSample(selectedSampleId)?.title}」の枠をクリックして配置
-                </p>
-              ) : null}
+                  {selectedSampleId && isPlayCell ? (
+                    <p className="mb-3 text-center text-xs font-bold text-blue-600">
+                      「{slotForSample(selectedSampleId)?.title}」の枠をクリックして配置
+                    </p>
+                  ) : null}
 
-              <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-4">
-                {DEMO_SLOTS.map((slot, slotIdx) => {
-                  const key = demoCellKey(clientIdx, periodIdx, slotIdx);
-                  const state = cellStates[key] ?? { phase: "empty" };
-                  const isEmpty = state.phase === "empty" || state.phase === "drag-over";
-                  const matchesDrag = activeDragSampleId === slot.sampleId;
-                  const matchesSelect = selectedSampleId === slot.sampleId;
-                  const canPlace = isPlayCell && isEmpty && !usedSamples.has(slot.sampleId);
+                  {playCellAllFilled ? (
+                    <p className="mb-3 text-center text-xs font-bold text-emerald-600 animate-pulse">
+                      全枠が揃いました — まもなく2画面照合へ…
+                    </p>
+                  ) : null}
 
-                  return (
-                    <DemoSlotCard
-                      key={`${key}-${slot.id}`}
-                      slot={slot}
-                      state={state}
-                      dropHint={
-                        canPlace && (matchesDrag || matchesSelect)
-                          ? "accept"
-                          : activeDragSampleId && isEmpty && !matchesDrag
-                            ? "reject"
-                            : "none"
-                      }
-                      clickable={canPlace && matchesSelect}
-                      onEmptyClick={() => {
-                        if (selectedSampleId && canPlace && selectedSampleId === slot.sampleId) {
-                          handlePlace(slotIdx, selectedSampleId);
-                        }
-                      }}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        if (canPlace && matchesDrag) {
-                          setCellStates((prev) => ({ ...prev, [key]: { phase: "drag-over" } }));
-                        }
-                      }}
-                      onDragLeave={() => {
-                        setCellStates((prev) =>
-                          prev[key]?.phase === "drag-over" ? { ...prev, [key]: { phase: "empty" } } : prev,
-                        );
-                      }}
-                      onDragOver={(e) => {
-                        if (!isPlayCell || !isEmpty || !activeDragSampleId) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = matchesDrag ? "copy" : "none";
-                        if (matchesDrag && state.phase !== "drag-over") {
-                          setCellStates((prev) => ({ ...prev, [key]: { phase: "drag-over" } }));
-                        } else if (!matchesDrag && state.phase === "drag-over") {
-                          setCellStates((prev) => ({ ...prev, [key]: { phase: "empty" } }));
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const sampleId = readSampleFromDrag(e);
-                        setActiveDragSampleId(null);
-                        if (sampleId && canPlace) handlePlace(slotIdx, sampleId);
-                        else clearDragHighlights();
-                      }}
-                    />
-                  );
-                })}
+                  <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+                    {DEMO_SLOTS.map((slot, slotIdx) => {
+                      const key = demoCellKey(clientIdx, periodIdx, slotIdx);
+                      const state = cellStates[key] ?? { phase: "empty" };
+                      const isEmpty = state.phase === "empty" || state.phase === "drag-over";
+                      const matchesDrag = activeDragSampleId === slot.sampleId;
+                      const matchesSelect = selectedSampleId === slot.sampleId;
+                      const canPlace = isPlayCell && isEmpty && !usedSamples.has(slot.sampleId);
+
+                      return (
+                        <DemoSlotCard
+                          key={`${key}-${slot.id}`}
+                          slot={slot}
+                          state={state}
+                          dropHint={
+                            canPlace && (matchesDrag || matchesSelect)
+                              ? "accept"
+                              : activeDragSampleId && isEmpty && !matchesDrag
+                                ? "reject"
+                                : "none"
+                          }
+                          clickable={canPlace && matchesSelect}
+                          onEmptyClick={() => {
+                            if (selectedSampleId && canPlace && selectedSampleId === slot.sampleId) {
+                              handlePlace(slotIdx, selectedSampleId);
+                            }
+                          }}
+                          onDragEnter={(e) => {
+                            e.preventDefault();
+                            if (canPlace && matchesDrag) {
+                              setCellStates((prev) => ({ ...prev, [key]: { phase: "drag-over" } }));
+                            }
+                          }}
+                          onDragLeave={() => {
+                            setCellStates((prev) =>
+                              prev[key]?.phase === "drag-over" ? { ...prev, [key]: { phase: "empty" } } : prev,
+                            );
+                          }}
+                          onDragOver={(e) => {
+                            if (!isPlayCell || !isEmpty || !activeDragSampleId) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = matchesDrag ? "copy" : "none";
+                            if (matchesDrag && state.phase !== "drag-over") {
+                              setCellStates((prev) => ({ ...prev, [key]: { phase: "drag-over" } }));
+                            } else if (!matchesDrag && state.phase === "drag-over") {
+                              setCellStates((prev) => ({ ...prev, [key]: { phase: "empty" } }));
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const sampleId = readSampleFromDrag(e);
+                            setActiveDragSampleId(null);
+                            if (sampleId && canPlace) handlePlace(slotIdx, sampleId);
+                            else clearDragHighlights();
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       <p className="border-t border-slate-100 bg-white px-4 py-2 text-center text-[11px] text-slate-400">

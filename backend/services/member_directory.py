@@ -55,15 +55,30 @@ def _load_email_map() -> dict[str, str]:
                     merged[email.strip().lower()] = sid.strip()
         except Exception:
             pass
+    if is_production():
+        return merged
     # Dev personas always keep default emails (example file must not break admin@tax.co.jp login).
     for email, sid in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
-        merged[email.lower()] = sid
+        merged.setdefault(email.lower(), sid)
     return merged
+
+
+def member_directory_count() -> int:
+    """Registered emails in member_directory.json (excludes dev defaults)."""
+    if not MEMBER_DIRECTORY_PATH.exists():
+        return 0
+    try:
+        raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8"))
+        return len(raw.get("emailToStakeholderId") or {})
+    except Exception:
+        return 0
 
 
 def bootstrap_member_directory_example() -> None:
     """Copy example member directory when missing (dev convenience; no user setup required)."""
     if MEMBER_DIRECTORY_PATH.exists():
+        return
+    if is_production():
         return
     example = STORAGE_DIR / "member_directory.json.example"
     if not example.exists():

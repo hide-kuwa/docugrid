@@ -1,0 +1,22 @@
+# Local production-mode stack (DOCUGRID_ENV=production on localhost).
+# Use after: python scripts/bootstrap_production.py --staging-local
+#
+#   docker compose -f docker-compose.staging.yml up -d --build
+#   curl http://localhost:8000/health
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env.production
+    volumes:
+      - docugrid_staging_storage:/app/storage
+
+volumes:
+  docugrid_staging_storage:
+    name: docugrid_staging_storage

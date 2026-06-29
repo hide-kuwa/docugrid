@@ -8,6 +8,8 @@ import { useFirmTasks } from "@/features/persona/hooks/useFirmTasks";
 import { ApprovalQueueWidget } from "@/features/persona/widgets/ApprovalQueueWidget";
 import { FirmProgressWidget } from "@/features/persona/widgets/FirmProgressWidget";
 import { DeadlineAlertsWidget } from "@/features/persona/widgets/DeadlineAlertsWidget";
+import { StaffTaskBoardWidget } from "@/features/persona/widgets/StaffTaskBoardWidget";
+import { AssignmentHeatmapWidget } from "@/features/persona/widgets/AssignmentHeatmapWidget";
 import type { FirmTaskItem } from "@/features/docugrid/lib/firm-tasks";
 import type { DocugridUser } from "@/lib/auth";
 
@@ -27,12 +29,68 @@ export function FirmDirectorDashboard({ user, onSelectClient, variant = "inline"
     [clients],
   );
 
+  const memberClientIds = useMemo(
+    () =>
+      Object.fromEntries(
+        (firmTasks?.staff ?? []).map((s) => [s.member_id, s.assigned_client_ids ?? []]),
+      ),
+    [firmTasks?.staff],
+  );
+
+  const heatmapClients = useMemo(() => {
+    const byId = new Map((firmTasks?.clients ?? []).map((c) => [c.client_id, c]));
+    const ids = new Set<string>();
+    for (const s of firmTasks?.staff ?? []) {
+      for (const cid of s.assigned_client_ids ?? []) ids.add(cid);
+    }
+    for (const c of firmTasks?.clients ?? []) ids.add(c.client_id);
+    return [...ids].map(
+      (id) =>
+        byId.get(id) ?? {
+          client_id: id,
+          missing_total: 0,
+          pending_approval_total: 0,
+          incomplete_period_count: 0,
+        },
+    );
+  }, [firmTasks?.clients, firmTasks?.staff]);
+
   const handleQueueSelect = (item: FirmTaskItem) => {
     onSelectClient?.(item.client_id);
   };
 
   const content = (
     <div className={variant === "drawer" ? "grid gap-4 p-4" : "mx-auto mt-3 grid max-w-6xl gap-4 md:grid-cols-2"}>
+      <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 md:col-span-2">
+        <h2 className="text-sm font-bold text-sky-900">担当者別タスク</h2>
+        <p className="mt-0.5 text-xs text-sky-800/80">誰がどの顧問先で何件抱えているか一目で確認できます。</p>
+        <div className="mt-3">
+          <StaffTaskBoardWidget
+            staff={firmTasks?.staff ?? []}
+            loading={loading}
+            error={error}
+            unassignedMissing={firmTasks?.unassigned_missing_total}
+            unassignedPending={firmTasks?.unassigned_pending_total}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+        <h2 className="text-sm font-bold text-slate-800">担当 × 顧問先ヒートマップ</h2>
+        <p className="mt-0.5 text-xs text-slate-500">セルは「不足/承認待ち」。クリックで顧問先を開けます。</p>
+        <div className="mt-3">
+          <AssignmentHeatmapWidget
+            staff={firmTasks?.staff ?? []}
+            clients={heatmapClients}
+            clientNameById={clientNameById}
+            memberClientIds={memberClientIds}
+            loading={loading}
+            error={error}
+            onSelectClient={onSelectClient}
+          />
+        </div>
+      </div>
+
       <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
         <h2 className="text-sm font-bold text-amber-900">承認キュー</h2>
         <p className="mt-0.5 text-xs text-amber-800/80">

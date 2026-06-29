@@ -29,6 +29,30 @@ jobs:
           DOCUGRID_ALLOW_HEADER_AUTH: "true"
         run: python -m pytest -q
 
+  production-config:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate production env template
+        run: |
+          export DOCUGRID_ENV=production
+          export DOCUGRID_JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          export GOOGLE_OAUTH_CLIENT_ID=test.apps.googleusercontent.com
+          export DOCUGRID_CORS_ORIGINS=https://app.example.com
+          export DOCUGRID_ALLOW_HEADER_AUTH=false
+          export DOCUGRID_ALLOW_PASSWORD_LOGIN=false
+          mkdir -p storage
+          echo '{"emailToStakeholderId":{"ops@example.com":"actor-admin"}}' > storage/member_directory.json
+          python scripts/validate_production_env.py
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

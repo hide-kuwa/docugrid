@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "slot_id": "articles_of_incorporation",
+  "document_label": "定款",
+  "target_default": "client-master",
+  "fields": [
+    {
+      "id": "customer_name",
+      "label": "商号",
+      "target": "client-master",
+      "required": true,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "商\\s*号[\\s　:：]*([^\\n\\r]{2,80})",
+          "confidence": 0.85
+        },
+        {
+          "type": "label_value",
+          "pattern": "当会社は[、,]?\\s*([^\\n\\rと]{2,60})\\s*と称する",
+          "confidence": 0.75
+        }
+      ],
+      "cleanse": "company_name"
+    },
+    {
+      "id": "head_office_address",
+      "label": "本店",
+      "target": "client-master",
+      "required": true,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "本\\s*店[\\s　:：]*([^\\n\\r]{4,120})",
+          "confidence": 0.85
+        },
+        {
+          "type": "label_value",
+          "pattern": "本店を([^\\n\\rに]{4,120})に置く",
+          "confidence": 0.75
+        }
+      ]
+    },
+    {
+      "id": "capital",
+      "label": "資本金",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "yen",
+          "pattern": "資\\s*本\\s*金[\\s　:：]*([0-9,\\s]+(?:円)?)",
+          "confidence": 0.8
+        },
+        {
+          "type": "yen",
+          "pattern": "資\\s*本\\s*の\\s*総\\s*額[\\s　:：]*([0-9,\\s]+(?:円)?)",
+          "confidence": 0.8
+        },
+        {
+          "type": "yen",
+          "pattern": "資本金の額は[、,]?\\s*金?([0-9,\\s]+円)",
+          "confidence": 0.75
+        }
+      ]
+    },
+    {
+      "id": "fiscal_year_end_date",
+      "label": "事業年度",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "事\\s*業\\s*年\\s*度[\\s　:：]*([^\\n\\r]{2,60})",
+          "confidence": 0.85
+        },
+        {
+          "type": "label_value",
+          "pattern": "事業年度は[、,]?\\s*毎年([^\\n\\r。]{4,60})まで",
+          "confidence": 0.75
+        }
+      ]
+    },
+    {
+      "id": "established_date",
+      "label": "設立年月日",
+      "target": "client-master",
+      "required": false,
+      "confidence_min": 0.55,
+      "patterns": [
+        {
+          "type": "label_value",
+          "pattern": "設\\s*立[\\s　]*年[\\s　]*月[\\s　]*日[\\s　:：]*(\\d{4}年?\\s*\\d{1,2}月?\\s*\\d{1,2}日?)",
+          "confidence": 0.85
+        }
+      ]
+    }
+  ]
+}

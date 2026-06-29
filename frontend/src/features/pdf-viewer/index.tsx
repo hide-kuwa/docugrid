@@ -10,6 +10,7 @@ import { APP_ROLES, STAKEHOLDER_MASTER } from "@/config/organization";
 import { loadCurrentUser } from "@/lib/auth";
 import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 import { AuditSplitPane } from "./components/AuditSplitPane";
+import { ClientSlotDocsRail } from "./components/ClientSlotDocsRail";
 import { AuditWorkflowGuide } from "./components/AuditWorkflowGuide";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { MainCanvas } from "./components/MainCanvas";
@@ -19,10 +20,12 @@ import { useAuditWorkflow, type WorkflowEventInput } from "./hooks/useAuditWorkf
 import { usePageViewAudit } from "./hooks/usePageViewAudit";
 import { useFileBlobUrl } from "./hooks/useFileBlobUrl";
 import { usePdfEditor } from "./hooks/usePdfEditor";
+import { useViewerKeyboardShortcuts } from "./hooks/useViewerKeyboardShortcuts";
 import { useViewerUiStore } from "./state/viewer-ui-store";
 import { useAutoVouchBridgeStore } from "./state/auto-vouch-bridge-store";
 import {
   createDocumentVersionSnapshot,
+  deleteDocumentVersion,
   fetchDocumentVersionFile,
   listDocumentVersions,
   versionSourceLabel,
@@ -75,8 +78,17 @@ const sha256OfFile = async (target: File | null): Promise<string | undefined> =>
     .join("");
 };
 
+const HISTORY_META_EVENT_TYPES = new Set([
+  "document_delete",
+  "version_delete",
+  "client_share",
+  "client_unshare",
+]);
+
 const reviewEventToVersion = (event: ReviewEventItem): EnhancedDocVersion => ({
-  ver: event.version_label || "v1.0.0",
+  ver:
+    event.version_label ||
+    (HISTORY_META_EVENT_TYPES.has(event.event_type) ? "—" : "v1.0.0"),
   date: formatEventDate(event.created_at),
   user: resolveActorName(event.actor_stakeholder_id, event.actor_email),
   action: event.action_title || event.event_type,
@@ -84,13 +96,21 @@ const reviewEventToVersion = (event: ReviewEventItem): EnhancedDocVersion => ({
   actionsLog: event.reason ? [event.reason] : [],
   isMajor: event.is_major,
   versionId: event.document_version_id || event.id,
+  isDeletion: event.event_type === "document_delete" || event.event_type === "version_delete",
+  metaEventType:
+    event.event_type === "client_share"
+      ? "client_share"
+      : event.event_type === "client_unshare"
+        ? "client_unshare"
+        : undefined,
 });
 
 const buildHistoryFromVersions = (
   versions: DocumentVersionItem[],
   events: ReviewEventItem[],
-): EnhancedDocVersion[] =>
-  versions.map((v) => {
+): EnhancedDocVersion[] => {
+  type Row = EnhancedDocVersion & { sortAt: string };
+  const rows: Row[] = versions.map((v) => {
     const ev = events.find((e) => e.document_version_id === v.id);
     return {
       ver: v.version_label,
@@ -101,8 +121,17 @@ const buildHistoryFromVersions = (
       actionsLog: ev?.reason ? [ev.reason] : [],
       isMajor: ev?.is_major ?? /\.0\.0$/.test(v.version_label),
       versionId: v.id,
+      sortAt: v.created_at,
     };
   });
+  for (const e of events) {
+    if (!HISTORY_META_EVENT_TYPES.has(e.event_type)) continue;
+    rows.push({ ...reviewEventToVersion(e), sortAt: e.created_at });
+  }
+  return rows
+    .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+    .map(({ sortAt: _sortAt, ...rest }) => rest);
+};
 
 const WORKFLOW_BUMP: Partial<Record<string, VersionBump>> = {
   work_save: "minor",
@@ -145,6 +174,17 @@ export default function ViewerModal({
   onVersionCreated,
   onAuditStateChange,
   slotWorkflowStatus,
+  persistedDocId,
+  canSoftDeleteDocument = false,
+  onSoftDelete,
+  canPurgeDocument = false,
+  onPurge,
+  onRestore,
+  canShareWithClient = false,
+  clientSharedAt = null,
+  onShareWithClient,
+  onUnshareWithClient,
+  historyRevision = 0,
 }: ViewerModalProps) {
   const [currentUser, setCurrentUser] = useState("demo-user");
   const [persistedHistory, setPersistedHistory] = useState<EnhancedDocVersion[] | null>(null);
@@ -153,6 +193,8 @@ export default function ViewerModal({
   const [isSplitView, setIsSplitView] = useState(false);
   const [leftFile, setLeftFile] = useState<File | null>(null);
   const [rightFile, setRightFile] = useState<File | null>(null);
+  const [leftSlotDocId, setLeftSlotDocId] = useState<string | null>(null);
+  const [rightSlotDocId, setRightSlotDocId] = useState<string | null>(null);
   const [pendingCheckPoint, setPendingCheckPoint] = useState<AuditCheckPoint | null>(null);
   const [auditCheckLinks, setAuditCheckLinks] = useState<AuditCheckLink[]>([]);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
@@ -171,6 +213,8 @@ export default function ViewerModal({
     rightLabel: string;
   } | null>(null);
   const [compareLoadingIdx, setCompareLoadingIdx] = useState<number | null>(null);
+  const [versionDeleteBusyId, setVersionDeleteBusyId] = useState<string | null>(null);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const openIntent = useViewerUiStore((s) => s.openIntent);
   const auditCheckMode = useAutoVouchBridgeStore((s) =>
     Boolean(s.activeContext?.fromMetricVouch),
@@ -325,6 +369,9 @@ export default function ViewerModal({
     canGoNext,
     goPrevPage,
     goNextPage,
+    goFirstPage,
+    goLastPage,
+    selectAllSlots,
     thumbnails,
     thumbnailsReady,
     activeTool,
@@ -361,6 +408,36 @@ export default function ViewerModal({
     onRenderPage,
     recordAction,
     syncWithDocugrid,
+  });
+
+  useViewerKeyboardShortcuts({
+    enabled: isOpen,
+    isReadOnly,
+    canAnnotate,
+    isLoading,
+    isHistoryOpen,
+    setIsHistoryOpen,
+    isReordering,
+    setIsReordering,
+    isSplitView,
+    setIsSplitView,
+    canUndo,
+    canRedo,
+    undoPageOrder,
+    redoPageOrder,
+    canGoPrev,
+    canGoNext,
+    goPrevPage,
+    goNextPage,
+    goFirstPage,
+    goLastPage,
+    pageCountSafe,
+    selectedSlots,
+    selectAllSlots,
+    removeSelectedSlots,
+    setActiveTool,
+    handleWorkSave,
+    onClose,
   });
 
   useEffect(() => {
@@ -448,11 +525,12 @@ export default function ViewerModal({
       if (next) {
         setActiveTool("check");
         setLeftFile((f) => f ?? file);
+        setLeftSlotDocId((id) => id ?? persistedDocId ?? null);
         setPendingCheckPoint(null);
       }
       return next;
     });
-  }, [file, setActiveTool]);
+  }, [file, persistedDocId, setActiveTool]);
 
   const activeVersionId = history[activeVerIdx]?.versionId;
   const activeVersionLabel = history[activeVerIdx]?.ver;
@@ -504,7 +582,43 @@ export default function ViewerModal({
       active = false;
       controller.abort();
     };
-  }, [isOpen, slotIdentity]);
+  }, [isOpen, slotIdentity, historyRefreshKey, historyRevision]);
+
+  const handleDeleteVersion = useCallback(
+    async (versionId: string, versionLabel: string) => {
+      if (!slotIdentity || !canSoftDeleteDocument) return;
+      const ok = window.confirm(
+        `版 ${versionLabel} を削除します。この版の PDF は表示できなくなりますが、誰が削除したかの記録は残ります（ファイル名は記録しません）。よろしいですか？`,
+      );
+      if (!ok) return;
+      setVersionDeleteBusyId(versionId);
+      try {
+        await deleteDocumentVersion(versionId, slotIdentity.clientId);
+        const deletedIdx = history.findIndex((h) => h.versionId === versionId);
+        setHistoryRefreshKey((k) => k + 1);
+        if (deletedIdx >= 0 && deletedIdx === activeVerIdx) {
+          setActiveVerIdx(0);
+          setHistoryFile(null);
+        } else if (deletedIdx >= 0 && deletedIdx < activeVerIdx) {
+          setActiveVerIdx((idx) => Math.max(0, idx - 1));
+        }
+        onAuditStateChange?.();
+      } catch (err) {
+        console.error("Version delete failed:", err);
+        window.alert("版の削除に失敗しました。");
+      } finally {
+        setVersionDeleteBusyId(null);
+      }
+    },
+    [
+      slotIdentity,
+      canSoftDeleteDocument,
+      history,
+      activeVerIdx,
+      setActiveVerIdx,
+      onAuditStateChange,
+    ],
+  );
 
   // 履歴パネルで旧版を選択したとき immutable PDF を取得
   useEffect(() => {
@@ -542,15 +656,30 @@ export default function ViewerModal({
     if (!isOpen) return;
     setLeftFile(file);
     setRightFile(null);
+    setLeftSlotDocId(persistedDocId ?? null);
+    setRightSlotDocId(null);
     setPendingCheckPoint(null);
     setSelectedLinkId(null);
-  }, [isOpen, file]);
+  }, [isOpen, file, persistedDocId]);
 
   const handleSwapSplitSources = () => {
     setLeftFile(rightFile);
     setRightFile(leftFile);
+    setLeftSlotDocId(rightSlotDocId);
+    setRightSlotDocId(leftSlotDocId);
     setPendingCheckPoint(null);
   };
+
+  const handleRailLoadDoc = useCallback((picked: File, docId: string, side: AuditSide) => {
+    if (side === "left") {
+      setLeftFile(picked);
+      setLeftSlotDocId(docId);
+    } else {
+      setRightFile(picked);
+      setRightSlotDocId(docId);
+    }
+    setPendingCheckPoint(null);
+  }, []);
 
   const hashFile = async (target: File | null): Promise<string | undefined> => {
     if (!target) return undefined;
@@ -562,6 +691,7 @@ export default function ViewerModal({
   };
 
   const activeVersion = history[activeVerIdx] || fallbackActiveVersion;
+
   const persistedVersionId = isPersistedDocumentVersionId(activeVersion.versionId)
     ? activeVersion.versionId
     : null;
@@ -808,6 +938,15 @@ export default function ViewerModal({
           viewerMode={viewerMode}
           onStartEdit={() => onViewerModeChange?.("edit")}
           highlightAuditStart={highlightAuditStart}
+          canSoftDeleteDocument={canSoftDeleteDocument && !!persistedDocId && !!onSoftDelete}
+          onSoftDelete={onSoftDelete}
+          canPurgeDocument={canPurgeDocument && !!persistedDocId && !!onPurge}
+          onPurge={onPurge}
+          onRestore={onRestore}
+          canShareWithClient={canShareWithClient && !!onShareWithClient}
+          clientSharedAt={clientSharedAt}
+          onShareWithClient={onShareWithClient}
+          onUnshareWithClient={onUnshareWithClient}
         />
 
         {(!guideDismissed && (!isSplitView || auditCheckMode)) && (
@@ -825,6 +964,15 @@ export default function ViewerModal({
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100">
           {isSplitView ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {scopedClientId ? (
+                <ClientSlotDocsRail
+                  clientId={scopedClientId}
+                  currentDocId={persistedDocId}
+                  leftDocId={leftSlotDocId}
+                  rightDocId={rightSlotDocId}
+                  onLoadDoc={handleRailLoadDoc}
+                />
+              ) : null}
               <AuditSplitToolbar
                 pendingCheckPoint={pendingCheckPoint}
                 linksCount={orderedAuditLinks.length}
@@ -867,7 +1015,10 @@ export default function ViewerModal({
                   title="左"
                   file={leftFile}
                   workingFile={file}
-                  onFileChange={setLeftFile}
+                  onFileChange={(next) => {
+                    setLeftFile(next);
+                    setLeftSlotDocId(null);
+                  }}
                   onRenderPage={onRenderPage}
                   markers={leftMarkers}
                   onCheckPoint={handleSplitCheckPoint}
@@ -882,7 +1033,10 @@ export default function ViewerModal({
                   title="右"
                   file={rightFile}
                   workingFile={file}
-                  onFileChange={setRightFile}
+                  onFileChange={(next) => {
+                    setRightFile(next);
+                    setRightSlotDocId(null);
+                  }}
                   onRenderPage={onRenderPage}
                   markers={rightMarkers}
                   onCheckPoint={handleSplitCheckPoint}
@@ -970,6 +1124,9 @@ export default function ViewerModal({
         setExpandedHistoryIdx={setExpandedHistoryIdx}
         onCompareWithCurrent={handleCompareWithCurrent}
         compareLoadingIdx={compareLoadingIdx}
+        canDeleteVersion={canSoftDeleteDocument}
+        onDeleteVersion={handleDeleteVersion}
+        versionDeleteBusyId={versionDeleteBusyId}
       />
       ) : null}
 

@@ -51,6 +51,8 @@ python scripts/migrate_legacy_storage.py --list-orphans
 
 準備できたら [`google-oauth-setup.md`](google-oauth-setup.md) に従い `GOOGLE_OAUTH_CLIENT_ID` を設定。未設定でもパスワードログインで開発可能。
 
+本番移行の全体手順: [`production-deployment.md`](production-deployment.md)
+
 ## セキュリティメモ
 
 - 本番: Google SSO のみ + `DOCUGRID_ALLOW_PASSWORD_LOGIN=false`

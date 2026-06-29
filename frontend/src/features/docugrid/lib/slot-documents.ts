@@ -21,6 +21,7 @@ export type NormalizeResultPayload = {
   metrics_applied: unknown[];
   tax_alerts_created: string[];
   propagate: boolean;
+  extraction_review?: import("@/features/client-data/lib/extraction-api").ExtractionReviewPayload | null;
 };
 
 export type SlotDocumentItem = {
@@ -46,6 +47,11 @@ export type SlotDocumentItem = {
   version_count?: number | null;
   normalize_result?: NormalizeResultPayload | null;
   ocr_job_id?: string | null;
+  deleted_at?: string | null;
+  deleted_from_slot_id?: string | null;
+  deleted_from_slot_label?: string | null;
+  client_shared_at?: string | null;
+  client_shared_by?: string | null;
 };
 
 export type PersistSlotArgs = {
@@ -98,10 +104,12 @@ export async function listSlotDocuments(
   clientId: string,
   periodKey?: string,
   signal?: AbortSignal,
+  options?: { includeDeleted?: boolean },
 ): Promise<SlotDocumentItem[]> {
   const url = new URL(API_ENDPOINTS.SLOTS);
   url.searchParams.set("client_id", clientId);
   if (periodKey) url.searchParams.set("period_key", periodKey);
+  if (options?.includeDeleted) url.searchParams.set("include_deleted", "true");
 
   const res = await authFetch(url.toString(), {
     method: "GET",
@@ -133,12 +141,112 @@ export async function fetchSlotDocumentFile(
   });
 }
 
-export async function deleteSlotDocument(docId: string, clientId?: string): Promise<void> {
+export async function detachSlotDocument(docId: string, clientId?: string): Promise<void> {
+  const url = new URL(API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, ""));
+  url.searchParams.set("mode", "detach");
+  const res = await authFetch(url.toString(), {
+    method: "DELETE",
+    headers: buildAuthHeaders(clientId),
+  });
+  if (!res.ok) {
+    throw new Error(`detach-slot-failed:${res.status}`);
+  }
+}
+
+export async function moveSlotDocument(
+  docId: string,
+  slotId: string,
+  slotLabel: string,
+  clientId?: string,
+): Promise<SlotDocumentItem> {
+  const res = await authFetch(API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, ""), {
+    method: "PATCH",
+    headers: {
+      ...buildAuthHeaders(clientId),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ slot_id: slotId, slot_label: slotLabel }),
+  });
+  if (!res.ok) {
+    throw new Error(`move-slot-failed:${res.status}`);
+  }
+  return (await res.json()) as SlotDocumentItem;
+}
+
+export async function shareSlotWithClient(
+  docId: string,
+  clientId?: string,
+): Promise<SlotDocumentItem> {
+  const res = await authFetch(
+    `${API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, "")}/share-with-client`,
+    {
+      method: "POST",
+      headers: buildAuthHeaders(clientId),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`share-slot-failed:${res.status}`);
+  }
+  const body = (await res.json()) as { item: SlotDocumentItem };
+  return body.item;
+}
+
+export async function unshareSlotWithClient(
+  docId: string,
+  clientId?: string,
+): Promise<SlotDocumentItem> {
+  const res = await authFetch(
+    `${API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, "")}/unshare-with-client`,
+    {
+      method: "POST",
+      headers: buildAuthHeaders(clientId),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`unshare-slot-failed:${res.status}`);
+  }
+  const body = (await res.json()) as { item: SlotDocumentItem };
+  return body.item;
+}
+
+export async function softDeleteSlotDocument(docId: string, clientId?: string): Promise<void> {
   const res = await authFetch(API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, ""), {
     method: "DELETE",
     headers: buildAuthHeaders(clientId),
   });
   if (!res.ok) {
-    throw new Error(`delete-slot-failed:${res.status}`);
+    throw new Error(`soft-delete-slot-failed:${res.status}`);
   }
+}
+
+export async function purgeSlotDocument(docId: string, clientId?: string): Promise<void> {
+  const url = new URL(API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, ""));
+  url.searchParams.set("mode", "purge");
+  const res = await authFetch(url.toString(), {
+    method: "DELETE",
+    headers: buildAuthHeaders(clientId),
+  });
+  if (!res.ok) {
+    throw new Error(`purge-slot-failed:${res.status}`);
+  }
+}
+
+export async function restoreSlotDocument(
+  docId: string,
+  clientId?: string,
+): Promise<SlotDocumentItem> {
+  const res = await authFetch(`${API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, "")}/restore`, {
+    method: "POST",
+    headers: buildAuthHeaders(clientId),
+  });
+  if (!res.ok) {
+    throw new Error(`restore-slot-failed:${res.status}`);
+  }
+  const body = (await res.json()) as { item: SlotDocumentItem };
+  return body.item;
+}
+
+/** @deprecated Use softDeleteSlotDocument or purgeSlotDocument */
+export async function deleteSlotDocument(docId: string, clientId?: string): Promise<void> {
+  return softDeleteSlotDocument(docId, clientId);
 }

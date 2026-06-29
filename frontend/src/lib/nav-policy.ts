@@ -20,10 +20,15 @@ const CATEGORY_PERMISSIONS: Record<SettingsCategoryId, AppPermission> = {
   stakeholders: "settings.manage",
   documents: "settings.manage",
   templates: "settings.manage",
+  reviewChecklist: "settings.manage",
+  shortcuts: "client.view",
+  appearance: "client.view",
+  billing: "settings.manage",
   screens: "settings.manage",
   audit: "settings.manage",
   roles: "settings.platform",
   integrations: "settings.platform",
+  mcp: "client.view",
 };
 
 const FIRM_PERSONA_IDS: PersonaId[] = [
@@ -55,12 +60,15 @@ export const canShowCatalogNav = (user: DocugridUser | null): boolean =>
   canAccessDevConsole(user);
 
 export const canAccessSettingsPage = (user: DocugridUser | null): boolean =>
-  canAccessAnySettings(user);
+  canAccessAnySettings(user) || Boolean(user?.email);
 
 export const canViewSettingsCategory = (
   user: DocugridUser | null,
   categoryId: SettingsCategoryId,
-): boolean => hasPermission(user, CATEGORY_PERMISSIONS[categoryId]);
+): boolean => {
+  if (categoryId === "mcp") return Boolean(user?.email);
+  return hasPermission(user, CATEGORY_PERMISSIONS[categoryId]);
+};
 
 export const visibleSettingsCategories = (
   user: DocugridUser | null,

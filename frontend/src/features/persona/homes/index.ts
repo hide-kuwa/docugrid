@@ -11,6 +11,7 @@ export type PersonaHomeProps = {
   persona: PersonaDefinition;
   user: DocugridUser | null;
   design: ScreenDesignPersona | null;
+  demoMode?: boolean;
 };
 
 const PERSONA_HOMES: Partial<Record<PersonaId, ComponentType<PersonaHomeProps>>> = {

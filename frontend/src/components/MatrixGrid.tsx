@@ -44,6 +44,8 @@ const TIMELINE_EVENT_LABEL: Record<string, string> = {
   viewer_open_edit: "編集開始",
   viewer_close: "ビューア終了",
   audit_link_create: "監査リンク",
+  client_share: "クライアント共有",
+  client_unshare: "共有解除",
 };
 
 function formatTimelineWhen(iso: string): string {
@@ -124,8 +126,20 @@ interface MatrixGridProps {
   activeMode: "year" | "month";
   slotLabels: string[];
   displayOrder: number[];
+  slotIds?: string[];
   onSlotLayoutChange: (layout: SlotLayout) => void;
   onClearSlot: (slotIndex: number) => void;
+  onRemoveSlot?: (slotIndex: number) => void;
+  onAddCustomSlot?: (label: string) => void;
+  onAddPresetSlots?: (presetIds: string[]) => void;
+  unassignedDocs?: Array<{ docId: string; label: string; fileName: string }>;
+  onOpenUnassigned?: (docId: string) => void;
+  onAssignUnassigned?: (docId: string, slotIndex: number) => void;
+  onDeleteUnassigned?: (docId: string) => void;
+  deletedDocs?: Array<{ docId: string; label: string; fileName: string }>;
+  onOpenDeleted?: (docId: string) => void;
+  onRestoreDeleted?: (docId: string) => void;
+  onPurgeDeleted?: (docId: string) => void;
   slotDocs: Record<
     string,
     {
@@ -153,6 +167,7 @@ interface MatrixGridProps {
   relatedClients: Array<{ id: string; name: string; relation: string }>;
   onSelectRelatedClient: (clientId: string) => void;
   canUpload: boolean;
+  canShareWithClient?: boolean;
   canView: boolean;
   onAutoSortFiles: (files: File[]) => void;
   isClassifying: boolean;
@@ -196,8 +211,20 @@ export default function MatrixGrid({
   activeMode,
   slotLabels,
   displayOrder,
+  slotIds,
   onSlotLayoutChange,
   onClearSlot,
+  onRemoveSlot,
+  onAddCustomSlot,
+  onAddPresetSlots,
+  unassignedDocs,
+  onOpenUnassigned,
+  onAssignUnassigned,
+  onDeleteUnassigned,
+  deletedDocs,
+  onOpenDeleted,
+  onRestoreDeleted,
+  onPurgeDeleted,
   slotDocs,
   slotKeyFor,
   progressPercent,
@@ -210,6 +237,7 @@ export default function MatrixGrid({
   relatedClients,
   onSelectRelatedClient,
   canUpload,
+  canShareWithClient = false,
   canView,
   onAutoSortFiles,
   isClassifying,
@@ -419,18 +447,33 @@ export default function MatrixGrid({
           slotKeyFor={slotKeyFor}
           canView={canView}
           canUpload={canUpload}
+          canShareWithClient={canShareWithClient}
           canEditLayout={canUpload}
           canApproveAudit={canApproveAudit}
           onOpenSlot={onOpenSlot}
           onOpenSlotForAudit={onOpenSlotForAudit}
           onFilesDroppedToSlot={wrapDropToSlot}
-          onReorderSlots={(order) => onSlotLayoutChange({ labels: slotLabels, order })}
+          onReorderSlots={(order) =>
+            onSlotLayoutChange({ labels: slotLabels, order, slotIds })
+          }
           onRenameSlot={(slotIndex, label) => {
             const next = [...slotLabels];
             next[slotIndex] = label;
-            onSlotLayoutChange({ labels: next, order: displayOrder });
+            onSlotLayoutChange({ labels: next, order: displayOrder, slotIds });
           }}
           onClearSlot={onClearSlot}
+          onRemoveSlot={onRemoveSlot}
+          onAddCustomSlot={onAddCustomSlot}
+          onAddPresetSlots={onAddPresetSlots}
+          periodKey={currentPeriodKey}
+          unassignedDocs={unassignedDocs}
+          onOpenUnassigned={onOpenUnassigned}
+          onAssignUnassigned={onAssignUnassigned}
+          onDeleteUnassigned={onDeleteUnassigned}
+          deletedDocs={deletedDocs}
+          onOpenDeleted={onOpenDeleted}
+          onRestoreDeleted={onRestoreDeleted}
+          onPurgeDeleted={onPurgeDeleted}
           canAutoSort={canUpload}
           isClassifying={isClassifying}
           classifyHint={classifyHint}

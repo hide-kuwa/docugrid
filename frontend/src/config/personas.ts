@@ -98,9 +98,10 @@ export const PERSONAS: PersonaDefinition[] = [
     navItems: [
       { id: "upload", label: "資料提出", href: "/workspace/client_accounting" },
       { id: "capture", label: "撮影", href: "/capture" },
+      { id: "checklist", label: "確認チェックリスト", href: "/checklist" },
       { id: "status", label: "提出状況", href: "/workspace/client_accounting#status" },
     ],
-    plannedFeatures: ["提出チェックリスト", "期限アラート", "差戻し対応", "過去提出の参照"],
+    plannedFeatures: ["提出チェックリスト", "確認チェックリスト", "期限アラート", "差戻し対応", "過去提出の参照"],
   },
   {
     id: "client_executive",

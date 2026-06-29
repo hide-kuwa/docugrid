@@ -14,12 +14,17 @@ export type SettingsCategoryId =
   | "roles"
   | "documents"
   | "templates"
+  | "reviewChecklist"
   | "screens"
   | "integrations"
-  | "audit";
+  | "billing"
+  | "audit"
+  | "mcp"
+  | "shortcuts"
+  | "appearance";
 
 /** 日々の業務（マトリクス・ワークスペース・撮影・タスク） */
-export const USER_ROUTE_PREFIXES = ["/", "/workspace", "/capture", "/tasks"] as const;
+export const USER_ROUTE_PREFIXES = ["/", "/workspace", "/capture", "/tasks", "/checklist", "/account"] as const;
 
 /** 開発・設計・横断ツール */
 export const DEV_ROUTE_PREFIXES = ["/dev", "/catalog"] as const;
@@ -30,7 +35,12 @@ export const FIRM_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "clientProfile",
   "stakeholders",
   "templates",
+  "reviewChecklist",
+  "billing",
   "audit",
+  "mcp",
+  "shortcuts",
+  "appearance",
 ];
 
 /** 開発・プラットフォーム設定（ロール設計・画面設計など） */
@@ -57,6 +67,9 @@ export function isDevRoute(pathname: string): boolean {
 
 function canViewSettingsCategoryById(user: DocugridUser | null, categoryId: SettingsCategoryId): boolean {
   if (!user) return false;
+  if (categoryId === "shortcuts") return Boolean(user.email);
+  if (categoryId === "appearance") return Boolean(user.email);
+  if (categoryId === "mcp") return Boolean(user.email);
   if (categoryId === "roles" || categoryId === "integrations") {
     return hasPermission(user, "settings.platform");
   }

@@ -125,6 +125,24 @@ def test_normalize_creates_conflict_alert(master_file, monkeypatch, tmp_path) ->
     assert len(result.tax_alerts_created) == 1
 
 
+def test_ingest_from_confirmed_fields(master_file) -> None:
+    from services.ssot_ingest import ingest_from_confirmed_fields
+
+    result = ingest_from_confirmed_fields(
+        firm_id="default",
+        client_id="c1",
+        period_key="perm",
+        slot_id="corporate_registry",
+        slot_label="履歴事項全部証明書",
+        fields={"corporate_number": "1234567890123"},
+        updated_by="reviewer@example.com",
+    )
+    assert any(a.field_id == "corporate_number" for a in result.applied)
+    saved = load_raw()
+    assert saved["clients"][0]["profile"]["corporate_number"] == "1234567890123"
+    assert saved["clients"][0]["profileMeta"]["corporate_number"]["source"] == "manual"
+
+
 def test_normalize_syncs_valuation_from_capital(master_file, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         "services.client_metrics_service.METRICS_DB_PATH",

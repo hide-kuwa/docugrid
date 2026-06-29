@@ -599,6 +599,16 @@ export const usePdfEditor = ({
   const goNextPage = useCallback(() => {
     setCurrentPage((prev) => Math.min(Math.max(0, pageCountSafe - 1), prev + 1));
   }, [pageCountSafe]);
+  const goFirstPage = useCallback(() => {
+    setCurrentPage(0);
+  }, []);
+  const goLastPage = useCallback(() => {
+    setCurrentPage(Math.max(0, pageCountSafe - 1));
+  }, [pageCountSafe]);
+
+  const selectAllSlots = useCallback(() => {
+    setSelectedSlots(pageOrder.map((_, idx) => idx));
+  }, [pageOrder]);
 
   useEffect(() => {
     setPendingOverlay(null);
@@ -634,6 +644,9 @@ export const usePdfEditor = ({
     canGoNext,
     goPrevPage,
     goNextPage,
+    goFirstPage,
+    goLastPage,
+    selectAllSlots,
     applyAnnotation,
     handleSaveReorder,
     draggingSlotIndex,

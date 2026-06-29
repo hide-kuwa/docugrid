@@ -189,9 +189,18 @@ def run_ocr_job(job_id: str) -> dict:
                 if i < len(ocr_page_texts):
                     ocr_page_texts[i]["text"] = full_text[i * chunk_size : (i + 1) * chunk_size]
         if slot_id and full_text and len(full_text.strip()) >= 8:
-            extracted = profile_fields_from_text(slot_id, full_text)
-            if extracted:
-                result["extracted_profile"] = extracted
+            from services.document_extraction_schema import extract_from_schema, has_extraction_schema
+
+            if has_extraction_schema(slot_id):
+                schema_result = extract_from_schema(slot_id, full_text)
+                result["extracted_profile"] = schema_result.extracted_profile
+                result["field_extractions"] = [f.to_dict() for f in schema_result.fields]
+                result["extraction_review_status"] = schema_result.review_status
+                result["schema_version"] = schema_result.schema_version
+            else:
+                extracted = profile_fields_from_text(slot_id, full_text)
+                if extracted:
+                    result["extracted_profile"] = extracted
 
         classify_meta = {
             "confidence": result.get("confidence"),
@@ -202,6 +211,9 @@ def run_ocr_job(job_id: str) -> dict:
             "ai_reason": result.get("ai_reason"),
             "classified_at": _now(),
             "extracted_profile": result.get("extracted_profile"),
+            "field_extractions": result.get("field_extractions"),
+            "extraction_review_status": result.get("extraction_review_status"),
+            "schema_version": result.get("schema_version"),
             "ocr_full_text": (full_text or "")[:50000],
             "ocr_text_engine": text_engine,
             "ocr_page_texts": ocr_page_texts,
