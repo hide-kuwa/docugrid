@@ -78,6 +78,7 @@
 | `extensibility-principles.md` | **拡張性の横断原則**（全機能の開発デフォルト） |
 | `new-product-onboarding.md` | **新リポ追加時の引き継ぎガイド** |
 | `no-code-config-vision.md` | **ノーコード優先** — dev コンフィグ・YAML |
+| `taxx-pricing-and-boundary.md` | **課金・TAXX/Keisan 境界**（過剰実装防止・設計メモ） |
 
 ---
 
