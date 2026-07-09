@@ -1,10 +1,10 @@
 # セキュリティ・情報漏洩対策チェックリスト（現フェーズ）
 
-最終更新: 2026-06-10（platform_admin / docugrid save 必須化）
+最終更新: 2026-07-04（§A-2 完了確認・テスト分離）
 
 マルチテナント P1.5 途中・開発認証モデル時点で、押さえておくべき情報漏洩リスクとシステム対策を整理した文書です。
 
-関連: [`auth-tenancy-design.md`](auth-tenancy-design.md)、[`smoke-checklist.md`](smoke-checklist.md)、[`roadmap.md`](roadmap.md)
+関連: [`security-status.md`](security-status.md)、[`file-upload-security.md`](file-upload-security.md)、[`google-drive-storage-strategy.md`](google-drive-storage-strategy.md)、[`auth-tenancy-design.md`](auth-tenancy-design.md)、[`smoke-checklist.md`](smoke-checklist.md)、[`roadmap.md`](roadmap.md)
 
 ---
 
@@ -35,18 +35,22 @@
 | スロット・版 PDF の保存先 | ✅ `storage/{firm_id}/versions/...`（新規） | 旧 `storage/versions/` が残ると直アクセス余地 | レガシーパスは読み取りフォールバックのみ。段階的移行 |
 | `/files` 一覧 | ✅ 本番デフォルト **410 無効**（`DOCUGRID_ALLOW_LEGACY_FILES`） | firm 内全 PDF が admin に見える（顧問先スコープなし） | 開発のみ有効。本番はスロット API を使用 |
 | `logical_documents.firm_id` | ✅ 列追加・バックフィル | DB クエリに firm 条件がない箇所は理論上の穴 | 全クエリに `firm_id` 条件を追加（多層防御） |
-| `slot_documents` / `review_events` / `audit_events` の `firm_id` | ✅ 列あり・バックフィル | 一覧 API で firm フィルタしていない箇所あり（A-2 参照） | 一覧系 SQL に `firm_id = ctx.firm_id` を必須化 |
+| `slot_documents` / `review_events` / `audit_events` の `firm_id` | ✅ 列あり・バックフィル・一覧 API で firm フィルタ | — | 維持（§A-2 参照） |
 
-### A-2. 未対応・要修正（firm 横断漏洩）
+### A-2. firm 横断漏洩 — 対応済み（維持）
 
-| 項目 | 現状 | リスク | 推奨対策 |
-|------|------|--------|----------|
-| **`GET /api/audit-events`** | ✅ `firm_id = ctx.firm_id` 必須 + バックフィル | — | 維持 |
-| **`client_master` PUT** | ✅ 自 firm の行のみマージ更新（他 firm は保持） | — | 維持 |
-| **`role-permissions` PUT** | ✅ `settings.platform` 必須（`platform_admin`） | — | 維持。将来 firm 単位 RBAC が必要なら別設計 |
-| **`system-config` / AI キー** | ✅ `storage/firms/{firm_id}/` に分離。PUT は `settings.manage`（自 firm のみ） | レガシー `storage/system_config.json` は default firm へ自動移行 | 維持 |
-| **`platform_admin`** | ✅ 実装済み（`actor-admin` は常に `platform_admin`、stakeholder master で降格不可） | — | `firm_admin` は事務所内のみ |
-| **`firm_members` テーブル** | ✅ SQLite（`firm_members.db`）+ 起動時 bootstrap | 退職者は `inactive` でログイン拒否 | メンバー管理 API・UI は今後 |
+2026-07-04 時点でコード・`backend/tests/test_security.py` の両方で §A-2 項目はすべて ✅。新規 API 追加時も同パターンを踏襲すること。
+
+| 項目 | 現状 | 実装・テスト |
+|------|------|----------------|
+| **`GET /api/audit-events`** | ✅ `firm_id = ctx.firm_id` 必須 + バックフィル | `main.py` `list_audit_events` / `test_audit_events_scoped_to_firm` |
+| **`client_master` PUT** | ✅ 自 firm の行のみマージ更新（他 firm は保持） | `update_client_master` / `test_client_master_put_cannot_modify_other_firm_client` |
+| **`role-permissions` PUT** | ✅ `settings.platform` 必須（`platform_admin`） | `_require_platform_settings` / `test_firm_admin_cannot_*_role_permissions` |
+| **`system-config` / AI キー** | ✅ `storage/firms/{firm_id}/` に分離。PUT は `settings.manage`（自 firm のみ） | `firm_settings.py` / `test_firm_scoped_system_config_isolated` |
+| **`platform_admin`** | ✅ `actor-admin` は常に `platform_admin`、stakeholder master で降格不可 | `member_directory` / role-permissions テスト |
+| **`firm_members` テーブル** | ✅ SQLite + 起動時 bootstrap。`inactive` はログイン拒否 | `firm_members.py` / `test_inactive_member_cannot_login` |
+
+**今後（§A-2 外）:** メンバー管理 API・UI、`firm` 単位 RBAC（現状は platform グローバル行列のみ）。
 
 ### A-3. テストで担保済み（維持）
 
@@ -55,6 +59,9 @@
 - firm A で firm B の docugrid workspace → 403
 - stakeholder master のクロスファーム割当 → 400
 - `/files` は自 firm ディレクトリのみ
+- §A-2 回帰: `test_audit_events_scoped_to_firm`、`test_firm_scoped_system_config_isolated`、`test_firm_admin_cannot_*_role_permissions`、`test_inactive_member_cannot_login`、`test_mcp_token_requires_auth`
+
+**テスト注意:** モジュール共有の `TestClient` はログイン後に `docugrid_session` Cookie を保持する。未認証の POST（例: `/api/auth/mcp-token`）は CSRF で 403 になり得る。**認証前提のないテストは `fresh_client` フィクスチャ**（`backend/tests/conftest.py`）を使う。
 
 ---
 
@@ -78,7 +85,7 @@
 | **`/files`** | ✅ 本番デフォルト無効（410） | — | 開発時のみ `DOCUGRID_ALLOW_LEGACY_FILES=true` |
 | **`review-events` 一覧** | ✅ `firm_id` 条件追加 | — | 維持 |
 | **`document-versions/{id}/file`** | ✅ `authorize_firm_resource` 追加 | — | 維持 |
-| **割当ロール（main/sub/readonly）** | ❌ 未実装 | 副担当の閲覧のみ制御ができない | `assignment_role` + permission 連動 |
+| **割当ロール（main/sub/readonly）** | ✅ `assignment_role` + `authorize_client_permission`（§B-2 2026-07-04） | 副担当の閲覧のみ制御 | `tenancy.py` / `test_security.py` |
 
 ---
 
@@ -178,8 +185,8 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 | PDF 実体 | ローカル `backend/storage/` | サーバー侵害で一括窃取 | ディスク暗号化、バックアップ暗号化、アクセス権限 |
 | SQLite / JSON | 平文ファイル | 同上 | 同上。本番はマネージド DB + オブジェクトストレージ |
 | レガシーパス | `storage/versions/` 等 | 移行前データが firm 分離外 | 移行スクリプト + 旧パス削除 |
-| AI キー | `storage/ai_secrets.json` | ファイル読取で全 firm のキー漏洩 | シークレットマネージャー、GET でキー本体を返さない（✅ 済） |
-| ログ・監査 | SQLite `audit_events` | firm フィルタ不足（A-2） | firm スコープ + 保持期間・マスキング |
+| AI キー | ✅ `storage/firms/{firm_id}/ai_secrets.json`（firm 分離） | サーバー侵害で当該 firm のキー漏洩 | シークレットマネージャー、GET でキー本体を返さない（✅ 済） |
+| ログ・監査 | SQLite `audit_events` | 内部漏洩時の情報量 | ✅ firm スコープ済（§A-2）。保持期間・マスキングは今後 |
 
 ストレージパス解決: `backend/services/storage_paths.py`（firm 配下 + レガシーフォールバック）
 
@@ -224,22 +231,33 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 ## I. 本番デプロイ前チェックリスト（必須）
 
 **手順書**: [`production-deployment.md`](production-deployment.md)（フェーズ 1→8）  
-**事前検証**: `cd backend && python scripts/validate_production_env.py --env-file .env.production`
+**事前検証**: `cd backend && python scripts/validate_production_env.py --env-file .env.production`  
+**起動時**: `validate_auth_config()` が本番 misconfig で `RuntimeError`（API 起動失敗）
+
+| チェック | 自動検証 |
+|----------|----------|
+| `DOCUGRID_ENV=production` | `validate_production_env.py` |
+| `DOCUGRID_JWT_SECRET` 32文字以上・プレースホルダ不可 | `validate_auth_config` |
+| `DOCUGRID_ALLOW_HEADER_AUTH=false` | `validate_auth_config` |
+| `DOCUGRID_ALLOW_PASSWORD_LOGIN=false`（staging-local 除く） | `validate_auth_config` |
+| `DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK=false` | `validate_auth_config` |
+| `DOCUGRID_CORS_ORIGINS` 設定（本番は HTTPS 推奨） | `validate_auth_config` |
+| `DOCUGRID_ALLOW_LEGACY_FILES` 無効 | `validate_auth_config` |
+| `GOOGLE_OAUTH_CLIENT_ID` 実値 | `validate_auth_config` |
+| `member_directory.json` 1件以上・dev メールなし | `validate_production_env.py` §5 |
+| `storage/` 書き込み可・world 権限なし | `validate_production_env.py` |
+| audit-events / client_master firm スコープ | ✅ 実装済み（§A-2） |
+| role-permissions / system-config | ✅ `settings.platform` |
+| HTTPS + ドメイン | 手動（フェーズ 2） |
+| AI 利用規約・オプトアウト | 手動・ポリシー |
+| バックアップ暗号化 | 手動・インフラ |
 
 ```
-[ ] DOCUGRID_ENV=production
-[ ] DOCUGRID_JWT_SECRET — 32文字以上のランダム値
-[ ] DOCUGRID_LOGIN_PASSWORD — デフォルト禁止
-[ ] DOCUGRID_ALLOW_HEADER_AUTH=false
-[ ] ログインで stakeholder_id をクライアントに選ばせない
-[ ] HTTPS + 本番 CORS origin のみ
-[ ] storage/ のファイル権限（他ユーザー読取不可）
-[ ] audit-events に firm_id フィルタ
-[ ] client_master の firm スコープ化（PUT は済、GET は visible のみ）
-[x] role-permissions / system-config は platform_admin のみ（`settings.platform`）
-[x] 未使用の /api/upload (Google Drive) を削除
+[auto] 上表の自動検証を validate_production_env.py で一括実行
+[ ] HTTPS + 本番ドメイン（CORS / Cookie Secure）
+[ ] storage バックアップの暗号化とアクセス制御
 [ ] AI 外部送信の利用規約・オプトアウト
-[ ] バックアップの暗号化とアクセス制御
+[ ] MCP 公開前: security-checklist §D-2
 ```
 
 ---
@@ -249,7 +267,7 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 | 優先 | 項目 | 理由 |
 |------|------|------|
 | ~~**P0**~~ | ~~ログイン時の stakeholder 任意選択の廃止~~ | ✅ 2026-06-10 |
-| **P0** | 本番 auth 設定（JWT / ヘッダ認証 / パスワード） | 偽造・バイパス |
+| **P0** | 本番 auth 設定（JWT / ヘッダ認証 / パスワード） | 偽造・バイパス — `validate_production_env.py` で自動検証強化（2026-07-04） |
 | ~~**P0**~~ | ~~`audit-events` の firm フィルタ~~ | ✅ 2026-06-10 |
 | ~~**P1**~~ | ~~`client_master` の firm スコープ~~ | ✅ 2026-06-10 |
 | ~~**P1**~~ | ~~フロント `canAccessClient` をサーバー割当に同期~~ | ✅ 2026-06-10 |
@@ -273,7 +291,7 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 |----|------|------|
 | T1 | firm A のトークンで firm B の client / version に必ず 403 | ✅ 主要 API で pytest 担保 |
 | T2 | 担当外顧問先は一覧 API が空 | ✅ client-master 等 |
-| T3 | 業務 SQL に `firm_id` 条件 | ⚠️ グローバル設定ファイルは firm 分離前 |
+| T3 | 業務 SQL に `firm_id` 条件 | ✅ 主要一覧・監査は済。`role-permissions` は意図的に platform グローバル（`settings.platform` 保護） |
 | T4 | 拒否は audit_events に firm_id + denied | ✅ 記録・一覧とも firm スコープ |
 | T5 | 本番でヘッダ認証・デフォルト JWT 秘密鍵が起動時失敗 | ✅ 実装済み（本番起動確認が必要） |
 
@@ -283,7 +301,7 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 
 **今のフェーズで効いている対策:** firm 境界付きの顧問先認可、主要 IDOR 修正、版 PDF の firm 配下保存、`client_assignments`、JWT + RBAC、拒否監査、AI キーの GET 非返却。
 
-**本番前に危険な点:** 共有パスワード（本番無効化必須）、AI キー等のグローバル設定ファイルの firm 横断共有、開発用ヘッダ認証、JWT の localStorage 保存。
+**本番前に危険な点:** 共有パスワード（本番無効化必須）、開発用ヘッダ認証、Cookie 未使用時の JWT localStorage 残存リスク。
 
 開発時の手順は [`dev-quickstart.md`](dev-quickstart.md)（Google OAuth 設定なしで起動可能）。
 
@@ -296,4 +314,4 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 | 2026-06-10 | 初版（マルチテナント P1.5 途中時点の洗い出し） |
 | 2026-06-10 | P0/P1 対応: member_directory、audit-events firm フィルタ、client_master マージ、visible_client_ids |
 | 2026-06-10 | platform_admin、`settings.platform`、docugrid save 必須化、Drive upload 削除、設定 UI 権限制御 |
-| 2026-06-10 | firm_members DB、inactive ログイン拒否、firm 単位 system-config / AI キー |
+| 2026-07-04 | 本番 pre-flight 強化: legacy /files・JWT プレースホルダ・member_directory dev メール検出。`bootstrap_production` は本番で dev メールを投入しない |

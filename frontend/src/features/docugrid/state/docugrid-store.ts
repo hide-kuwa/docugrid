@@ -4,6 +4,7 @@ import { immer } from "zustand/middleware/immer";
 import type { FileEntity, HighlightEntity, PageEntity } from "../schema/entities";
 import type { DocugridNormalizedState } from "../schema/normalized-state";
 import type { FileId, HighlightId, PageId } from "../schema/ids";
+import { asPageId } from "../schema/ids";
 import type { SyncStatus } from "../schema/sync";
 
 export const initialDocugridState: DocugridNormalizedState = {
@@ -51,6 +52,8 @@ type DocugridActions = {
   removePageSlotsAtIndices: (slotIndices: number[]) => void;
   /** ビューア並べ替え UI: 選択スロットだけ pageOrder を残す */
   keepOnlyPageSlotsAtIndices: (slotIndices: number[]) => void;
+  /** PDF 実ページ数がストアより多いとき、先頭ファイルの pageOrder を拡張 */
+  ensurePrimaryFilePageCount: (targetCount: number) => void;
 };
 
 export type DocugridStore = DocugridNormalizedState & DocugridActions;
@@ -135,6 +138,36 @@ export const useDocugridStore = create<DocugridStore>()(
         for (const fid of touched) {
           markFileSync(draft, fid, "dirty");
         }
+        draft.sessionSyncStatus = "dirty";
+        draft.lastSyncError = undefined;
+      });
+    },
+
+    ensurePrimaryFilePageCount: (targetCount: number) => {
+      set((draft) => {
+        const fileId = draft.fileOrder[0];
+        if (!fileId || targetCount <= 0) return;
+        const file = draft.filesById[fileId];
+        if (!file) return;
+        const currentLen = draft.pageOrder.length;
+        if (currentLen >= targetCount) return;
+        for (let i = currentLen; i < targetCount; i++) {
+          const pid = asPageId(`${fileId}::${i}`);
+          if (!draft.pagesById[pid]) {
+            draft.pagesById[pid] = {
+              id: pid,
+              fileId,
+              originalIndex: i,
+              displayKey: `${fileId}-pg-${i}`,
+            };
+            draft.highlightIdsByPageId[pid] = [];
+          }
+          if (!draft.pageOrder.includes(pid)) {
+            draft.pageOrder.push(pid);
+          }
+        }
+        file.pageCount = Math.max(file.pageCount, targetCount);
+        markFileSync(draft, fileId, "dirty");
         draft.sessionSyncStatus = "dirty";
         draft.lastSyncError = undefined;
       });

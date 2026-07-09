@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import fitz
 import requests
 
+from services.form_catalog import build_vision_prompt_snippet, load_form_catalog_config
 from services.tax_document_types import (
     AI_CLASSIFICATION_JSON_SCHEMA,
     TAX_DOCUMENT_TYPES,
@@ -56,9 +57,10 @@ def pdf_pages_as_data_urls(content: bytes, max_pages: int = _MAX_VISION_PAGES) -
 
 def _build_vision_prompt(filename: Optional[str], text_excerpt: str) -> str:
     types_line = ", ".join(TAX_DOCUMENT_TYPES)
-    return (
+    base = (
         "あなたは日本の税務・会計書類を識別する専門家です。"
-        "添付画像は税務・会計ソフトから出力された PDF の先頭ページです。"
+        "添付画像は税務・会計ソフトから出力された PDF のページです（複数ページの場合はページ番号順）。"
+        "表紙・送付状をスキップし、各様式本体が何ページ目から始まるかも意識して判定してください。"
         "ヘッダー文字列・表構造・法定様式名から書類種別を判定してください。\n\n"
         f"ファイル名: {filename or '(不明)'}\n"
         f"抽出テキスト抜粋: {text_excerpt[:1500] or '(なし)'}\n\n"
@@ -71,6 +73,19 @@ def _build_vision_prompt(filename: Optional[str], text_excerpt: str) -> str:
         "- CONSUMPTION_TAX: 消費税申告書・試算表\n"
         "- UNKNOWN: 判定不能\n"
     )
+    if load_form_catalog_config and build_vision_prompt_snippet:
+        try:
+            from services.form_catalog_compiler import build_learning_vision_prompt
+
+            snippet = build_learning_vision_prompt(max_forms=8)
+            if not snippet:
+                forms = load_form_catalog_config()["forms"]
+                snippet = build_vision_prompt_snippet(forms, max_forms=8)
+            if snippet:
+                return f"{base}\n\n## 様式カタログ（参照）\n{snippet}"
+        except Exception:
+            pass
+    return base
 
 
 def vision_classify_openai(

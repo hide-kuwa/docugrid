@@ -139,6 +139,7 @@ export default function SettingsPage() {
   const [aiGeminiApiKey, setAiGeminiApiKey] = useState("");
   const [alertConsumptionTaxMonthsBeforeDue, setAlertConsumptionTaxMonthsBeforeDue] = useState(2);
   const [alertCorporateTaxMonthsBeforeDue, setAlertCorporateTaxMonthsBeforeDue] = useState(2);
+  const [matrixYearDisplayCount, setMatrixYearDisplayCount] = useState(5);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configMessage, setConfigMessage] = useState<string>("");
@@ -328,6 +329,7 @@ export default function SettingsPage() {
           ocr_auto_extract_enabled?: boolean;
           alert_consumption_tax_months_before_due?: number;
           alert_corporate_tax_months_before_due?: number;
+          matrix_year_display_count?: number;
           ai_openai_enabled?: boolean;
           ai_openai_model?: string;
           ai_openai_key_configured?: boolean;
@@ -347,6 +349,9 @@ export default function SettingsPage() {
           setOcrAutoExtractEnabled(data.ocr_auto_extract_enabled ?? true);
           setAlertConsumptionTaxMonthsBeforeDue(data.alert_consumption_tax_months_before_due ?? 2);
           setAlertCorporateTaxMonthsBeforeDue(data.alert_corporate_tax_months_before_due ?? 2);
+          setMatrixYearDisplayCount(
+            Math.min(30, Math.max(1, data.matrix_year_display_count ?? 5)),
+          );
           setAiOpenaiEnabled(!!data.ai_openai_enabled);
           setAiOpenaiModel(data.ai_openai_model ?? "gpt-4o-mini");
           setAiOpenaiKeyConfigured(!!data.ai_openai_key_configured);
@@ -551,6 +556,7 @@ export default function SettingsPage() {
           ocr_auto_extract_enabled: ocrAutoExtractEnabled,
           alert_consumption_tax_months_before_due: alertConsumptionTaxMonthsBeforeDue,
           alert_corporate_tax_months_before_due: alertCorporateTaxMonthsBeforeDue,
+          matrix_year_display_count: matrixYearDisplayCount,
           ai_openai_enabled: aiOpenaiEnabled,
           ai_openai_model: aiOpenaiModel,
           ai_gemini_enabled: aiGeminiEnabled,
@@ -1661,10 +1667,27 @@ export default function SettingsPage() {
                   AI / OCR
                 </h3>
               <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-sm font-bold text-slate-800">AI / OCR 分類（システム管理者）</div>
-                <p className="mt-1 text-xs text-slate-500">
-                  API キーはサーバーにのみ保存され、画面には表示されません。ルール分類の確信度が低い場合に OpenAI で補助します。
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-slate-800">AI / OCR 分類（システム管理者）</div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      API キーはサーバーにのみ保存され、画面には表示されません。Gemini のみ、または OpenAI → Gemini の順で補助分類・Vision 分類に使います。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveIntegrationConfig}
+                    disabled={!canEditPlatformSettings || isLoadingConfig || isSavingConfig}
+                    className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {isSavingConfig ? "保存中..." : "設定保存"}
+                  </button>
+                </div>
+                {!canEditPlatformSettings && (
+                  <p className="mt-3 text-xs text-amber-700">
+                    保存にはプラットフォーム管理者権限（settings.platform）が必要です。
+                  </p>
+                )}
                 <div className="mt-4 space-y-4">
                   <label className="flex items-center justify-between text-xs text-slate-600">
                     <span>OCR 自動抽出を有効化</span>
@@ -1736,6 +1759,9 @@ export default function SettingsPage() {
                     </label>
                   </div>
                 </div>
+                {configMessage && (
+                  <p className="mt-3 text-xs text-slate-500">{configMessage}</p>
+                )}
               </article>
               </div>
 
@@ -1802,6 +1828,33 @@ export default function SettingsPage() {
                 {packageTemplateMessage && (
                   <p className="mt-3 text-xs text-slate-500">{packageTemplateMessage}</p>
                 )}
+              </article>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  マトリクス表示
+                </h3>
+              <article className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm font-bold text-slate-800">年度ドラム</div>
+                <p className="mt-1 text-xs text-slate-500">
+                  最新年度は自動で更新されます。表示する年数（1〜30、既定5）より前の資料は OLD にまとめて表示します。
+                </p>
+                <label className="mt-3 flex items-center justify-between text-xs text-slate-600">
+                  <span>表示年数</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={matrixYearDisplayCount}
+                    onChange={(e) =>
+                      setMatrixYearDisplayCount(
+                        Math.min(30, Math.max(1, Number(e.target.value) || 5)),
+                      )
+                    }
+                    className="w-20 rounded border border-slate-300 px-2 py-1"
+                  />
+                </label>
               </article>
               </div>
 

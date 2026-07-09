@@ -19,7 +19,7 @@ export async function fetchFirmMembers(): Promise<FirmMemberRow[]> {
 
 export async function patchFirmMemberStatus(
   memberId: string,
-  status: "active" | "inactive",
+  status: "active" | "inactive" | "pending",
 ): Promise<FirmMemberRow> {
   const res = await authFetch(`${API_BASE}/firm-members/${encodeURIComponent(memberId)}`, {
     method: "PATCH",

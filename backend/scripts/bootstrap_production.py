@@ -58,7 +58,7 @@ def _merge_lines(template: str, overrides: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _seed_member_directory() -> int:
+def _seed_member_directory(*, include_dev_defaults: bool) -> int:
     from services.member_directory import DEFAULT_EMAIL_TO_STAKEHOLDER
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,10 +68,17 @@ def _seed_member_directory() -> int:
     else:
         mapping = {}
     added = 0
-    for email, sid in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
-        if email.lower() not in mapping:
-            mapping[email.lower()] = sid
-            added += 1
+    if include_dev_defaults:
+        for email, sid in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
+            if email.lower() not in mapping:
+                mapping[email.lower()] = sid
+                added += 1
+    elif not mapping:
+        MEMBER_PATH.write_text(
+            json.dumps({"emailToStakeholderId": {}}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return 0
     payload = {"emailToStakeholderId": mapping}
     MEMBER_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return added
@@ -159,8 +166,18 @@ def main() -> int:
     print(f"Wrote {OUT_FRONT_PROD}")
 
     if not args.skip_member_directory:
-        added = _seed_member_directory()
-        print(f"member_directory.json: {added} email(s) added -> {MEMBER_PATH}")
+        added = _seed_member_directory(include_dev_defaults=args.staging_local)
+        if args.staging_local:
+            print(f"member_directory.json: {added} dev email(s) added -> {MEMBER_PATH}")
+        elif MEMBER_PATH.is_file():
+            count = len(
+                json.loads(MEMBER_PATH.read_text(encoding="utf-8")).get("emailToStakeholderId") or {}
+            )
+            print(f"member_directory.json: {count} email(s) -> {MEMBER_PATH}")
+            if count == 0:
+                print(
+                    "  Add users: python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
+                )
 
     print("\nNext:")
     print("  1. Set GOOGLE_OAUTH_CLIENT_ID in .env.production + Google Console origins")

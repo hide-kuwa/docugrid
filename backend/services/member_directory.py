@@ -30,11 +30,11 @@ DEFAULT_EMAIL_TO_STAKEHOLDER: dict[str, str] = {
 
 
 def password_login_allowed() -> bool:
-    """Password login is for local dev/tests only; disabled in production by default."""
+    """Password login is disabled unless explicitly enabled (tests / emergency dev only)."""
     raw = os.environ.get("DOCUGRID_ALLOW_PASSWORD_LOGIN")
     if raw is not None:
         return raw.lower() in ("1", "true", "yes")
-    return not is_production()
+    return False
 
 
 def login_stakeholder_pick_allowed() -> bool:

@@ -1,0 +1,33 @@
+---
+description: Security and tenancy rules for backend and MCP
+globs: backend/**/*.py,mcp-server/**/*
+alwaysApply: false
+---
+
+# Security backend rules
+
+Full checklist: `docs/security-checklist.md`. Design: `docs/auth-tenancy-design.md`.
+
+## Before merging auth/API changes
+
+1. JWT `firm_id` is the trust boundary (not headers alone in prod).
+2. List/detail endpoints: SQL or query includes `firm_id = ctx.firm_id`.
+3. Resource-by-ID routes: resolve firm/client then call `authorize_*` (IDOR pattern).
+4. Storage paths under `storage/{firm_id}/...`; no cross-firm reads.
+5. Add or extend `backend/tests/test_security.py` for new boundary.
+
+## Key modules
+
+| Module | Role |
+|--------|------|
+| `backend/services/tenancy.py` | `authorize_client_access`, `visible_client_ids`, firm resolution |
+| `backend/docugrid_auth.py` | JWT issue/verify, roles, MCP token |
+| `backend/main.py` | Route handlers — verify each uses tenancy helpers |
+| `mcp-server/src/guards.ts` | Pre-call client scope; prod JWT/HTTPS checks |
+
+## Anti-patterns
+
+- Trusting `X-Docugrid-Client` or `client_id` query without server authorization.
+- Admin bypass without `firm_admin` + same-firm check.
+- Returning 404 vs 403 inconsistently on cross-tenant access (prefer 403 where checklist says so).
+- Unauthenticated API tests on a shared `TestClient` after login tests (CSRF 403 masks 401). Use `fresh_client` fixture in `backend/tests/conftest.py`.

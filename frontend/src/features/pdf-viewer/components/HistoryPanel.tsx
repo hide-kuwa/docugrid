@@ -5,6 +5,7 @@ type HistoryPanelProps = {
   isHistoryOpen: boolean;
   onClose: () => void;
   history: EnhancedDocVersion[];
+  latestVersionIdx: number;
   activeVerIdx: number;
   setActiveVerIdx: (idx: number) => void;
   unsavedActions: string[];
@@ -21,6 +22,7 @@ export const HistoryPanel = ({
   isHistoryOpen,
   onClose,
   history,
+  latestVersionIdx,
   activeVerIdx,
   setActiveVerIdx,
   unsavedActions,
@@ -34,8 +36,9 @@ export const HistoryPanel = ({
 }: HistoryPanelProps) => {
   return (
     <div
-      className={`absolute top-0 right-0 z-10 flex h-full w-[320px] flex-col border-l border-slate-700 bg-slate-800 shadow-2xl transition-all duration-300 ${
-        isHistoryOpen ? "translate-x-0 opacity-100 pointer-events-auto" : "translate-x-full opacity-0 pointer-events-none"
+      aria-hidden={!isHistoryOpen}
+      className={`flex h-full shrink-0 flex-col overflow-hidden border-l border-slate-700 bg-slate-800 shadow-2xl transition-[width,opacity] duration-300 ${
+        isHistoryOpen ? "w-[320px] opacity-100 pointer-events-auto" : "w-0 border-l-0 opacity-0 pointer-events-none"
       }`}
     >
       <div className="flex h-14 items-center justify-between border-b border-slate-700 bg-slate-900/50 p-4">
@@ -117,7 +120,7 @@ export const HistoryPanel = ({
                       共有解除
                     </span>
                   ) : null}
-                  {!isNonVersionMeta && i === 0 ? (
+                  {!isNonVersionMeta && i === latestVersionIdx ? (
                     <span className="rounded border border-emerald-700 bg-emerald-900 px-1.5 text-[9px] text-emerald-300">
                       最新
                     </span>
@@ -151,7 +154,7 @@ export const HistoryPanel = ({
               </div>
             </div>
 
-            {!isNonVersionMeta && i > 0 && onCompareWithCurrent ? (
+            {!isNonVersionMeta && i !== latestVersionIdx && latestVersionIdx >= 0 && onCompareWithCurrent ? (
               <button
                 type="button"
                 disabled={compareLoadingIdx === i}

@@ -439,6 +439,7 @@ export const DOCUMENT_CATEGORIES: DocumentCategoryConfig[] = [
 ];
 
 export const PERIODS = {
-  year: ["R7", "R6", "R5", "R4"],
+  /** @deprecated 年度は buildYearDrumMeta() で動的生成。フォールバック用のみ */
+  year: ["R8", "R7", "R6", "R5", "R4", "OLD"],
   month: Array.from({ length: 12 }, (_, i) => `${12 - i}月`),
 };

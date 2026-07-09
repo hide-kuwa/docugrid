@@ -42,7 +42,7 @@ export const AuditWorkflowGuide = ({
       <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950">
         <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
         <p>
-          監査・照合は<strong>「編集する」</strong>で開いたビューアから行います。プレビューでは操作できません。
+          監査・照合はヘッダーの<strong>「編集を開始」</strong>で編集モードに切り替えて行います。プレビューでは操作できません。
         </p>
       </div>
     );

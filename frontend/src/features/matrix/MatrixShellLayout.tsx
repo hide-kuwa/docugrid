@@ -5,12 +5,19 @@ import { LayoutDashboard, Pin, PinOff, X } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Sidebar from "@/components/Sidebar";
 import type { ClientScopeMode, NavClient } from "@/lib/client-nav";
+import type { PeriodLists } from "@/lib/fiscal-year-drum";
+import type { CatalogCategoryFields } from "@/features/docugrid/lib/document-catalog-api";
 
 type Props = {
+  viewMode: MatrixViewMode;
+  onViewModeToggle: () => void;
   navClients: NavClient[];
   currentClient: NavClient;
   activeClientIdx: number;
   onClientChange: (idx: number) => void;
+  docCategories: CatalogCategoryFields[];
+  activeDocCategoryIdx: number;
+  onDocCategoryChange: (idx: number) => void;
   clientScopeMode: ClientScopeMode;
   canToggleClientScope: boolean;
   onClientScopeModeChange: (mode: ClientScopeMode) => void;
@@ -18,6 +25,7 @@ type Props = {
   activePeriodIdx: number;
   onPeriodChange: (idx: number) => void;
   onModeSwitch: () => void;
+  matrixPeriods?: PeriodLists;
   insights?: ReactNode;
   showInsightsToggle?: boolean;
   insightsOpen?: boolean;
@@ -29,10 +37,15 @@ type Props = {
 };
 
 export function MatrixShellLayout({
+  viewMode,
+  onViewModeToggle,
   navClients,
   currentClient,
   activeClientIdx,
   onClientChange,
+  docCategories,
+  activeDocCategoryIdx,
+  onDocCategoryChange,
   clientScopeMode,
   canToggleClientScope,
   onClientScopeModeChange,
@@ -40,6 +53,7 @@ export function MatrixShellLayout({
   activePeriodIdx,
   onPeriodChange,
   onModeSwitch,
+  matrixPeriods,
   insights,
   showInsightsToggle = false,
   insightsOpen = false,
@@ -54,20 +68,30 @@ export function MatrixShellLayout({
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100 font-sans text-slate-600">
       <NavBar
+        viewMode={viewMode}
+        onViewModeToggle={onViewModeToggle}
         clients={navClients}
         currentClient={currentClient}
         activeClientIdx={activeClientIdx}
         onClientChange={onClientChange}
+        docCategories={docCategories}
+        activeDocCategoryIdx={activeDocCategoryIdx}
+        onDocCategoryChange={onDocCategoryChange}
         scopeMode={clientScopeMode}
         canToggleScope={canToggleClientScope}
         onScopeModeChange={onClientScopeModeChange}
       />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
+          viewMode={viewMode}
           activeMode={activeMode}
           activePeriodIdx={activePeriodIdx}
           onPeriodChange={onPeriodChange}
           onModeSwitch={onModeSwitch}
+          clients={navClients}
+          activeClientIdx={activeClientIdx}
+          onClientChange={onClientChange}
+          matrixPeriods={matrixPeriods}
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">

@@ -205,7 +205,7 @@ def test_list_vouch_stamps(storage_tmp) -> None:
 
 
 def test_audit_auto_link_http(storage_tmp, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("main.run_auto_vouch", run_auto_vouch)
+    monkeypatch.setattr("api.application.run_auto_vouch", run_auto_vouch)
 
     pdf_path = storage_tmp / "invoice.pdf"
     pdf_path.write_bytes(_pdf_with_text("御請求金額 50,000"))
@@ -229,7 +229,7 @@ def test_audit_auto_link_http(storage_tmp, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_audit_auto_link_http_not_found(storage_tmp, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("main.run_auto_vouch", run_auto_vouch)
+    monkeypatch.setattr("api.application.run_auto_vouch", run_auto_vouch)
 
     pdf_path = storage_tmp / "empty.pdf"
     pdf_path.write_bytes(_pdf_with_text("no numbers"))

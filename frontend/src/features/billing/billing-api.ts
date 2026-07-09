@@ -98,6 +98,48 @@ export type BillingPartnerInfo = {
 
 
 
+export type BillingMe = {
+
+  configured: boolean;
+
+  firmId: string;
+
+  status: string;
+
+  planId?: string | null;
+
+  currentPeriodEnd?: string | null;
+
+  cancelAtPeriodEnd?: boolean;
+
+  pricing?: BillingPricing;
+
+  primaryPlanId: string;
+
+  active: boolean;
+
+  requiresAttention: boolean;
+
+  redirectPath: string;
+
+  canManageBilling?: boolean;
+
+  /** Stripe secret + plan price IDs are set — checkout can start */
+  checkoutReady?: boolean;
+};
+
+export type BillingErrorDetail = {
+
+  code?: string;
+
+  status?: string;
+
+  redirect?: string;
+
+  message?: string;
+
+};
+
 export type BillingStatus = {
 
   configured: boolean;
@@ -136,6 +178,8 @@ export type BillingStatus = {
 
   ai?: BillingAiSummary | null;
 
+  canManageBilling?: boolean;
+
 };
 
 
@@ -163,6 +207,40 @@ const STATUS_LABELS: Record<string, string> = {
 export function billingStatusLabel(status: string): string {
 
   return STATUS_LABELS[status] ?? status;
+
+}
+
+
+
+export function isBillingInactiveError(detail: unknown): detail is BillingErrorDetail {
+
+  return (
+
+    typeof detail === "object" &&
+
+    detail !== null &&
+
+    (detail as BillingErrorDetail).code === "billing_inactive"
+
+  );
+
+}
+
+
+
+export async function fetchBillingMe(signal?: AbortSignal): Promise<BillingMe> {
+
+  const res = await authFetch(`${API_BASE}/billing/me`, {
+
+    headers: buildAuthHeaders(),
+
+    signal,
+
+  });
+
+  if (!res.ok) throw new Error(`billing-me-failed:${res.status}`);
+
+  return (await res.json()) as BillingMe;
 
 }
 
@@ -206,7 +284,14 @@ export async function startBillingCheckout(planId: string): Promise<string> {
 
   });
 
-  if (!res.ok) throw new Error(`billing-checkout-failed:${res.status}`);
+  if (!res.ok) {
+    const { parseApiErrorResponse } = await import("@/lib/parse-api-error");
+    const detail = await parseApiErrorResponse(
+      res,
+      "チェックアウトを開始できませんでした。",
+    );
+    throw new Error(detail);
+  }
 
   const data = (await res.json()) as { url: string };
 

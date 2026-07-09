@@ -33,6 +33,20 @@ import {
   shouldOpenAuditEdit,
 } from "@/features/audit/lib/resolve-audit-open-intent";
 import { MatrixShellLayout } from "@/features/matrix/MatrixShellLayout";
+import { DocumentHistoryGrid } from "@/features/matrix/DocumentHistoryGrid";
+import { OldYearArchiveGrid } from "@/features/matrix/OldYearArchiveGrid";
+import type { MatrixViewMode } from "@/lib/matrix-view-mode";
+import {
+  buildMatrixPeriods,
+  buildYearDrumMeta,
+  clampYearDisplayCount,
+  isOldPeriodKey,
+  YEAR_DISPLAY_COUNT_DEFAULT,
+} from "@/lib/fiscal-year-drum";
+import {
+  fetchCatalogCategories,
+  type CatalogCategoryFields,
+} from "@/features/docugrid/lib/document-catalog-api";
 import {
   slotCatalogKey,
   type RelatedDocumentRef,
@@ -45,6 +59,8 @@ import { DocumentExtractionReview } from "@/features/client-data/components/Docu
 import type { ExtractionReviewPayload } from "@/features/client-data/lib/extraction-api";
 import { hasInsightsPanel, InsightsPanel } from "@/features/matrix/InsightsPanel";
 import { FeatureTourHost } from "@/features/onboarding/FeatureTourHost";
+import { BillingGatePanel } from "@/features/billing/BillingGatePanel";
+import { fetchBillingMe, type BillingMe } from "@/features/billing/billing-api";
 import { hydrateDocugridForSlot } from "@/features/docugrid/lib/hydrate-docugrid-slot";
 import { parseSlotKey } from "@/features/docugrid/lib/slot-scope";
 import { useDocugridAutoSync } from "@/features/docugrid/hooks/useDocugridAutoSync";
@@ -61,6 +77,7 @@ import {
   restoreSlotDocument,
   shareSlotWithClient,
   unshareSlotWithClient,
+  type SlotDocumentItem,
 } from "@/features/docugrid/lib/slot-documents";
 import { createReviewEvent, listReviewTimeline, type ReviewTimelineItem } from "@/features/pdf-viewer/lib/review-events";
 import { createDocumentVersionSnapshot } from "@/features/pdf-viewer/lib/document-versions";
@@ -71,6 +88,7 @@ import {
   type ClassifyPersistMetadata,
   type ClassifyRankedItem,
 } from "@/features/docugrid/lib/classify";
+import { summarizeAutoSortEngines } from "@/features/docugrid/lib/classify-display";
 import {
   createPendingClassify,
   deletePendingClassify,
@@ -165,6 +183,14 @@ export default function DocuGridPage() {
   const [clientScopeMode, setClientScopeMode] = useState<ClientScopeMode>("assigned");
   const [activeMode, setActiveMode] = useState<"year" | "month">("year");
   const [activePeriodIdx, setActivePeriodIdx] = useState(2);
+  const [matrixViewMode, setMatrixViewMode] = useState<MatrixViewMode>("client-period");
+  const [docCategories, setDocCategories] = useState<CatalogCategoryFields[]>([]);
+  const [activeDocCategoryIdx, setActiveDocCategoryIdx] = useState(0);
+  const [docHistoryItems, setDocHistoryItems] = useState<SlotDocumentItem[]>([]);
+  const [docHistoryLoading, setDocHistoryLoading] = useState(false);
+  const [oldArchiveItems, setOldArchiveItems] = useState<SlotDocumentItem[]>([]);
+  const [oldArchiveLoading, setOldArchiveLoading] = useState(false);
+  const [matrixYearDisplayCount, setMatrixYearDisplayCount] = useState(YEAR_DISPLAY_COUNT_DEFAULT);
 
   const [file, setFile] = useState<File | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -189,6 +215,7 @@ export default function DocuGridPage() {
   const pendingRelatedOpenRef = useRef<RelatedDocumentRef | null>(null);
   const matrixDeepLinkHandled = useRef(false);
   const [statusNonce, setStatusNonce] = useState(0);
+  const shareActionBusyRef = useRef(false);
   const [timelineEvents, setTimelineEvents] = useState<ReviewTimelineItem[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const annotationSnapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,6 +274,8 @@ export default function DocuGridPage() {
   const [insightsPinned, setInsightsPinned] = useState(false);
   const [tourTriggerId, setTourTriggerId] = useState<string | null>(null);
   const [classifyHint, setClassifyHint] = useState<string | null>(null);
+  const [billingMe, setBillingMe] = useState<BillingMe | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
   const [extractionReviewCtx, setExtractionReviewCtx] = useState<{
     periodKey: string;
     slotId: string;
@@ -334,6 +363,23 @@ export default function DocuGridPage() {
     };
   }, [router]);
 
+  const reloadBilling = useCallback(async () => {
+    if (!hasPermission(currentUser, "dashboard.view")) return;
+    setBillingLoading(true);
+    try {
+      setBillingMe(await fetchBillingMe());
+    } catch {
+      setBillingMe(null);
+    } finally {
+      setBillingLoading(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!authChecked || !currentUser) return;
+    void reloadBilling();
+  }, [authChecked, currentUser, reloadBilling]);
+
   useEffect(() => {
     if (!isViewerOpen || !viewerSourceFile) return;
     fileRef.current = viewerSourceFile;
@@ -396,6 +442,67 @@ export default function DocuGridPage() {
     [activeClientIdx, assignedClientIdSet, navClients],
   );
 
+  const activeDocCategory = docCategories[activeDocCategoryIdx] ?? docCategories[0] ?? null;
+
+  const toggleMatrixViewMode = useCallback(() => {
+    setMatrixViewMode((prev) => (prev === "client-period" ? "document-client" : "client-period"));
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked || !canViewDocument) return;
+    const controller = new AbortController();
+    void authFetch(`${API_BASE}/system-config`, { headers: buildAuthHeaders(), signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { matrix_year_display_count?: number };
+        setMatrixYearDisplayCount(clampYearDisplayCount(data.matrix_year_display_count ?? YEAR_DISPLAY_COUNT_DEFAULT));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [authChecked, canViewDocument]);
+
+  useEffect(() => {
+    if (!authChecked || !canViewDocument) return;
+    const controller = new AbortController();
+    void fetchCatalogCategories(controller.signal)
+      .then((cats) => {
+        setDocCategories(cats);
+        setActiveDocCategoryIdx((idx) => (idx < cats.length ? idx : 0));
+      })
+      .catch(() => setDocCategories([]));
+    return () => controller.abort();
+  }, [authChecked, canViewDocument]);
+
+  useEffect(() => {
+    if (matrixViewMode !== "document-client") return;
+    if (!canViewDocument || !currentClient.id || currentClient.id === "unknown") {
+      setDocHistoryItems([]);
+      return;
+    }
+    const category = docCategories[activeDocCategoryIdx];
+    if (!category) {
+      setDocHistoryItems([]);
+      return;
+    }
+    const controller = new AbortController();
+    setDocHistoryLoading(true);
+    void listSlotDocuments(currentClient.id, undefined, controller.signal)
+      .then((items) => {
+        const filtered = items.filter((item) => item.slot_id === category.category_id);
+        setDocHistoryItems(filtered);
+      })
+      .catch(() => setDocHistoryItems([]))
+      .finally(() => setDocHistoryLoading(false));
+    return () => controller.abort();
+  }, [
+    matrixViewMode,
+    canViewDocument,
+    currentClient.id,
+    activeDocCategoryIdx,
+    docCategories,
+    statusNonce,
+  ]);
+
   const onSelectRelatedClient = useCallback(
     (clientId: string) => {
       if (!canAccessClient(stakeholder, clientId, currentUser?.visibleClientIds)) return;
@@ -457,7 +564,20 @@ export default function DocuGridPage() {
     [canUploadDocument, scopedAuthHeaders],
   );
 
-  const periodKey = periodKeyFromIndex(activePeriodIdx, activeMode);
+  const yearDrumMeta = useMemo(
+    () => buildYearDrumMeta(matrixYearDisplayCount, new Date(), currentClient.fiscal),
+    [matrixYearDisplayCount, currentClient.fiscal],
+  );
+  const matrixPeriods = useMemo(() => buildMatrixPeriods(yearDrumMeta), [yearDrumMeta]);
+
+  const periodKey = periodKeyFromIndex(activePeriodIdx, activeMode, matrixPeriods);
+
+  useEffect(() => {
+    const lastPeriodIdx = 1 + matrixPeriods.year.length;
+    if (activePeriodIdx > lastPeriodIdx) {
+      setActivePeriodIdx(2);
+    }
+  }, [matrixPeriods.year.length, activePeriodIdx]);
 
   const currentOrgClient = useMemo(
     () => orgClients.find((c) => c.id === currentClient.id) ?? null,
@@ -689,7 +809,8 @@ export default function DocuGridPage() {
 
   const handleShareWithClient = useCallback(
     async (docId: string) => {
-      if (!canShareWithClient) return;
+      if (!canShareWithClient || shareActionBusyRef.current) return;
+      shareActionBusyRef.current = true;
       try {
         const item = await shareSlotWithClient(docId, currentClient.id);
         setSlotDocs((prev) => {
@@ -706,6 +827,8 @@ export default function DocuGridPage() {
       } catch (err) {
         console.error("Client share failed:", err);
         setSlotNotice("クライアント共有に失敗しました。");
+      } finally {
+        shareActionBusyRef.current = false;
       }
     },
     [canShareWithClient, currentClient.id],
@@ -713,7 +836,8 @@ export default function DocuGridPage() {
 
   const handleUnshareWithClient = useCallback(
     async (docId: string) => {
-      if (!canShareWithClient) return;
+      if (!canShareWithClient || shareActionBusyRef.current) return;
+      shareActionBusyRef.current = true;
       try {
         await unshareSlotWithClient(docId, currentClient.id);
         setSlotDocs((prev) => {
@@ -730,6 +854,8 @@ export default function DocuGridPage() {
       } catch (err) {
         console.error("Client unshare failed:", err);
         setSlotNotice("共有解除に失敗しました。");
+      } finally {
+        shareActionBusyRef.current = false;
       }
     },
     [canShareWithClient, currentClient.id],
@@ -1117,6 +1243,7 @@ export default function DocuGridPage() {
       const filledNow = new Set<number>();
       const queued: PendingReview[] = [];
       let autoCount = 0;
+      const enginesUsed: string[] = [];
       setIsClassifying(true);
       try {
         for (const file of pdfs) {
@@ -1130,6 +1257,7 @@ export default function DocuGridPage() {
             confidence = result.confidence;
             ranked = result.ranked;
             engine = result.engine;
+            enginesUsed.push(engine);
             classifyMeta = toClassifyPersistMetadata(result);
             setClassifyHint(describeClassifyCapabilities(result.capabilities));
             bestIdx = result.best
@@ -1212,9 +1340,10 @@ export default function DocuGridPage() {
         const parts: string[] = [];
         if (autoCount > 0) parts.push(`${autoCount}件を自動振り分け`);
         if (persistedQueued.length > 0) parts.push(`${persistedQueued.length}件は要確認`);
-        setSlotNotice(
-          parts.length > 0 ? `${parts.join(" / ")}しました。` : "振り分け対象がありませんでした。",
-        );
+        const aiSummary = summarizeAutoSortEngines(enginesUsed);
+        const base =
+          parts.length > 0 ? `${parts.join(" / ")}しました。` : "振り分け対象がありませんでした。";
+        setSlotNotice(aiSummary ? `${base}（${aiSummary}）` : base);
       } finally {
         setIsClassifying(false);
       }
@@ -1259,6 +1388,18 @@ export default function DocuGridPage() {
       setPendingReview((prev) => prev.filter((p) => p.id !== reviewId));
     },
     [currentClient.id],
+  );
+
+  const onOpenPendingPdf = useCallback(
+    (reviewId: string) => {
+      if (!canViewDocument) return;
+      const item = pendingReview.find((p) => p.id === reviewId);
+      if (!item) return;
+      // pending 用に docugrid ストアをリセットしつつ ViewerModal を開く
+      void activateDoc(item.file, null, `pending:${reviewId}`);
+      useViewerUiStore.getState().open("preview", item.file);
+    },
+    [pendingReview, canViewDocument, activateDoc],
   );
 
   const onAssignPackageToSlot = useCallback(
@@ -1380,11 +1521,11 @@ export default function DocuGridPage() {
   }, [canViewDocument, currentClient.id, periodKey, currentSlotLayout]);
 
   const onJumpToPeriod = useCallback((pk: string) => {
-    const resolved = periodIndexFromKey(pk);
+    const resolved = periodIndexFromKey(pk, matrixPeriods);
     if (!resolved) return;
     if (resolved.mode) setActiveMode(resolved.mode);
     setActivePeriodIdx(resolved.index);
-  }, []);
+  }, [matrixPeriods]);
 
   useEffect(() => {
     if (!authChecked || matrixDeepLinkHandled.current) return;
@@ -1433,7 +1574,7 @@ export default function DocuGridPage() {
             ? "formal"
             : undefined,
     };
-    const resolved = periodIndexFromKey(link.periodKey);
+    const resolved = periodIndexFromKey(link.periodKey, matrixPeriods);
     if (resolved) {
       if (resolved.mode) setActiveMode(resolved.mode);
       setActivePeriodIdx(resolved.index);
@@ -1445,6 +1586,7 @@ export default function DocuGridPage() {
     onSelectRelatedClient,
     router,
     stakeholder,
+    matrixPeriods,
   ]);
 
   const onOpenMetricVouch = useCallback(
@@ -1484,7 +1626,7 @@ export default function DocuGridPage() {
             audit: true,
             auditMode: "check",
           };
-          const resolved = periodIndexFromKey(suggest.document_ref.period_key);
+          const resolved = periodIndexFromKey(suggest.document_ref.period_key, matrixPeriods);
           if (!resolved) {
             setSlotNotice(`資料「${suggest.document_ref.label}」を開けません。`);
             pendingRelatedOpenRef.current = null;
@@ -1499,7 +1641,7 @@ export default function DocuGridPage() {
           setSlotNotice("監査チェックの準備に失敗しました。");
         });
     },
-    [canViewDocument, currentClient.id],
+    [canViewDocument, currentClient.id, matrixPeriods],
   );
 
   const onOpenRelatedDocument = useCallback(
@@ -1522,7 +1664,7 @@ export default function DocuGridPage() {
         return;
       }
       pendingRelatedOpenRef.current = ref;
-      const resolved = periodIndexFromKey(ref.periodKey);
+      const resolved = periodIndexFromKey(ref.periodKey, matrixPeriods);
       if (!resolved) {
         pendingRelatedOpenRef.current = null;
         setSlotNotice(`資料「${ref.label}」を開けません。`);
@@ -1538,6 +1680,7 @@ export default function DocuGridPage() {
       slotDocs,
       activeSlotKey,
       activateDoc,
+      matrixPeriods,
     ],
   );
 
@@ -1657,7 +1800,7 @@ export default function DocuGridPage() {
   // 顧客/期が変わったらサーバーに保存済みの資料を復元する
   useEffect(() => {
     if (!canViewDocument) return;
-    if (periodKey === "data") return;
+    if (periodKey === "data" || isOldPeriodKey(periodKey)) return;
     if (!currentClient.id || currentClient.id === "unknown") return;
     const controller = new AbortController();
     let active = true;
@@ -1773,6 +1916,30 @@ export default function DocuGridPage() {
       controller.abort();
     };
   }, [currentClient.id, periodKey, canViewDocument, canPurgeDocument, currentSlotLayout]);
+
+  useEffect(() => {
+    if (!isOldPeriodKey(periodKey)) {
+      setOldArchiveItems([]);
+      return;
+    }
+    if (!canViewDocument || !currentClient.id || currentClient.id === "unknown") {
+      setOldArchiveItems([]);
+      return;
+    }
+    const controller = new AbortController();
+    setOldArchiveLoading(true);
+    void listSlotDocuments(currentClient.id, undefined, controller.signal)
+      .then((items) => {
+        if (!controller.signal.aborted) setOldArchiveItems(items);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setOldArchiveItems([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setOldArchiveLoading(false);
+      });
+    return () => controller.abort();
+  }, [periodKey, canViewDocument, currentClient.id, statusNonce]);
 
   // 監査・版管理後にメタデータだけ更新（PDF再取得はしない）
   useEffect(() => {
@@ -1964,15 +2131,71 @@ export default function DocuGridPage() {
       if (!response.ok) throw new Error("Reorder failed");
       const blob = await response.blob();
       const updatedFile = new File([blob], `reordered_${file.name}`, { type: blob.type || "application/pdf" });
+      if (annotationSnapshotTimerRef.current) {
+        clearTimeout(annotationSnapshotTimerRef.current);
+        annotationSnapshotTimerRef.current = null;
+      }
       setFile(updatedFile);
       assignPreviewFromFile(updatedFile);
+
+      const scope =
+        activeSlotKey &&
+        !activeSlotKey.startsWith("unassigned:") &&
+        !activeSlotKey.startsWith("deleted:")
+          ? parseSlotKey(activeSlotKey)
+          : null;
+      if (scope) {
+        const idx = slotIndexFromSlotKey(activeSlotKey, periodKey);
+        const label = idx !== null && idx >= 0 ? slotLabels[idx] : undefined;
+        const snap = await createDocumentVersionSnapshot(scope, updatedFile, "minor", label);
+        const buffer = await updatedFile.arrayBuffer();
+        const digest = await crypto.subtle.digest("SHA-256", buffer);
+        const contentSha256 = Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        await createReviewEvent(scope, {
+          event_type: "page_reorder",
+          status: "draft",
+          action_title: "ページ並べ替え",
+          version_label: snap.version_label,
+          document_version_id: snap.id,
+          logical_document_id: snap.logical_document_id,
+          content_sha256: contentSha256,
+        });
+        setSlotDocs((prev) => {
+          const cur = prev[activeSlotKey];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [activeSlotKey]: {
+              ...cur,
+              file: updatedFile,
+              currentVersionId: snap.id,
+              currentVersionLabel: snap.version_label,
+              logicalDocumentId: snap.logical_document_id ?? cur.logicalDocumentId,
+              pageCount: snap.page_count ?? cur.pageCount,
+            },
+          };
+        });
+        setViewerSession((s) => s + 1);
+        setStatusNonce((v) => v + 1);
+      }
+
       return updatedFile;
     } catch (error) {
       alert("並べ替え処理に失敗しました。");
     } finally {
       setIsLoading(false);
     }
-  }, [file, assignPreviewFromFile, canAnnotateDocument, scopedAuthHeaders]);
+  }, [
+    file,
+    assignPreviewFromFile,
+    canAnnotateDocument,
+    scopedAuthHeaders,
+    activeSlotKey,
+    periodKey,
+    slotLabels,
+  ]);
 
   const handleMerge = useCallback(async (filesToMerge: File[]) => {
     setIsLoading(true);
@@ -2112,6 +2335,43 @@ export default function DocuGridPage() {
     [activeSlotKey, assignPreviewFromFile],
   );
 
+  const onVersionDeleted = useCallback(
+    (meta: { file: File | null; versionId: string | null; versionLabel: string | null }) => {
+      if (!activeSlotKey) return;
+      if (!meta.file) {
+        setSlotDocs((prev) => {
+          const next = { ...prev };
+          delete next[activeSlotKey];
+          return next;
+        });
+        setActiveSlotKey(null);
+        setFile(null);
+        setPdfUrl(null);
+        useViewerUiStore.getState().close();
+        setStatusNonce((v) => v + 1);
+        return;
+      }
+      setSlotDocs((prev) => {
+        const cur = prev[activeSlotKey];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [activeSlotKey]: {
+            ...cur,
+            file: meta.file,
+            currentVersionId: meta.versionId ?? cur.currentVersionId,
+            currentVersionLabel: meta.versionLabel ?? cur.currentVersionLabel,
+          },
+        };
+      });
+      setFile(meta.file);
+      assignPreviewFromFile(meta.file);
+      setViewerSession((s) => s + 1);
+      setStatusNonce((v) => v + 1);
+    },
+    [activeSlotKey, assignPreviewFromFile],
+  );
+
   scheduleAnnotationSnapshotRef.current = (updatedFile: File) => {
     if (!canAnnotateDocument || !activeSlotKey) return;
     const scope = parseSlotKey(activeSlotKey);
@@ -2169,7 +2429,7 @@ export default function DocuGridPage() {
         ? Math.round((filledInView / slotCount) * 100)
         : 0;
 
-  if (!authChecked) {
+  if (!authChecked || (billingLoading && billingMe === null)) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 text-slate-500">
         <div
@@ -2181,13 +2441,26 @@ export default function DocuGridPage() {
     );
   }
 
+  if (billingMe?.requiresAttention) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-100">
+        <BillingGatePanel billing={billingMe} user={currentUser} onRefresh={() => void reloadBilling()} />
+      </div>
+    );
+  }
+
   return (
     <>
     <MatrixShellLayout
+      viewMode={matrixViewMode}
+      onViewModeToggle={toggleMatrixViewMode}
       navClients={navClients}
       currentClient={currentClient}
       activeClientIdx={activeClientIdx}
       onClientChange={setActiveClientIdx}
+      docCategories={docCategories}
+      activeDocCategoryIdx={activeDocCategoryIdx}
+      onDocCategoryChange={setActiveDocCategoryIdx}
       clientScopeMode={clientScopeMode}
       canToggleClientScope={canToggleScope}
       onClientScopeModeChange={onClientScopeModeChange}
@@ -2196,8 +2469,11 @@ export default function DocuGridPage() {
       onPeriodChange={setActivePeriodIdx}
       onModeSwitch={() => {
         setActiveMode((prev) => (prev === "year" ? "month" : "year"));
-        setActivePeriodIdx(2);
+        if (matrixViewMode === "client-period") {
+          setActivePeriodIdx(2);
+        }
       }}
+      matrixPeriods={matrixPeriods}
       showInsightsToggle={showInsights}
       insightsOpen={insightsOpen}
       onInsightsOpenChange={setInsightsOpen}
@@ -2224,7 +2500,27 @@ export default function DocuGridPage() {
         ) : null
       }
     >
-          {isDataPeriodIndex(activePeriodIdx) ? (
+          {matrixViewMode === "document-client" ? (
+            <DocumentHistoryGrid
+              items={docHistoryItems}
+              loading={docHistoryLoading}
+              categoryLabel={activeDocCategory?.label}
+              clientName={currentClient.name}
+              fiscalMonth={currentClient.fiscal}
+              periodMode={activeMode}
+              matrixPeriods={matrixPeriods}
+              yearMeta={yearDrumMeta}
+            />
+          ) : isOldPeriodKey(periodKey) ? (
+            <OldYearArchiveGrid
+              items={oldArchiveItems}
+              loading={oldArchiveLoading}
+              clientName={currentClient.name}
+              fiscalMonth={currentClient.fiscal}
+              matrixPeriods={matrixPeriods}
+              yearMeta={yearDrumMeta}
+            />
+          ) : isDataPeriodIndex(activePeriodIdx) ? (
             currentOrgClient ? (
               <DataWorkspace
                 client={currentOrgClient}
@@ -2339,6 +2635,7 @@ export default function DocuGridPage() {
             }))}
             onConfirmPending={onConfirmPending}
             onDismissPending={onDismissPending}
+            onOpenPendingPdf={onOpenPendingPdf}
             docStatus={docStatus}
             currentPeriodKey={periodKey}
             onJumpToPeriod={onJumpToPeriod}
@@ -2356,6 +2653,7 @@ export default function DocuGridPage() {
             onAuthoringSave={async (file, slotIndex, slotLabel) =>
               persistFileToSlot(file, slotIndex, slotLabel, false)
             }
+            matrixPeriods={matrixPeriods}
           />
           </>
           )}
@@ -2388,6 +2686,7 @@ export default function DocuGridPage() {
         slotIdentity={slotIdentity}
         slotLabel={activeSlotLabel}
         onVersionCreated={onVersionCreated}
+        onVersionDeleted={onVersionDeleted}
         onAuditStateChange={onAuditStateChange}
         slotWorkflowStatus={activeSlotWorkflowStatus}
         persistedDocId={activePersistedDocId}

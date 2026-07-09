@@ -52,6 +52,43 @@ STAKEHOLDER_FIRM_BY_ID: dict[str, str] = {
 
 FIRM_WIDE_ROLES = frozenset({"admin", "firm_admin", "platform_admin", "approver"})
 
+# Max permissions when assigned with this role (intersected with firm role permissions).
+ASSIGNMENT_ROLE_PERMISSION_CAPS: dict[str, frozenset[str] | None] = {
+    "main": None,
+    "sub": frozenset(
+        {
+            "client.view",
+            "document.view",
+            "document.annotate",
+            "document.comment",
+            "audit.link",
+            "review_checklist.edit",
+            "dashboard.view",
+            "alert.view",
+        }
+    ),
+    "reviewer": frozenset(
+        {
+            "client.view",
+            "document.view",
+            "document.annotate",
+            "document.comment",
+            "audit.link",
+            "review_checklist.edit",
+            "dashboard.view",
+            "alert.view",
+        }
+    ),
+    "readonly": frozenset(
+        {
+            "client.view",
+            "document.view",
+            "dashboard.view",
+            "alert.view",
+        }
+    ),
+}
+
 
 @dataclass(frozen=True)
 class AuthContext:
@@ -133,6 +170,48 @@ def visible_client_ids(
 def authorize_firm_resource(ctx: AuthContext, resource_firm_id: str) -> None:
     if resource_firm_id != ctx.firm_id:
         raise HTTPException(status_code=403, detail="Cross-firm access denied")
+
+
+def member_assignment_role(ctx: AuthContext, client_id: str) -> str:
+    """Assignment role for member on client; firm-wide roles are always main."""
+    if is_firm_wide_role(ctx.role):
+        return "main"
+    from services.client_assignments import get_assignment_role
+
+    role = get_assignment_role(ctx.firm_id, ctx.member_id, client_id)
+    if role == "main" and ctx.member_id != ctx.stakeholder_id:
+        role = get_assignment_role(ctx.firm_id, ctx.stakeholder_id, client_id)
+    return role
+
+
+def effective_permissions_for_client(
+    ctx: AuthContext,
+    client_id: str,
+    base_permissions: set[str],
+) -> set[str]:
+    if is_firm_wide_role(ctx.role):
+        return set(base_permissions)
+    cap = ASSIGNMENT_ROLE_PERMISSION_CAPS.get(member_assignment_role(ctx, client_id))
+    if cap is None:
+        return set(base_permissions)
+    return base_permissions & cap
+
+
+def authorize_client_permission(
+    ctx: AuthContext,
+    client_id: str,
+    permission: str,
+    scope_map: dict[str, set[str]],
+    *,
+    base_permissions: set[str],
+) -> None:
+    authorize_client_access(ctx, client_id, scope_map)
+    effective = effective_permissions_for_client(ctx, client_id, base_permissions)
+    if permission not in effective:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Assignment permission denied: {permission}",
+        )
 
 
 def authorize_client_access(

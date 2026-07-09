@@ -92,6 +92,12 @@ export interface ViewerModalProps {
     workflowStatus?: string;
     file: File;
   }) => void;
+  /** 版削除後に親へ通知（最新版への差し替え、または資料なし） */
+  onVersionDeleted?: (meta: {
+    file: File | null;
+    versionId: string | null;
+    versionLabel: string | null;
+  }) => void;
   /** 監査イベント保存後（差戻し等、版なしイベント含む） */
   onAuditStateChange?: () => void;
   /** スロットの最新ワークフロー（review_events）。ビューア未同期時の表示用。 */

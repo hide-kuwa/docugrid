@@ -47,7 +47,8 @@ def ai_usage_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
     yield db_path
 
 
-def test_billing_status_without_stripe(firm_billing_path) -> None:
+def test_billing_status_without_stripe(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("services.stripe_billing_service.is_stripe_configured", lambda: False)
     r = client.get("/api/billing/status", headers=_admin_headers())
     assert r.status_code == 200, r.text
     body = r.json()
@@ -59,7 +60,97 @@ def test_billing_status_without_stripe(firm_billing_path) -> None:
     assert body["estimatedMonthlyYen"] == estimate_firm_monthly_yen(body["clientCount"])
 
 
-def test_billing_checkout_requires_stripe(firm_billing_path) -> None:
+def test_billing_me_without_stripe(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: False)
+    r = client.get("/api/billing/me", headers=_admin_headers())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["configured"] is False
+    assert body["active"] is True
+    assert body["requiresAttention"] is False
+    assert body["primaryPlanId"] == "firm"
+
+
+def test_billing_gate_blocks_document_view_when_unpaid(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
+    save_billing_record("firm_default", {"status": "past_due", "planId": "firm"})
+    r = client.get("/api/document-catalog/fields", headers=_admin_headers())
+    assert r.status_code == 403, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "billing_inactive"
+    assert detail["status"] == "past_due"
+
+
+def test_super_admin_bypasses_billing_gate_when_unpaid(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
+    save_billing_record("firm_default", {"status": "past_due", "planId": "firm"})
+    headers = {
+        "X-Docugrid-Role": "platform_admin",
+        "X-Docugrid-User": "admin@taxx.jp",
+        "X-Docugrid-Stakeholder": "super-admin",
+        "X-Docugrid-Firm": "firm_default",
+        "X-Docugrid-Permissions": "dashboard.view",
+    }
+    r = client.get("/api/document-catalog/fields", headers=headers)
+    assert r.status_code == 200, r.text
+    me = client.get("/api/billing/me", headers=headers)
+    assert me.status_code == 200, me.text
+    body = me.json()
+    assert body["active"] is True
+    assert body["requiresAttention"] is False
+    assert body["canManageBilling"] is True
+
+
+def test_billing_gate_allows_document_view_when_active(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
+    save_billing_record(
+        "firm_default",
+        {"status": "active", "planId": "firm", "subscriptionId": "sub_test"},
+    )
+    r = client.get("/api/document-catalog/fields", headers=_admin_headers())
+    assert r.status_code == 200, r.text
+
+
+def test_billing_me_requires_attention_when_past_due(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
+    save_billing_record("firm_default", {"status": "past_due", "planId": "firm"})
+    r = client.get("/api/billing/me", headers=_admin_headers())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["requiresAttention"] is True
+    assert body["active"] is False
+    assert body["status"] == "past_due"
+
+
+def test_billing_me_stripe_key_without_prices_is_not_enforced(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: False)
+    save_billing_record("firm_default", {"status": "none", "planId": "firm"})
+    r = client.get("/api/billing/me", headers=_admin_headers())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["configured"] is True
+    assert body["checkoutReady"] is False
+    assert body["active"] is True
+    assert body["requiresAttention"] is False
+
+
+def test_billing_checkout_requires_stripe(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: False)
     r = client.post(
         "/api/billing/checkout",
         headers=_admin_headers(),
@@ -86,6 +177,8 @@ def test_billing_record_roundtrip(firm_billing_path) -> None:
 
 
 def test_billing_webhook_invalid_signature(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_stripe_configured", lambda: True)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
     r = client.post(

@@ -85,16 +85,20 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 テンプレート: [`backend/.env.production.example`](../backend/.env.production.example)
 
-### 必須（`DOCUGRID_ENV=production` で起動時検証）
+### 必須（`DOCUGRID_ENV=production` で起動時・pre-flight 検証）
 
 | 変数 | 説明 |
 |------|------|
 | `DOCUGRID_ENV` | `production` |
-| `DOCUGRID_JWT_SECRET` | 32 文字以上のランダム文字列 |
-| `GOOGLE_OAUTH_CLIENT_ID` | Google Cloud の Web クライアント ID |
-| `DOCUGRID_CORS_ORIGINS` | フロント URL（カンマ区切り可） |
+| `DOCUGRID_JWT_SECRET` | 32 文字以上のランダム文字列（プレースホルダ `REPLACE_*` 不可） |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google Cloud の Web クライアント ID（プレースホルダ不可） |
+| `DOCUGRID_CORS_ORIGINS` | フロント URL（カンマ区切り可。本番は HTTPS 推奨） |
 | `DOCUGRID_ALLOW_HEADER_AUTH` | `false` |
-| `DOCUGRID_ALLOW_PASSWORD_LOGIN` | `false` |
+| `DOCUGRID_ALLOW_PASSWORD_LOGIN` | `false`（`DOCUGRID_STAGING_LOCAL` 時のみ例外） |
+| `DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK` | `false` |
+| `DOCUGRID_ALLOW_LEGACY_FILES` | 未設定または `false`（本番で `/files` 無効） |
+
+`member_directory.json` には本番利用者のメールのみ登録すること。`bootstrap_production.py`（`--staging-local` なし）は **開発用メールを自動投入しません**。
 
 ### 推奨
 

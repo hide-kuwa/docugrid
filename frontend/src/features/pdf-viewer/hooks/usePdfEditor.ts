@@ -172,6 +172,16 @@ export const usePdfEditor = ({
           if (!isMounted) return;
           setThumbnails(imgs);
           setThumbnailsReady(true);
+          if (imgs.length > 0) {
+            if (syncWithDocugridRef.current) {
+              useDocugridStore.getState().ensurePrimaryFilePageCount(imgs.length);
+            } else {
+              setLocalPageOrder((prev) => {
+                if (prev.length >= imgs.length) return prev;
+                return Array.from({ length: imgs.length }, (_, i) => i);
+              });
+            }
+          }
           setCurrentPage((prev) => {
             const maxPage = Math.max(0, imgs.length - 1);
             return Math.min(prev, maxPage);
@@ -589,8 +599,11 @@ export const usePdfEditor = ({
     });
   }, [syncWithDocugrid, localPageOrder]);
 
-  const pageCountSafe =
-    pageCount ?? thumbnails.length ?? (syncWithDocugrid ? docugridPageOrderLen : 0);
+  const pageCountSafe = Math.max(
+    pageCount ?? 0,
+    thumbnailsReady ? thumbnails.length : 0,
+    pageOrder.length,
+  );
   const canGoPrev = currentPage > 0;
   const canGoNext = pageCountSafe > 0 && currentPage < pageCountSafe - 1;
   const goPrevPage = useCallback(() => {

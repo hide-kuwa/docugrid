@@ -16,6 +16,11 @@ import {
   downloadMergedPackage,
 } from "@/features/docugrid/lib/classify-batch";
 import {
+  ClassifyEngineBadge,
+  ClassifyFeedbackBanner,
+} from "@/features/docugrid/components/ClassifyFeedback";
+import { bannerFromBatchCapabilities, type ClassifyBanner } from "@/features/docugrid/lib/classify-display";
+import {
   labelForTaxType,
   sortByTemplate,
   type ClassifiedPackageDocument,
@@ -27,12 +32,16 @@ export type PackageQueueItem = {
   id: string;
   file: File;
   fileName: string;
+  sourceFileName?: string;
   identifiedType: TaxDocumentType;
   confidence: number;
   reason?: string;
   engine: string;
   slotId?: string | null;
   label?: string;
+  formId?: string | null;
+  startPage?: number | null;
+  endPage?: number | null;
 };
 
 type Props = {
@@ -48,13 +57,25 @@ function toQueueItem(doc: ClassifiedPackageDocument, file: File): PackageQueueIt
     id: crypto.randomUUID(),
     file,
     fileName: doc.fileName,
+    sourceFileName: doc.sourceFileName ?? doc.fileName,
     identifiedType: doc.identifiedType,
     confidence: doc.confidence,
     reason: doc.reason,
     engine: doc.engine,
     slotId: doc.slotId,
     label: doc.label,
+    formId: doc.formId,
+    startPage: doc.startPage,
+    endPage: doc.endPage,
   };
+}
+
+function displayFileLabel(item: PackageQueueItem): string {
+  const base = item.sourceFileName ?? item.file.name;
+  if (!item.startPage) return item.fileName || base;
+  const end =
+    item.endPage && item.endPage > item.startPage ? `–${item.endPage}` : "";
+  return `${base} (p.${item.startPage}${end})`;
 }
 
 export function TaxPackagePanel({
@@ -69,7 +90,7 @@ export function TaxPackagePanel({
   const [isClassifying, setIsClassifying] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [template, setTemplate] = useState<FirmDocumentTemplate | null>(null);
-  const [visionHint, setVisionHint] = useState<string | null>(null);
+  const [classifyBanner, setClassifyBanner] = useState<ClassifyBanner | null>(null);
 
   const acceptFiles = useCallback(
     async (files: File[]) => {
@@ -88,23 +109,13 @@ export function TaxPackagePanel({
         const sortOrder = result.template?.sortOrder ?? [];
         const fileByName = new Map(pdfs.map((f) => [f.name, f]));
         const docs = result.documents.map((d) => {
-          const file = fileByName.get(d.fileName);
-          if (!file) throw new Error(`missing-file:${d.fileName}`);
+          const lookup = d.sourceFileName ?? d.fileName;
+          const file = fileByName.get(lookup);
+          if (!file) throw new Error(`missing-file:${lookup}`);
           return toQueueItem(d, file);
         });
         setItems(sortByTemplate(docs, sortOrder));
-        const cap = result.capabilities;
-        if (cap?.vision_gemini) {
-          setVisionHint("Gemini Vision で分類しました。");
-        } else if (cap?.vision_openai) {
-          setVisionHint("OpenAI Vision で分類しました。");
-        } else if (cap?.vision_enabled) {
-          setVisionHint("Vision LLM で分類しました。");
-        } else if (cap?.ai_openai_key_configured) {
-          setVisionHint("ルール分類で処理しました（Vision は OCR/AI 設定を確認）。");
-        } else {
-          setVisionHint("ルール分類のみ（API キー未設定のため AI 未使用）。");
-        }
+        setClassifyBanner(bannerFromBatchCapabilities(result.capabilities, result.documents));
         onNotice(`${docs.length} 件を申告パッケージとして分類・整列しました。`);
       } catch (err) {
         console.error(err);
@@ -166,13 +177,11 @@ export function TaxPackagePanel({
             <FileStack className="h-4 w-4" aria-hidden />
             申告パッケージ自動整列
           </div>
-          <p className="mt-1 text-[11px] text-indigo-800/80">
+          <p className="mt-1 text-xs leading-relaxed text-indigo-800/90">
             法人税・消費税等の PDF 束を AI で種別判定し、事務所テンプレの順に並べます。
             {template ? `（${template.templateName}）` : ""}
           </p>
-          {visionHint && (
-            <p className="mt-1 text-[10px] font-medium text-indigo-600">{visionHint}</p>
-          )}
+          {classifyBanner ? <ClassifyFeedbackBanner banner={classifyBanner} /> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <input
@@ -230,12 +239,16 @@ export function TaxPackagePanel({
                 {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-bold text-slate-800">{item.file.name}</div>
-                <div className="mt-0.5 text-[10px] text-slate-500">
-                  {labelForTaxType(item.identifiedType)} ・ 確信度{" "}
-                  {Math.round(item.confidence * 100)}% ・ {item.engine}
-                  {item.reason ? ` ・ ${item.reason}` : ""}
+                <div className="truncate text-sm font-bold text-slate-800">{displayFileLabel(item)}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <ClassifyEngineBadge engine={item.engine} />
+                  <span className="text-[11px] text-slate-500">
+                    {labelForTaxType(item.identifiedType)} ・ 確信度 {Math.round(item.confidence * 100)}%
+                  </span>
                 </div>
+                {item.reason ? (
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">{item.reason}</p>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button

@@ -194,6 +194,12 @@ def upsert_member(
         stored_persona_id=persona_id or STAKEHOLDER_PERSONA_BY_ID.get(stakeholder_id),
     )
     with sqlite3.connect(MEMBERS_DB_PATH) as conn:
+        existing = conn.execute(
+            "SELECT id FROM firm_members WHERE firm_id=? AND lower(email)=?",
+            (firm_id, normalized_email),
+        ).fetchone()
+        if existing and str(existing[0]) != member_id:
+            conn.execute("DELETE FROM firm_members WHERE id=?", (str(existing[0]),))
         conn.execute(
             """
             INSERT INTO firm_members
@@ -268,6 +274,33 @@ def _default_role_for_stakeholder(stakeholder_id: str) -> str:
     return STAKEHOLDER_ROLE_BY_ID.get(stakeholder_id, "viewer")
 
 
+def _directory_member_id(email: str, stakeholder_id: str) -> str:
+    """Stable member row id per login email (multiple emails may share one stakeholder)."""
+    normalized = (email or "").strip().lower()
+    if DEFAULT_EMAIL_TO_STAKEHOLDER.get(normalized) == stakeholder_id:
+        return stakeholder_id
+    return f"dir-{normalized.replace('@', '_at_')}"
+
+
+def _sync_member_from_directory(email: str) -> FirmMember | None:
+    """Create/update firm_members row from member_directory when missing."""
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return None
+    stakeholder_id = _load_email_to_stakeholder().get(normalized)
+    if not stakeholder_id:
+        return None
+    firm_id = STAKEHOLDER_FIRM_BY_ID.get(stakeholder_id, DEFAULT_FIRM_ID)
+    return upsert_member(
+        member_id=_directory_member_id(normalized, stakeholder_id),
+        firm_id=firm_id,
+        email=normalized,
+        stakeholder_id=stakeholder_id,
+        firm_role=_default_role_for_stakeholder(stakeholder_id),
+        status=MEMBER_STATUS_ACTIVE,
+    )
+
+
 def bootstrap_firm_members() -> None:
     """Seed firms + dev personas from member_directory defaults (idempotent)."""
     init_firm_members_db()
@@ -287,18 +320,7 @@ def bootstrap_firm_members() -> None:
     for email, stakeholder_id in email_map.items():
         firm_id = STAKEHOLDER_FIRM_BY_ID.get(stakeholder_id, DEFAULT_FIRM_ID)
         upsert_member(
-            member_id=stakeholder_id,
-            firm_id=firm_id,
-            email=email,
-            stakeholder_id=stakeholder_id,
-            firm_role=_default_role_for_stakeholder(stakeholder_id),
-            status=MEMBER_STATUS_ACTIVE,
-        )
-    # Re-apply dev default emails for built-in personas (example file may have stale mapping).
-    for email, stakeholder_id in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
-        firm_id = STAKEHOLDER_FIRM_BY_ID.get(stakeholder_id, DEFAULT_FIRM_ID)
-        upsert_member(
-            member_id=stakeholder_id,
+            member_id=_directory_member_id(email, stakeholder_id),
             firm_id=firm_id,
             email=email,
             stakeholder_id=stakeholder_id,
@@ -357,7 +379,7 @@ def resolve_member_for_login(
             status=MEMBER_STATUS_ACTIVE,
         )
 
-    return None
+    return _sync_member_from_directory(normalized)
 
 
 def create_member(

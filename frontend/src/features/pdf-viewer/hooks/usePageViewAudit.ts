@@ -9,6 +9,7 @@ import {
 
 const FLUSH_INTERVAL_MS = 8000;
 const MIN_DWELL_MS = 300;
+const DEDUPE_FLUSH_MS = 60_000;
 
 type PageViewAuditOptions = {
   enabled: boolean;
@@ -16,6 +17,8 @@ type PageViewAuditOptions = {
   currentPage: number;
   documentVersionId?: string;
   versionLabel?: string;
+  /** ページ並べ替え中は閲覧ログを送らない */
+  suspend?: boolean;
 };
 
 /** ビューア内のページ閲覧を page_view イベントとしてバッチ送信する。 */
@@ -25,16 +28,26 @@ export function usePageViewAudit({
   currentPage,
   documentVersionId,
   versionLabel,
+  suspend = false,
 }: PageViewAuditOptions) {
   const dwellByPageRef = useRef<Map<number, number>>(new Map());
   const pageEnteredAtRef = useRef<number>(Date.now());
   const lastPageRef = useRef(currentPage);
+  const lastFlushedAtRef = useRef<Map<string, number>>(new Map());
   const versionRef = useRef({ documentVersionId, versionLabel });
   versionRef.current = { documentVersionId, versionLabel };
+  const active = enabled && !suspend;
 
   const flush = useCallback(async () => {
     if (!slotIdentity || dwellByPageRef.current.size === 0) return;
-    const entries = Array.from(dwellByPageRef.current.entries()).filter(([, ms]) => ms >= MIN_DWELL_MS);
+    const versionId = versionRef.current.documentVersionId ?? "";
+    const now = Date.now();
+    const entries = Array.from(dwellByPageRef.current.entries()).filter(([page, ms]) => {
+      if (ms < MIN_DWELL_MS) return false;
+      const key = `${versionId}:${page}`;
+      const last = lastFlushedAtRef.current.get(key) ?? 0;
+      return now - last >= DEDUPE_FLUSH_MS;
+    });
     dwellByPageRef.current.clear();
     if (entries.length === 0) return;
 
@@ -49,6 +62,10 @@ export function usePageViewAudit({
 
     try {
       await batchCreateReviewEvents(slotIdentity, events);
+      const flushedAt = Date.now();
+      for (const [page] of entries) {
+        lastFlushedAtRef.current.set(`${versionId}:${page}`, flushedAt);
+      }
     } catch (err) {
       console.warn("page_view batch failed:", err);
       for (const [page, dwell_ms] of entries) {
@@ -58,7 +75,7 @@ export function usePageViewAudit({
   }, [slotIdentity]);
 
   useEffect(() => {
-    if (!enabled || !slotIdentity) return;
+    if (!active || !slotIdentity) return;
     const now = Date.now();
     const prevPage = lastPageRef.current;
     const dwell = now - pageEnteredAtRef.current;
@@ -67,22 +84,29 @@ export function usePageViewAudit({
     }
     lastPageRef.current = currentPage;
     pageEnteredAtRef.current = now;
-  }, [currentPage, enabled, slotIdentity]);
+  }, [currentPage, active, slotIdentity]);
 
   useEffect(() => {
-    if (!enabled || !slotIdentity) return;
+    if (!active || !slotIdentity) return;
     pageEnteredAtRef.current = Date.now();
     lastPageRef.current = currentPage;
     dwellByPageRef.current.clear();
-  }, [enabled, slotIdentity?.clientId, slotIdentity?.periodKey, slotIdentity?.slotId]);
+    lastFlushedAtRef.current.clear();
+  }, [active, slotIdentity?.clientId, slotIdentity?.periodKey, slotIdentity?.slotId]);
 
   useEffect(() => {
-    if (!enabled || !slotIdentity) return;
+    if (!active || !slotIdentity) return;
     const timer = window.setInterval(() => {
       void flush();
     }, FLUSH_INTERVAL_MS);
     return () => {
       window.clearInterval(timer);
+    };
+  }, [active, slotIdentity, flush]);
+
+  useEffect(() => {
+    if (!enabled || !slotIdentity) return;
+    return () => {
       const now = Date.now();
       const dwell = now - pageEnteredAtRef.current;
       if (dwell >= MIN_DWELL_MS) {

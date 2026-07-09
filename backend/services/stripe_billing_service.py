@@ -45,6 +45,13 @@ def price_id_for_plan(plan_id: str) -> str | None:
     return os.environ.get(meta["base_price_env"], "").strip() or None
 
 
+def is_billing_enforced() -> bool:
+    """True when Stripe secret + primary plan base price are configured."""
+    if not is_stripe_configured():
+        return False
+    return bool(price_id_for_plan(PRIMARY_PLAN_ID))
+
+
 def list_plans() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for plan_id, meta in PLAN_CATALOG.items():

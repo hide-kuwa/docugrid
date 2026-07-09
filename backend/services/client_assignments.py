@@ -82,6 +82,45 @@ def build_member_client_index(
     return out
 
 
+def load_assignment_role_map() -> dict[tuple[str, str, str], str]:
+    """(firm_id, member_id, client_id) -> assignment_role."""
+    if not ASSIGNMENTS_DB_PATH.exists():
+        return {}
+    init_client_assignments_db()
+    out: dict[tuple[str, str, str], str] = {}
+    with sqlite3.connect(ASSIGNMENTS_DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT firm_id, member_id, client_id, assignment_role
+            FROM client_assignments
+            """
+        ).fetchall()
+    for firm_id, member_id, client_id, assignment_role in rows:
+        if firm_id and member_id and client_id:
+            out[(str(firm_id), str(member_id), str(client_id))] = str(
+                assignment_role or "main"
+            )
+    return out
+
+
+def get_assignment_role(firm_id: str, member_id: str, client_id: str) -> str:
+    if not firm_id or not member_id or not client_id:
+        return "main"
+    init_client_assignments_db()
+    with sqlite3.connect(ASSIGNMENTS_DB_PATH) as conn:
+        row = conn.execute(
+            """
+            SELECT assignment_role FROM client_assignments
+            WHERE firm_id=? AND member_id=? AND client_id=?
+            LIMIT 1
+            """,
+            (firm_id, member_id, client_id),
+        ).fetchone()
+    if not row:
+        return "main"
+    return str(row[0] or "main")
+
+
 def load_assignment_scope_map() -> dict[str, set[str]]:
     """member_id (stakeholder_id) -> assigned client ids."""
     if not ASSIGNMENTS_DB_PATH.exists():

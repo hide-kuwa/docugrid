@@ -65,6 +65,72 @@ def test_staging_local_skips_google_oauth_requirement(monkeypatch: pytest.Monkey
     monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
     monkeypatch.setenv("DOCUGRID_CORS_ORIGINS", "http://localhost:3000")
     monkeypatch.setenv("DOCUGRID_STAGING_LOCAL", "true")
+    monkeypatch.setenv("DOCUGRID_LOGIN_PASSWORD", "staging")
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "REPLACE_ME.apps.googleusercontent.com")
     warnings = validate_auth_config(strict=True)
     assert any("STAGING_LOCAL" in w for w in warnings)
+
+
+def test_validate_auth_config_rejects_legacy_files_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docugrid_auth import validate_auth_config
+
+    monkeypatch.setenv("DOCUGRID_ENV", "production")
+    monkeypatch.setenv("DOCUGRID_JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
+    monkeypatch.setenv("DOCUGRID_CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "real-client.apps.googleusercontent.com")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LEGACY_FILES", "true")
+    with pytest.raises(RuntimeError, match="DOCUGRID_ALLOW_LEGACY_FILES"):
+        validate_auth_config()
+
+
+def test_validate_auth_config_rejects_jwt_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docugrid_auth import validate_auth_config
+
+    monkeypatch.setenv("DOCUGRID_ENV", "production")
+    monkeypatch.setenv("DOCUGRID_JWT_SECRET", "REPLACE_WITH_32_PLUS_CHAR_RANDOM_STRING")
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
+    monkeypatch.setenv("DOCUGRID_CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "real-client.apps.googleusercontent.com")
+    with pytest.raises(RuntimeError, match="DOCUGRID_JWT_SECRET"):
+        validate_auth_config()
+
+
+def test_validate_auth_config_rejects_default_staging_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docugrid_auth import validate_auth_config
+
+    monkeypatch.setenv("DOCUGRID_ENV", "production")
+    monkeypatch.setenv("DOCUGRID_JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "true")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
+    monkeypatch.setenv("DOCUGRID_CORS_ORIGINS", "http://localhost:3000")
+    monkeypatch.setenv("DOCUGRID_STAGING_LOCAL", "true")
+    monkeypatch.delenv("DOCUGRID_LOGIN_PASSWORD", raising=False)
+    with pytest.raises(RuntimeError, match="DOCUGRID_LOGIN_PASSWORD"):
+        validate_auth_config()
+
+
+def test_bootstrap_seed_skips_dev_emails_for_real_production(tmp_path, monkeypatch) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "bootstrap_production.py"
+    spec = importlib.util.spec_from_file_location("bootstrap_production", script)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    member_path = tmp_path / "member_directory.json"
+    monkeypatch.setattr(mod, "STORAGE_DIR", tmp_path)
+    monkeypatch.setattr(mod, "MEMBER_PATH", member_path)
+
+    added = mod._seed_member_directory(include_dev_defaults=False)
+    assert added == 0
+    data = json.loads(member_path.read_text(encoding="utf-8"))
+    assert data["emailToStakeholderId"] == {}
+    assert "admin@tax.co.jp" not in data["emailToStakeholderId"]

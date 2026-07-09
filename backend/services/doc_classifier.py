@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import os
+import re
+import unicodedata
 from typing import Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
@@ -37,6 +39,74 @@ DOC_TYPE_KEYWORDS: Dict[str, List[str]] = {
 }
 
 _MAX_PAGES_DEFAULT = 5
+_MIN_USABLE_TEXT_LEN = 6
+
+
+def _text_usable(text: str, *, min_len: int = _MIN_USABLE_TEXT_LEN) -> bool:
+    t = (text or "").strip()
+    if len(t) < min_len:
+        return False
+    cjk = len(re.findall(r"[\u3000-\u9fff]", t))
+    if cjk >= 2:
+        return True
+    return len(t) >= 12 and bool(re.search(r"[A-Za-z0-9\u3000-\u9fff]{4,}", t))
+
+
+def _ocr_single_page(doc: "fitz.Document", page_index: int) -> str:
+    """1 ページだけ Tesseract OCR（利用可能な環境のみ）。"""
+    try:
+        import io
+
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except Exception:
+        return ""
+
+    cmd = os.environ.get("TESSERACT_CMD")
+    if cmd:
+        pytesseract.pytesseract.tesseract_cmd = cmd
+
+    lang = os.environ.get("TESSERACT_LANG", "jpn")
+    try:
+        if page_index < 0 or page_index >= len(doc):
+            return ""
+        page = doc[page_index]
+        pix = page.get_pixmap(dpi=200)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        return (pytesseract.image_to_string(img, lang=lang) or "").strip()
+    except Exception:
+        return ""
+
+
+def extract_page_text_from_doc(doc: "fitz.Document", page_index: int) -> Tuple[str, str]:
+    """1 ページのテキスト抽出。engine: pymupdf | tesseract | none"""
+    text = ""
+    try:
+        text = doc[page_index].get_text() or ""
+    except Exception:
+        text = ""
+
+    if _text_usable(text):
+        return text, "pymupdf"
+
+    try:
+        blocks = doc[page_index].get_text("blocks") or []
+        block_text = "\n".join(
+            str(b[4]).strip() for b in blocks if isinstance(b, (list, tuple)) and len(b) > 4 and b[4]
+        )
+        if _text_usable(block_text):
+            return block_text, "pymupdf"
+    except Exception:
+        pass
+
+    ocr = _ocr_single_page(doc, page_index)
+    if _text_usable(ocr, min_len=4):
+        return ocr, "tesseract"
+
+    combined = (text or ocr or "").strip()
+    if combined:
+        return combined, "tesseract" if ocr else "pymupdf"
+    return "", "none"
 
 
 def _try_tesseract(doc: "fitz.Document", max_pages: int) -> str:
@@ -77,14 +147,16 @@ def extract_text_from_pdf(content: bytes, max_pages: int = _MAX_PAGES_DEFAULT) -
         return "", "none"
 
     parts: List[str] = []
+    engines: set[str] = set()
     for i in range(min(len(doc), max_pages)):
-        try:
-            parts.append(doc[i].get_text())
-        except Exception:
-            continue
+        page_text, engine = extract_page_text_from_doc(doc, i)
+        if page_text:
+            parts.append(page_text)
+            engines.add(engine)
     text = "\n".join(parts).strip()
-    if len(text) >= 10:  # 埋め込みテキストとして十分
-        return text, "pymupdf"
+    if _text_usable(text):
+        engine = "tesseract" if engines == {"tesseract"} else "pymupdf"
+        return text, engine
 
     ocr_text = _try_tesseract(doc, max_pages)
     if ocr_text:

@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ViewerModal from "@/features/pdf-viewer";
 import { usePdfApiHandlers } from "@/features/pdf-viewer/hooks/usePdfApiHandlers";
-import type { UploadStatus } from "@/features/pdf-viewer/types";
+import type { UploadStatus, ViewerMode } from "@/features/pdf-viewer/types";
 import {
   fetchSlotDocumentFile,
   type SlotDocumentItem,
 } from "@/features/docugrid/lib/slot-documents";
 import type { CatalogRow } from "@/features/docugrid/lib/document-catalog-api";
+import { loadCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
 
 type Props = {
   row: CatalogRow | null;
@@ -38,8 +40,23 @@ export function CatalogSlotPreview({ row, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [uploadStatus] = useState<UploadStatus>("idle");
   const [viewerSession, setViewerSession] = useState(0);
+  const [viewerMode, setViewerMode] = useState<ViewerMode>("preview");
+
+  const currentUser = loadCurrentUser();
+  const canAnnotate = useMemo(
+    () => hasPermission(currentUser, "document.annotate"),
+    [currentUser],
+  );
+  const canApprove = useMemo(
+    () => hasPermission(currentUser, "audit.approve"),
+    [currentUser],
+  );
 
   const api = usePdfApiHandlers(file, row?.client_id);
+
+  useEffect(() => {
+    setViewerMode("preview");
+  }, [row?.slot_document_id]);
 
   useEffect(() => {
     if (!row?.slot_document_id) {
@@ -73,6 +90,7 @@ export function CatalogSlotPreview({ row, onClose }: Props) {
   }, [row]);
 
   const handleClose = useCallback(() => {
+    setViewerMode("preview");
     onClose();
   }, [onClose]);
 
@@ -82,7 +100,8 @@ export function CatalogSlotPreview({ row, onClose }: Props) {
     <ViewerModal
       isOpen
       onClose={handleClose}
-      viewerMode="preview"
+      viewerMode={viewerMode}
+      onViewerModeChange={setViewerMode}
       file={file}
       pdfUrl={pdfUrl}
       viewerSession={viewerSession}
@@ -94,8 +113,8 @@ export function CatalogSlotPreview({ row, onClose }: Props) {
       onMerge={api.handleMerge}
       onGetThumbnails={api.handleGetThumbnails}
       onRenderPage={api.handleRenderPage}
-      canAnnotate={false}
-      canApprove={false}
+      canAnnotate={canAnnotate}
+      canApprove={canApprove}
       slotIdentity={{
         clientId: row.client_id,
         periodKey: row.period_key,

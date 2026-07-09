@@ -11,6 +11,7 @@ Usage (from backend/):
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -47,7 +48,13 @@ def _warn(msg: str) -> None:
 
 
 def validate(*, check_stripe: bool) -> int:
-    from docugrid_auth import is_production, staging_local_enabled, validate_auth_config
+    from docugrid_auth import (
+        is_production,
+        jwt_secret_is_placeholder,
+        legacy_files_enabled,
+        staging_local_enabled,
+        validate_auth_config,
+    )
     from services.member_directory import MEMBER_DIRECTORY_PATH, member_directory_count
     from services.stripe_client import is_stripe_configured, stripe_webhook_secret
 
@@ -151,6 +158,53 @@ def validate(*, check_stripe: bool) -> int:
                 _ok("STRIPE_WEBHOOK_SECRET set")
     else:
         _warn("Stripe not configured (billing APIs return 503) - skip with no --check-stripe")
+
+    # --- Phase 5: hardening (aligns with security-checklist §I) ---
+    print("\n[5] Production hardening")
+    if is_production():
+        if legacy_files_enabled():
+            errors.append("DOCUGRID_ALLOW_LEGACY_FILES must be false in production")
+            _fail("DOCUGRID_ALLOW_LEGACY_FILES is enabled")
+        else:
+            _ok("legacy /files API disabled")
+        if jwt_secret_is_placeholder():
+            errors.append("DOCUGRID_JWT_SECRET is still a placeholder")
+            _fail("DOCUGRID_JWT_SECRET placeholder")
+        dev_emails = {"admin@tax.co.jp", "tanaka@tax.co.jp", "c1@client.example"}
+        if MEMBER_DIRECTORY_PATH.is_file():
+            try:
+                raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8"))
+                registered = {
+                    e.lower()
+                    for e in (raw.get("emailToStakeholderId") or {})
+                    if isinstance(e, str)
+                }
+                leaked = registered & dev_emails
+                if leaked and not staging_local_enabled():
+                    errors.append(
+                        f"member_directory.json contains dev-only emails: {sorted(leaked)}"
+                    )
+                    _fail(f"dev emails in member_directory: {sorted(leaked)}")
+                elif leaked:
+                    _warn(f"staging-local: dev emails present ({len(leaked)})")
+                elif registered:
+                    _ok(f"member_directory has {len(registered)} production email(s)")
+            except json.JSONDecodeError:
+                errors.append("member_directory.json is invalid JSON")
+                _fail("member_directory.json invalid JSON")
+        try:
+            import stat
+
+            mode = storage.stat().st_mode
+            if mode & stat.S_IROTH or mode & stat.S_IWOTH:
+                warnings.append("storage/ is world-readable or world-writable")
+                _warn("storage/ permissions too open (chmod 700 recommended)")
+            else:
+                _ok("storage/ permissions OK (not world-accessible)")
+        except OSError:
+            pass
+    else:
+        _warn("Skipping hardening checks (not production)")
 
     # --- Summary ---
     print("\n--- Summary ---")

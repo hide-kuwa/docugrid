@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Clock,
   CheckCircle,
+  Eye,
   Loader2,
   X,
 } from "lucide-react";
@@ -30,10 +31,12 @@ import {
 import { PERIODS } from "./mockData";
 import type { DocumentStatusSummary } from "@/features/docugrid/lib/document-status";
 import { TaxPackagePanel } from "@/features/docugrid/components/TaxPackagePanel";
+import { ClassifyEngineBadge } from "@/features/docugrid/components/ClassifyFeedback";
 
 const TIMELINE_EVENT_LABEL: Record<string, string> = {
   upload: "アップロード",
   work_save: "作業保存",
+  page_reorder: "ページ並べ替え",
   audit_start: "監査開始",
   approve: "承認",
   remand: "差戻し",
@@ -175,6 +178,7 @@ interface MatrixGridProps {
   pendingReview: PendingReviewView[];
   onConfirmPending: (reviewId: string, slotIndex: number) => void;
   onDismissPending: (reviewId: string) => void;
+  onOpenPendingPdf?: (reviewId: string) => void;
   docStatus: DocumentStatusSummary | null;
   currentPeriodKey: string;
   onJumpToPeriod: (periodKey: string) => void;
@@ -194,14 +198,19 @@ interface MatrixGridProps {
     slotIndex: number,
     slotLabel: string,
   ) => Promise<{ persisted: boolean }>;
+  matrixPeriods?: { year: string[]; month: string[] };
 }
 
-const periodLabel = (pk: string): string => {
+const periodLabel = (
+  pk: string,
+  matrixPeriods: { year: string[]; month: string[] },
+): string => {
   if (pk === "data") return "データ";
   if (pk === "perm") return "永続";
-  const resolved = periodIndexFromKey(pk);
+  if (pk === "year:old") return "OLD";
+  const resolved = periodIndexFromKey(pk, matrixPeriods);
   if (!resolved?.mode) return pk;
-  const label = periodLabelFromIndex(resolved.index, resolved.mode, PERIODS);
+  const label = periodLabelFromIndex(resolved.index, resolved.mode, matrixPeriods);
   return label ?? pk;
 };
 
@@ -245,6 +254,7 @@ export default function MatrixGrid({
   pendingReview,
   onConfirmPending,
   onDismissPending,
+  onOpenPendingPdf,
   docStatus,
   currentPeriodKey,
   onJumpToPeriod,
@@ -260,18 +270,10 @@ export default function MatrixGrid({
   onAssignPackageToSlot,
   onPackageNotice,
   onAuthoringSave,
+  matrixPeriods = PERIODS,
 }: MatrixGridProps) {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
-  const pendingReviewRef = useRef<HTMLDivElement>(null);
-  const prevPendingCountRef = useRef(0);
-
-  useEffect(() => {
-    if (pendingReview.length > prevPendingCountRef.current && pendingReview.length > 0) {
-      pendingReviewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-    prevPendingCountRef.current = pendingReview.length;
-  }, [pendingReview.length]);
 
   const slotCount = slotLabels.length;
 
@@ -387,7 +389,7 @@ export default function MatrixGrid({
                     activeMode === "year" ? "text-blue-600" : "text-green-500"
                   }`}
                 >
-                  {periodLabelFromIndex(activePeriodIdx, activeMode, PERIODS) ?? "—"}
+                  {periodLabelFromIndex(activePeriodIdx, activeMode, matrixPeriods) ?? "—"}
                 </span>
                 {activeMode === "year" ? "決算資料" : "月次監査"}
               </span>
@@ -606,7 +608,6 @@ export default function MatrixGrid({
 
           {pendingReview.length > 0 && (
             <div
-              ref={pendingReviewRef}
               data-tour="pending-review"
               className="rounded-xl border border-amber-200 bg-amber-50/70 p-4"
             >
@@ -622,20 +623,33 @@ export default function MatrixGrid({
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="line-clamp-1 text-xs font-bold text-slate-700">{p.fileName}</div>
-                        <div className="mt-0.5 text-[10px] font-medium text-slate-400">
-                          確信度 {Math.round(p.confidence * 100)}% ・ 抽出{" "}
-                          {p.engine === "none" ? "不可（スキャン）" : p.engine}
+                        <div className="line-clamp-1 text-sm font-bold text-slate-800">{p.fileName}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <ClassifyEngineBadge engine={p.engine} />
+                          <span className="text-[11px] text-slate-500">
+                            確信度 {Math.round(p.confidence * 100)}%
+                          </span>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onDismissPending(p.id)}
-                        className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        aria-label="このファイルを破棄"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onOpenPendingPdf?.(p.id)}
+                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          aria-label="PDFを表示"
+                          title="PDFを表示"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDismissPending(p.id)}
+                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          aria-label="このファイルを破棄"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {slotLabels.map((label, idx) => {
@@ -770,7 +784,7 @@ export default function MatrixGrid({
                           className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50"
                         >
                           <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-700">
-                            {periodLabel(p.period_key)}
+                            {periodLabel(p.period_key, matrixPeriods)}
                           </span>
                           <span className="shrink-0 text-xs font-bold text-rose-600">
                             あと {p.missing.length} 点

@@ -96,12 +96,16 @@ export const AiClassificationSchema = {
 
 export type ClassifiedPackageDocument = {
   fileName: string;
+  sourceFileName?: string;
   identifiedType: TaxDocumentType;
   confidence: number;
   reason?: string;
   engine: string;
   slotId?: string | null;
   label?: string;
+  formId?: string | null;
+  startPage?: number | null;
+  endPage?: number | null;
 };
 
 export type ClassifyBatchResult = {

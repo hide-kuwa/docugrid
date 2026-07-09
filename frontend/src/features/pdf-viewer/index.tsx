@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AuditLinksRail } from "./components/AuditLinksRail";
 import { AuditSplitToolbar } from "./components/AuditSplitToolbar";
@@ -85,6 +85,24 @@ const HISTORY_META_EVENT_TYPES = new Set([
   "client_unshare",
 ]);
 
+/** 版の表示ラベルに使わないノイズイベント（閲覧ログ等） */
+const HISTORY_NOISE_EVENT_TYPES = new Set([
+  "page_view",
+  "viewer_open_preview",
+  "viewer_open_edit",
+  "viewer_close",
+]);
+
+const findVersionReviewEvent = (
+  events: ReviewEventItem[],
+  versionId: string,
+): ReviewEventItem | undefined => {
+  const meaningful = events.find(
+    (e) => e.document_version_id === versionId && !HISTORY_NOISE_EVENT_TYPES.has(e.event_type),
+  );
+  return meaningful ?? events.find((e) => e.document_version_id === versionId);
+};
+
 const reviewEventToVersion = (event: ReviewEventItem): EnhancedDocVersion => ({
   ver:
     event.version_label ||
@@ -105,13 +123,21 @@ const reviewEventToVersion = (event: ReviewEventItem): EnhancedDocVersion => ({
         : undefined,
 });
 
+const isHistoryMetaEntry = (entry: EnhancedDocVersion): boolean =>
+  entry.isDeletion === true || entry.metaEventType != null;
+
+const findLatestVersionEntryIndex = (entries: EnhancedDocVersion[]): number =>
+  entries.findIndex(
+    (entry) => isPersistedDocumentVersionId(entry.versionId) && !isHistoryMetaEntry(entry),
+  );
+
 const buildHistoryFromVersions = (
   versions: DocumentVersionItem[],
   events: ReviewEventItem[],
 ): EnhancedDocVersion[] => {
   type Row = EnhancedDocVersion & { sortAt: string };
   const rows: Row[] = versions.map((v) => {
-    const ev = events.find((e) => e.document_version_id === v.id);
+    const ev = findVersionReviewEvent(events, v.id);
     return {
       ver: v.version_label,
       date: formatEventDate(v.created_at),
@@ -172,6 +198,7 @@ export default function ViewerModal({
   slotIdentity,
   slotLabel,
   onVersionCreated,
+  onVersionDeleted,
   onAuditStateChange,
   slotWorkflowStatus,
   persistedDocId,
@@ -220,7 +247,30 @@ export default function ViewerModal({
     Boolean(s.activeContext?.fromMetricVouch),
   );
   const clearOpenIntent = useViewerUiStore((s) => s.clearOpenIntent);
-  const isReadOnly = viewerMode === "preview";
+  const storeIsOpen = useViewerUiStore((s) => s.isOpen);
+  const storeMode = useViewerUiStore((s) => s.mode);
+  const [localMode, setLocalMode] = useState<ViewerMode>(viewerMode);
+
+  useEffect(() => {
+    if (!storeIsOpen) setLocalMode(viewerMode);
+  }, [storeIsOpen, viewerMode]);
+
+  useEffect(() => {
+    if (!isOpen) setLocalMode("preview");
+  }, [isOpen]);
+
+  const displayMode: ViewerMode = storeIsOpen ? storeMode : localMode;
+
+  const handleStartEdit = useCallback(() => {
+    if (storeIsOpen) {
+      useViewerUiStore.getState().setMode("edit");
+    } else {
+      setLocalMode("edit");
+    }
+    onViewerModeChange?.("edit");
+  }, [storeIsOpen, onViewerModeChange]);
+
+  const isReadOnly = displayMode === "preview";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -233,12 +283,10 @@ export default function ViewerModal({
 
   useEffect(() => {
     if (!isOpen || !slotIdentity) return;
-    const openType = viewerMode === "edit" ? "viewer_open_edit" : "viewer_open_preview";
-    const openTitle = viewerMode === "edit" ? "編集ビューアを開く" : "プレビューを開く";
     void createReviewEvent(slotIdentity, {
-      event_type: openType,
+      event_type: displayMode === "edit" ? "viewer_open_edit" : "viewer_open_preview",
       status: "draft",
-      action_title: openTitle,
+      action_title: displayMode === "edit" ? "編集ビューアを開く" : "プレビューを開く",
     }).catch((err) => console.warn("viewer_open audit failed:", err));
 
     return () => {
@@ -248,7 +296,9 @@ export default function ViewerModal({
         action_title: "ビューアを閉じる",
       }).catch((err) => console.warn("viewer_close audit failed:", err));
     };
-  }, [isOpen, slotIdentity, viewerMode]);
+    // displayMode の切替では open/close を再送しない（編集↔プレビュー切替の連打防止）
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionKey only
+  }, [isOpen, slotIdentity?.clientId, slotIdentity?.periodKey, slotIdentity?.slotId]);
 
   const actorLabel = useMemo(() => {
     const u = loadCurrentUser();
@@ -344,11 +394,33 @@ export default function ViewerModal({
     onEvent: handleWorkflowEvent,
   });
 
-  const activeFile = activeVerIdx === 0 ? file : historyFile ?? file;
+  const latestVersionIdx = useMemo(() => findLatestVersionEntryIndex(history), [history]);
+  const viewingLatestVersion =
+    latestVersionIdx >= 0 && activeVerIdx === latestVersionIdx;
+
+  useEffect(() => {
+    if (!isOpen || latestVersionIdx < 0) return;
+    const current = history[activeVerIdx];
+    if (!current || isHistoryMetaEntry(current)) {
+      setActiveVerIdx(latestVersionIdx);
+    }
+  }, [isOpen, history, activeVerIdx, latestVersionIdx, setActiveVerIdx]);
+
+  const activeFile = viewingLatestVersion ? file : historyFile ?? file;
   const localBlobUrl = useFileBlobUrl(activeFile, viewerSession, isOpen);
   const previewUrl = localBlobUrl ?? pdfUrl;
 
-  const editorKey = history[activeVerIdx]?.versionId ?? "initial";
+  const editorKey = useMemo(() => {
+    const cur = history[activeVerIdx];
+    if (cur && !isHistoryMetaEntry(cur) && isPersistedDocumentVersionId(cur.versionId)) {
+      return cur.versionId;
+    }
+    if (latestVersionIdx >= 0) {
+      const latest = history[latestVersionIdx];
+      if (latest && isPersistedDocumentVersionId(latest.versionId)) return latest.versionId;
+    }
+    return persistedDocId ?? "initial";
+  }, [history, activeVerIdx, latestVersionIdx, persistedDocId]);
 
   const {
     isReordering,
@@ -486,16 +558,12 @@ export default function ViewerModal({
     }
   }, [isOpen]);
 
-  // 複数版があるときは履歴パネルを開く
-  useEffect(() => {
-    if (!isOpen || !persistedHistory || persistedHistory.length <= 1) return;
-    setIsHistoryOpen(true);
-  }, [isOpen, persistedHistory?.length]);
-
   const handleCompareWithCurrent = useCallback(
     async (idx: number) => {
-      if (!file || idx <= 0) return;
+      const latestIdx = findLatestVersionEntryIndex(history);
+      if (!file || latestIdx < 0 || idx === latestIdx) return;
       const ver = history[idx];
+      const latestVer = history[latestIdx];
       if (!ver?.versionId || ver.versionId === "initial" || ver.versionId === "fallback") return;
       setCompareLoadingIdx(idx);
       try {
@@ -504,10 +572,14 @@ export default function ViewerModal({
         if (!rightFile) {
           rightFile = await fetchDocumentVersionFile(ver.versionId, file.name);
         }
+        let leftFile = file;
+        if (latestVer?.versionId && latestVer.versionId !== ver.versionId && !viewingLatestVersion) {
+          leftFile = await fetchDocumentVersionFile(latestVer.versionId, file.name);
+        }
         setVersionCompare({
-          leftFile: file,
+          leftFile,
           rightFile,
-          leftLabel: history[0]?.ver ?? "最新",
+          leftLabel: latestVer?.ver ?? "最新",
           rightLabel: ver.ver,
         });
       } catch (err) {
@@ -516,7 +588,7 @@ export default function ViewerModal({
         setCompareLoadingIdx(null);
       }
     },
-    [file, history, activeVerIdx, historyFile],
+    [file, history, activeVerIdx, historyFile, viewingLatestVersion],
   );
 
   const handleToggleSplitView = useCallback(() => {
@@ -534,14 +606,41 @@ export default function ViewerModal({
 
   const activeVersionId = history[activeVerIdx]?.versionId;
   const activeVersionLabel = history[activeVerIdx]?.ver;
+  const auditVersionId = isPersistedDocumentVersionId(editorKey) ? editorKey : undefined;
+  const auditVersionLabel = useMemo(() => {
+    if (auditVersionId) {
+      const match = history.find(
+        (h) => !isHistoryMetaEntry(h) && h.versionId === auditVersionId,
+      );
+      if (match?.ver && match.ver !== "---") return match.ver;
+    }
+    return activeVersionLabel !== "---" ? activeVersionLabel : undefined;
+  }, [auditVersionId, history, activeVersionLabel]);
 
   usePageViewAudit({
     enabled: isOpen && !!slotIdentity,
     slotIdentity,
     currentPage,
-    documentVersionId: activeVersionId !== "fallback" ? activeVersionId : undefined,
-    versionLabel: activeVersionLabel !== "---" ? activeVersionLabel : undefined,
+    documentVersionId: auditVersionId,
+    versionLabel: auditVersionLabel,
+    suspend: isReordering,
   });
+
+  const sharedAtRefreshRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!isOpen) {
+      sharedAtRefreshRef.current = undefined;
+      return;
+    }
+    if (sharedAtRefreshRef.current === undefined) {
+      sharedAtRefreshRef.current = clientSharedAt;
+      return;
+    }
+    if (sharedAtRefreshRef.current !== clientSharedAt) {
+      sharedAtRefreshRef.current = clientSharedAt;
+      setHistoryRefreshKey((k) => k + 1);
+    }
+  }, [isOpen, clientSharedAt]);
 
   useEffect(() => {
     const user = loadCurrentUser();
@@ -594,14 +693,39 @@ export default function ViewerModal({
       setVersionDeleteBusyId(versionId);
       try {
         await deleteDocumentVersion(versionId, slotIdentity.clientId);
-        const deletedIdx = history.findIndex((h) => h.versionId === versionId);
+        const [events, versions] = await Promise.all([
+          listReviewEvents(slotIdentity),
+          listDocumentVersions(slotIdentity),
+        ]);
+        const newHistory =
+          versions.length > 0
+            ? buildHistoryFromVersions(versions, events)
+            : events.length > 0
+              ? events.map(reviewEventToVersion)
+              : [];
+        setPersistedHistory(newHistory.length > 0 ? newHistory : null);
         setHistoryRefreshKey((k) => k + 1);
-        if (deletedIdx >= 0 && deletedIdx === activeVerIdx) {
+        setHistoryFile(null);
+
+        if (versions.length === 0) {
           setActiveVerIdx(0);
-          setHistoryFile(null);
-        } else if (deletedIdx >= 0 && deletedIdx < activeVerIdx) {
-          setActiveVerIdx((idx) => Math.max(0, idx - 1));
+          onVersionDeleted?.({ file: null, versionId: null, versionLabel: null });
+          onAuditStateChange?.();
+          return;
         }
+
+        const latest = versions[0];
+        const latestFile = await fetchDocumentVersionFile(
+          latest.id,
+          file?.name || latest.original_name || "document.pdf",
+        );
+        const latestIdx = findLatestVersionEntryIndex(newHistory);
+        setActiveVerIdx(latestIdx >= 0 ? latestIdx : 0);
+        onVersionDeleted?.({
+          file: latestFile,
+          versionId: latest.id,
+          versionLabel: latest.version_label,
+        });
         onAuditStateChange?.();
       } catch (err) {
         console.error("Version delete failed:", err);
@@ -613,16 +737,16 @@ export default function ViewerModal({
     [
       slotIdentity,
       canSoftDeleteDocument,
-      history,
-      activeVerIdx,
+      file?.name,
       setActiveVerIdx,
+      onVersionDeleted,
       onAuditStateChange,
     ],
   );
 
   // 履歴パネルで旧版を選択したとき immutable PDF を取得
   useEffect(() => {
-    if (!isOpen || activeVerIdx === 0) {
+    if (!isOpen || viewingLatestVersion) {
       setHistoryFile(null);
       setHistoryLoadError(null);
       return;
@@ -650,7 +774,7 @@ export default function ViewerModal({
       active = false;
       controller.abort();
     };
-  }, [isOpen, activeVerIdx, history, file?.name]);
+  }, [isOpen, activeVerIdx, history, file?.name, viewingLatestVersion]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -906,8 +1030,7 @@ export default function ViewerModal({
   if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex select-none overflow-hidden bg-slate-950">
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in-up transition-all duration-300">
+    <div className="fixed inset-0 z-[9999] flex animate-fade-in-up flex-col select-none overflow-hidden bg-slate-950">
         <ViewerHeader
           fileName={activeFile ? activeFile.name : "Document"}
           activeVersion={activeVersion}
@@ -934,9 +1057,10 @@ export default function ViewerModal({
           handleRemand={handleRemand}
           handleApprove={handleApprove}
           canAnnotate={canAnnotate && !isReadOnly}
+          canEnterEditMode={canAnnotate}
           canApprove={canApprove}
-          viewerMode={viewerMode}
-          onStartEdit={() => onViewerModeChange?.("edit")}
+          viewerMode={displayMode}
+          onStartEdit={handleStartEdit}
           highlightAuditStart={highlightAuditStart}
           canSoftDeleteDocument={canSoftDeleteDocument && !!persistedDocId && !!onSoftDelete}
           onSoftDelete={onSoftDelete}
@@ -961,7 +1085,8 @@ export default function ViewerModal({
           />
         )}
 
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100">
           {isSplitView ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               {scopedClientId ? (
@@ -1110,25 +1235,26 @@ export default function ViewerModal({
             />
           )}
         </div>
-      </div>
 
       {!isSplitView ? (
-      <HistoryPanel
-        isHistoryOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        history={history}
-        activeVerIdx={activeVerIdx}
-        setActiveVerIdx={setActiveVerIdx}
-        unsavedActions={actionsLog}
-        expandedHistoryIdx={expandedHistoryIdx}
-        setExpandedHistoryIdx={setExpandedHistoryIdx}
-        onCompareWithCurrent={handleCompareWithCurrent}
-        compareLoadingIdx={compareLoadingIdx}
-        canDeleteVersion={canSoftDeleteDocument}
-        onDeleteVersion={handleDeleteVersion}
-        versionDeleteBusyId={versionDeleteBusyId}
-      />
+        <HistoryPanel
+          isHistoryOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          history={history}
+          latestVersionIdx={latestVersionIdx}
+          activeVerIdx={activeVerIdx}
+          setActiveVerIdx={setActiveVerIdx}
+          unsavedActions={actionsLog}
+          expandedHistoryIdx={expandedHistoryIdx}
+          setExpandedHistoryIdx={setExpandedHistoryIdx}
+          onCompareWithCurrent={handleCompareWithCurrent}
+          compareLoadingIdx={compareLoadingIdx}
+          canDeleteVersion={canSoftDeleteDocument}
+          onDeleteVersion={handleDeleteVersion}
+          versionDeleteBusyId={versionDeleteBusyId}
+        />
       ) : null}
+        </div>
 
       {versionCompare ? (
         <VersionCompareView

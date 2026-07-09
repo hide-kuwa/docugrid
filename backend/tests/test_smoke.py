@@ -1177,16 +1177,16 @@ def test_role_permissions_get_as_platform_admin() -> None:
 
 def test_role_permissions_get_denied_for_legacy_admin_without_platform() -> None:
     """Legacy admin role has settings.manage only; platform matrix is settings.platform."""
-    import main as main_module
+    import api.deps as deps
 
-    perms = dict(main_module._get_role_permissions())
+    perms = dict(deps._get_role_permissions())
     perms["admin"] = {p for p in perms["admin"] if p != "settings.platform"}
-    main_module._role_permissions_cache = perms
+    deps._role_permissions_cache = perms
     try:
         r = client.get("/api/role-permissions", headers=_admin_headers())
         assert r.status_code == 403
     finally:
-        main_module._invalidate_role_permissions_cache()
+        deps._invalidate_role_permissions_cache()
 
 
 def test_role_permissions_denied_for_viewer() -> None:
@@ -1195,11 +1195,14 @@ def test_role_permissions_denied_for_viewer() -> None:
 
 
 def test_role_permissions_update_affects_enforcement(monkeypatch, tmp_path) -> None:
-    import main as main_module
+    import api.constants as constants
+    from api.deps import _invalidate_role_permissions_cache
 
     rp_path = tmp_path / "role_permissions.json"
-    monkeypatch.setattr(main_module, "ROLE_PERMISSIONS_PATH", rp_path)
-    main_module._invalidate_role_permissions_cache()
+    monkeypatch.setattr(constants, "ROLE_PERMISSIONS_PATH", rp_path)
+    monkeypatch.setattr("api.deps.ROLE_PERMISSIONS_PATH", rp_path)
+    monkeypatch.setattr("api.master_store.ROLE_PERMISSIONS_PATH", rp_path)
+    _invalidate_role_permissions_cache()
 
     get_r = client.get("/api/role-permissions", headers=_platform_admin_headers())
     assert get_r.status_code == 200

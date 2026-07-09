@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Database,
+  FileStack,
   LineChart,
   Loader2,
   Monitor,
@@ -166,6 +167,12 @@ export default function DevConsolePage() {
       label: "経営ダッシュボード",
       description: "MRR / ARR / チャーン · 全事務所・顧問先",
       icon: LineChart,
+    });
+    links.push({
+      href: "/dev/form-catalog",
+      label: "書類の覚え方（AI分類）",
+      description: "別表・表紙のアンカー定義 · ページスキャン",
+      icon: FileStack,
     });
     links.push({
       href: "/dev/integration-ports",

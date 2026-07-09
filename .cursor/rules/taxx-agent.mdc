@@ -1,0 +1,21 @@
+---
+description: DocuGrid core map and token-efficient agent behavior
+alwaysApply: true
+---
+
+# DocuGrid agent defaults
+
+- Repo product name: **DocuGrid** (`docs/product-naming.md`). Folder `TAXX` ≠ product name.
+- Default stack: `frontend/` + `backend/main.py`. Skip `backend/core/` unless asked.
+- Minimize exploration: read `AGENTS.md` map first; grep narrow paths; avoid Task/subagents unless user asks.
+
+## Output
+
+- Implement first; explain only non-obvious security or tenancy choices.
+- End with: files changed, `pytest` command, remaining risk (if any).
+- No markdown files unless user requests docs.
+
+## Code style
+
+- Match surrounding code. Minimal diff. No drive-by refactors.
+- New tenancy checks: reuse `authorize_client_access`, `authorize_firm_resource` from `backend/services/tenancy.py`.

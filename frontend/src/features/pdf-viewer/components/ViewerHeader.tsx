@@ -44,6 +44,8 @@ type ViewerHeaderProps = {
   handleRemand: () => void;
   handleApprove: () => void;
   canAnnotate: boolean;
+  /** プレビューから編集モードへ入れるか（document.annotate 等） */
+  canEnterEditMode?: boolean;
   canApprove: boolean;
   viewerMode: ViewerMode;
   onStartEdit: () => void;
@@ -83,6 +85,7 @@ export const ViewerHeader = ({
   handleRemand,
   handleApprove,
   canAnnotate,
+  canEnterEditMode = true,
   canApprove,
   viewerMode,
   onStartEdit,
@@ -205,13 +208,15 @@ export const ViewerHeader = ({
                 共有解除
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={onStartEdit}
-              className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
-            >
-              編集を開始
-            </button>
+            {canEnterEditMode ? (
+              <button
+                type="button"
+                onClick={onStartEdit}
+                className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
+              >
+                編集を開始
+              </button>
+            ) : null}
           </>
         ) : (
         <>

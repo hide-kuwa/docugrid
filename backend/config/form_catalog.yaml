@@ -1,0 +1,205 @@
+# 税務書類様式カタログ — AI 分類参照正本
+# 編集: 開発コンソール /dev/form-catalog
+version: 1
+defaults:
+  max_scan_pages: 25
+forms:
+- form_id: cover
+  label_ja: 表紙・送付状
+  role: skip
+  maps_to:
+    tax_type: null
+    slot_label: null
+  anchors:
+  - region: any
+    any_of:
+    - 送付状
+    - 在中
+    - ご確認の上
+    - ご提出
+    - 表紙
+  page_scan:
+    skip_in_package: true
+    continuation: false
+  notes: 申告パッケージの先頭に混ざる表紙。様式本体ではない。
+- form_id: corp_tax_beppyo_1
+  label_ja: 別表一（一）法人税の明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表一
+    - 別表１
+    - 別表1
+    - 法人税の明細書
+  - region: any
+    any_of:
+    - 課税標準法人税額
+    - 地方法人税額
+    - 法人税額
+  must_not:
+  - 勘定科目内訳明細書
+  - 消費税及び地方消費税
+  - 事業概況説明書
+  page_scan:
+    skip_in_package: false
+    continuation: true
+  filename_hints:
+  - 別表一
+  - 別表１
+  - 別表1
+  - beppyo1
+  - beppyo_1
+- form_id: corp_tax_beppyo_4
+  label_ja: 別表四 所得の金額の計算に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表四
+    - 別表４
+  - region: any
+    any_of:
+    - 所得の金額の計算
+    - 留保
+    - 社外流出
+  must_not:
+  - 勘定科目内訳明細書
+  - 消費税
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表四
+  - 別表４
+  - beppyo4
+- form_id: corp_tax_beppyo_5_1
+  label_ja: 別表五（一）利益積立金額及び資本金等の額の計算書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表五
+    - 別表５
+    - 別表五（一）
+    - 別表５（１）
+  - region: any
+    any_of:
+    - 利益積立金
+    - 資本金等の額
+    - 繰越損益金
+  must_not:
+  - 消費税
+  - 内訳明細書
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表五
+  - beppyo5
+- form_id: account_details
+  label_ja: 勘定科目内訳明細書
+  role: body
+  maps_to:
+    tax_type: ACCOUNT_DETAILS
+    slot_label: 勘定科目内訳明細書
+  anchors:
+  - region: any
+    any_of:
+    - 勘定科目内訳明細書
+    - 内訳明細書
+    - 科目内訳
+  must_not:
+  - 別表一
+  - 消費税及び地方消費税
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 内訳
+  - 内訳明細
+  - account_details
+- form_id: corp_summary
+  label_ja: 法人事業概況説明書
+  role: body
+  maps_to:
+    tax_type: CORP_SUMMARY
+    slot_label: 法人事業概況説明書
+  anchors:
+  - region: any
+    any_of:
+    - 法人事業概況説明書
+    - 事業概況説明
+    - 事業の状況
+  must_not:
+  - 別表一
+  - 勘定科目内訳
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 概況
+  - 事業概況
+- form_id: consumption_tax_return
+  label_ja: 消費税及び地方消費税の申告書
+  role: body
+  maps_to:
+    tax_type: CONSUMPTION_TAX
+    slot_label: 消費税申告書
+  anchors:
+  - region: any
+    any_of:
+    - 消費税及び地方消費税
+    - 課税標準額
+    - 仕入控除税額
+    - 消費税申告書
+  must_not:
+  - 法人税の明細書
+  - 別表一
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 消費税
+  - consumption
+- form_id: trial_balance
+  label_ja: 試算表・決算報告書
+  role: body
+  maps_to:
+    tax_type: TRIAL_BALANCE
+    slot_label: 決算報告書
+  anchors:
+  - region: any
+    any_of:
+    - 試算表
+    - 合計残高試算表
+    - 貸借対照表
+    - 損益計算書
+    - 決算報告
+  page_scan:
+    continuation: false
+  filename_hints:
+  - 試算表
+  - 決算
+  - trial
+- form_id: tax_proxy
+  label_ja: 税務代理権限証書
+  role: body
+  maps_to:
+    tax_type: TAX_PROXY
+    slot_label: 税務代理権限証書
+  anchors:
+  - region: any
+    any_of:
+    - 税務代理権限
+    - 代理権限証書
+    - 提出委任
+  page_scan:
+    continuation: false
+  filename_hints:
+  - 代理権限
+  - tax_proxy

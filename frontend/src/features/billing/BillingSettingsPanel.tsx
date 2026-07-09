@@ -3,7 +3,6 @@
 
 
 import { useCallback, useEffect, useState } from "react";
-
 import { CreditCard, ExternalLink, Loader2, RefreshCw, Sparkles, Users } from "lucide-react";
 
 import {
@@ -297,10 +296,9 @@ export function BillingSettingsPanel({
 
 
   const pricing = status.pricing;
-
   const estimate = status.estimatedMonthlyYen ?? 0;
-
   const ai = status.ai;
+  const canManageBilling = status.canManageBilling === true;
 
 
 
@@ -323,6 +321,12 @@ export function BillingSettingsPanel({
           税理士事務所向けサブスクリプション。販売パートナー経由の場合、契約期間中は手数料が自動分配されます。
 
         </p>
+
+        {!canManageBilling && (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            プラン・お支払いの変更は事務所の代表アカウントのみ操作できます。
+          </p>
+        )}
 
       </header>
 
@@ -452,6 +456,8 @@ export function BillingSettingsPanel({
 
             </button>
 
+            {canManageBilling && (
+              <>
             <button
 
               type="button"
@@ -507,6 +513,8 @@ export function BillingSettingsPanel({
               </button>
 
             )}
+              </>
+            )}
 
           </div>
 
@@ -560,7 +568,7 @@ export function BillingSettingsPanel({
 
                 type="button"
 
-                disabled={!status.configured || !plan.priceConfigured || acting !== null}
+                disabled={!canManageBilling || !status.configured || !plan.priceConfigured || acting !== null}
 
                 onClick={() => void handleCheckout(plan.id)}
 
@@ -622,6 +630,7 @@ export function BillingSettingsPanel({
 
           </div>
 
+          {canManageBilling && (
           <div className="flex flex-wrap gap-2">
 
             {!ai.paygoEnabled && (
@@ -675,6 +684,7 @@ export function BillingSettingsPanel({
             ))}
 
           </div>
+          )}
 
         </section>
 

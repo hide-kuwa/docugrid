@@ -101,6 +101,19 @@ def jwt_secret_is_dev_default() -> bool:
     return _jwt_secret() == DEV_JWT_SECRET
 
 
+def jwt_secret_is_placeholder() -> bool:
+    upper = _jwt_secret().upper()
+    return "REPLACE" in upper or upper.startswith("CHANGEME")
+
+
+def default_login_password() -> str:
+    return os.environ.get("DOCUGRID_LOGIN_PASSWORD", "password").strip()
+
+
+def login_password_is_default() -> bool:
+    return default_login_password() == "password"
+
+
 def session_cookie_enabled() -> bool:
     raw = os.environ.get("DOCUGRID_SESSION_COOKIE")
     if raw is None:
@@ -238,6 +251,14 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
             if strict:
                 raise RuntimeError(msg)
             warnings.append(msg)
+        elif jwt_secret_is_placeholder():
+            msg = (
+                "DOCUGRID_JWT_SECRET is still a placeholder - generate a random secret "
+                "(e.g. python -c \"import secrets; print(secrets.token_urlsafe(48))\")"
+            )
+            if strict:
+                raise RuntimeError(msg)
+            warnings.append(msg)
         if header_auth_allowed():
             msg = "DOCUGRID_ALLOW_HEADER_AUTH must be false in production"
             if strict:
@@ -272,6 +293,14 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
             if strict:
                 raise RuntimeError(msg)
             warnings.append(msg)
+        elif password_login_allowed() and staging_local_enabled() and login_password_is_default():
+            msg = (
+                "DOCUGRID_LOGIN_PASSWORD must not be the default 'password' when "
+                "DOCUGRID_STAGING_LOCAL password login is enabled"
+            )
+            if strict:
+                raise RuntimeError(msg)
+            warnings.append(msg)
         from services.member_directory import member_directory_count
 
         if member_directory_count() < 1:
@@ -287,11 +316,26 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
             if strict:
                 raise RuntimeError(msg)
             warnings.append(msg)
+        elif not staging_local_enabled():
+            for origin in get_cors_origins() or []:
+                if origin.lower().startswith("http://"):
+                    warnings.append(
+                        f"DOCUGRID_CORS_ORIGINS includes non-HTTPS origin {origin!r} - use HTTPS in production"
+                    )
         if legacy_files_enabled():
-            warnings.append(
-                "DOCUGRID_ALLOW_LEGACY_FILES should be false in production - "
+            msg = (
+                "DOCUGRID_ALLOW_LEGACY_FILES must be false in production - "
                 "use slot document APIs instead of GET /files"
             )
+            if strict:
+                raise RuntimeError(msg)
+            warnings.append(msg)
+        if not session_cookie_enabled():
+            warnings.append(
+                "DOCUGRID_SESSION_COOKIE=false - prefer httpOnly session cookies in production"
+            )
+        if session_cookie_enabled() and not csrf_protection_enabled():
+            warnings.append("DOCUGRID_CSRF=false while session cookies are enabled - CSRF risk")
     elif jwt_secret_is_dev_default():
         warnings.append(
             "Using default DOCUGRID_JWT_SECRET — set a strong secret before production"

@@ -11,7 +11,14 @@ def resolve_storage_path(storage_key: str) -> Path:
     """Return the best existing path for a storage_key, with legacy fallbacks."""
     if not storage_key:
         return STORAGE_DIR
-    primary = STORAGE_DIR / storage_key
+    normalized = storage_key.replace("\\", "/")
+    if ".." in normalized.split("/"):
+        return STORAGE_DIR / "__invalid__"
+    primary = (STORAGE_DIR / storage_key).resolve()
+    try:
+        primary.relative_to(STORAGE_DIR.resolve())
+    except ValueError:
+        return STORAGE_DIR / "__invalid__"
     if primary.exists():
         return primary
     leaf = Path(storage_key).name

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuditTarget, EnhancedDocVersion, INITIAL_HISTORY, WorkflowStatus } from "../types";
 
 export type WorkflowEventType =
@@ -68,19 +68,27 @@ export const useAuditWorkflow = ({
     }
   }, [initialHistory]);
 
+  const wasOpenRef = useRef(false);
+
+  // ビューアを開いた瞬間だけ版選択を先頭へ（履歴再取得のたびにリセットしない）
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setActiveVerIdx(0);
       setExpandedHistoryIdx(null);
-      const fromHistory = history[0]?.status ?? INITIAL_HISTORY[0].status;
-      const fromServer = slotWorkflowStatus as WorkflowStatus | undefined;
-      const validServer =
-        fromServer &&
-        ["draft", "review_pending", "auditing", "done", "rejected", "fix"].includes(fromServer);
-      setCurrentStatus(
-        fromHistory === "draft" && validServer ? (fromServer as WorkflowStatus) : fromHistory,
-      );
     }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fromHistory = history[0]?.status ?? INITIAL_HISTORY[0].status;
+    const fromServer = slotWorkflowStatus as WorkflowStatus | undefined;
+    const validServer =
+      fromServer &&
+      ["draft", "review_pending", "auditing", "done", "rejected", "fix"].includes(fromServer);
+    setCurrentStatus(
+      fromHistory === "draft" && validServer ? (fromServer as WorkflowStatus) : fromHistory,
+    );
   }, [isOpen, history, slotWorkflowStatus]);
 
   useEffect(() => {

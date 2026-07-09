@@ -82,6 +82,21 @@
   max-width: 100%;
 }
 
+.h-item-doc {
+  min-height: 3.5rem;
+  width: 11rem;
+}
+
+.v-item-client {
+  transform: scale(0.88);
+  opacity: 0.5;
+}
+.v-item-client.active {
+  transform: scale(1.02);
+  opacity: 1;
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.55);
+}
+
 /* --- Data workspace context drum (below company NavBar) --- */
 .data-context-drum {
   scroll-snap-type: x mandatory;

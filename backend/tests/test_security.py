@@ -1,4 +1,4 @@
-"""Security hardening tests (see docs/security-checklist.md)."""
+"""Security hardening tests (see docs/security-checklist.md §A-2, §A-3)."""
 
 import json
 import uuid
@@ -187,7 +187,7 @@ def test_google_login_issues_jwt(monkeypatch) -> None:
             "iss": "accounts.google.com",
         }
 
-    monkeypatch.setattr("main.verify_google_id_token", _fake_verify)
+    monkeypatch.setattr("api.application.verify_google_id_token", _fake_verify)
     r = client.post(
         "/api/auth/google",
         json={"credential": "fake-google-id-token"},
@@ -211,7 +211,7 @@ def test_google_login_rejects_unregistered_email(monkeypatch) -> None:
             "iss": "accounts.google.com",
         }
 
-    monkeypatch.setattr("main.verify_google_id_token", _fake_verify)
+    monkeypatch.setattr("api.application.verify_google_id_token", _fake_verify)
     r = client.post("/api/auth/google", json={"credential": "x"})
     assert r.status_code == 403
 
@@ -345,9 +345,143 @@ def test_client_master_put_cannot_modify_other_firm_client(beta_client_master) -
     assert r.status_code == 400
 
 
-def test_mcp_token_requires_auth() -> None:
-    r = client.post("/api/auth/mcp-token")
+def test_mcp_token_requires_auth(fresh_client: TestClient) -> None:
+    r = fresh_client.post("/api/auth/mcp-token")
     assert r.status_code == 401
+
+
+def _staff_headers(client_id: str = "c1") -> dict[str, str]:
+    return {
+        "X-Docugrid-Role": "operator",
+        "X-Docugrid-User": "tanaka@tax.co.jp",
+        "X-Docugrid-Stakeholder": "actor-s1",
+        "X-Docugrid-Client": client_id,
+        "X-Docugrid-Firm": DEFAULT_FIRM_ID,
+    }
+
+
+def _staff_headers_s2() -> dict[str, str]:
+    return {
+        "X-Docugrid-Role": "operator",
+        "X-Docugrid-User": "staff2@tax.co.jp",
+        "X-Docugrid-Stakeholder": "actor-s2",
+        "X-Docugrid-Client": "c4",
+        "X-Docugrid-Firm": DEFAULT_FIRM_ID,
+    }
+
+
+def test_readonly_assignment_denies_upload() -> None:
+    from services.client_assignments import replace_member_assignments
+
+    replace_member_assignments(
+        firm_id=DEFAULT_FIRM_ID,
+        member_id="actor-s1",
+        client_ids=["c1"],
+        assignment_role="readonly",
+    )
+    main_module._invalidate_stakeholder_maps_cache()
+    try:
+        pdf = _minimal_pdf_bytes()
+        r = client.post(
+            "/api/slots",
+            headers=_staff_headers("c1"),
+            data={
+                "client_id": "c1",
+                "period_key": "year:1",
+                "slot_id": "corporate_registry",
+            },
+            files={"file": ("t.pdf", pdf, "application/pdf")},
+        )
+        assert r.status_code == 403, r.text
+        assert "Assignment permission denied" in r.text or "Permission denied: document.upload" in r.text
+    finally:
+        replace_member_assignments(
+            firm_id=DEFAULT_FIRM_ID,
+            member_id="actor-s1",
+            client_ids=["c1", "c2", "c3"],
+            assignment_role="main",
+        )
+        main_module._invalidate_stakeholder_maps_cache()
+
+
+def test_sub_assignment_denies_upload() -> None:
+    from services.client_assignments import replace_member_assignments
+
+    replace_member_assignments(
+        firm_id=DEFAULT_FIRM_ID,
+        member_id="actor-s1",
+        client_ids=["c1"],
+        assignment_role="sub",
+    )
+    main_module._invalidate_stakeholder_maps_cache()
+    try:
+        pdf = _minimal_pdf_bytes()
+        r = client.post(
+            "/api/slots",
+            headers=_staff_headers("c1"),
+            data={
+                "client_id": "c1",
+                "period_key": "year:1",
+                "slot_id": "corporate_registry",
+            },
+            files={"file": ("t.pdf", pdf, "application/pdf")},
+        )
+        assert r.status_code == 403, r.text
+    finally:
+        replace_member_assignments(
+            firm_id=DEFAULT_FIRM_ID,
+            member_id="actor-s1",
+            client_ids=["c1", "c2", "c3"],
+            assignment_role="main",
+        )
+        main_module._invalidate_stakeholder_maps_cache()
+
+
+def test_classify_pending_file_requires_client_access(monkeypatch) -> None:
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "true")
+    pdf = _minimal_pdf_bytes()
+    created = client.post(
+        "/api/classify/pending",
+        headers=_admin_headers("c1"),
+        data={"client_id": "c1", "period_key": "year:1"},
+        files={"file": ("t.pdf", pdf, "application/pdf")},
+    )
+    assert created.status_code == 200, created.text
+    item_id = created.json()["id"]
+
+    denied = client.get(
+        f"/api/classify/pending/{item_id}/file",
+        headers=_staff_headers_s2(),
+    )
+    assert denied.status_code == 403, denied.text
+
+    allowed = client.get(
+        f"/api/classify/pending/{item_id}/file",
+        headers=_admin_headers("c1"),
+    )
+    assert allowed.status_code == 200, allowed.text
+
+
+def test_classify_pending_rejects_invalid_pdf() -> None:
+    r = client.post(
+        "/api/classify/pending",
+        headers=_admin_headers("c1"),
+        data={"client_id": "c1", "period_key": "year:1"},
+        files={"file": ("bad.pdf", b"not-a-pdf", "application/pdf")},
+    )
+    assert r.status_code == 400
+
+
+def test_upload_size_limit_rejected(monkeypatch) -> None:
+    monkeypatch.setenv("DOCUGRID_MAX_UPLOAD_BYTES", "128")
+    pdf = _minimal_pdf_bytes()
+    r = client.post(
+        "/api/classify/pending",
+        headers=_admin_headers("c1"),
+        data={"client_id": "c1", "period_key": "year:1"},
+        files={"file": ("t.pdf", pdf, "application/pdf")},
+    )
+    assert r.status_code == 413, r.text
 
 
 def test_mcp_token_issued_for_authenticated_user(monkeypatch) -> None:
