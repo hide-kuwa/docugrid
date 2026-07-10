@@ -70,10 +70,9 @@ export const useAuditWorkflow = ({
 
   const wasOpenRef = useRef(false);
 
-  // ビューアを開いた瞬間だけ版選択を先頭へ（履歴再取得のたびにリセットしない）
+  // ビューアを開いた瞬間だけ付属 UI をリセット（版選択は ViewerModal 側で最新版へ）
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setActiveVerIdx(0);
       setExpandedHistoryIdx(null);
     }
     wasOpenRef.current = isOpen;

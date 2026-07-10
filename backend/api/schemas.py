@@ -1078,6 +1078,9 @@ class ReviewEventItem(BaseModel):
     document_version_id: Optional[str] = None
     detail: Optional[str] = None
 
+class ReviewTimelineItem(ReviewEventItem):
+    slot_label: Optional[str] = None
+
 
 
 class ExtractionApplyBody(BaseModel):
@@ -1314,6 +1317,7 @@ __all__ = [
     "ReviewEventBatchCreate",
     "ReviewEventCreate",
     "ReviewEventItem",
+    "ReviewTimelineItem",
     "RolePermissionsPayload",
     "SanteiRunBody",
     "ScreenDesignSaveBody",

@@ -187,7 +187,7 @@ def test_google_login_issues_jwt(monkeypatch) -> None:
             "iss": "accounts.google.com",
         }
 
-    monkeypatch.setattr("api.application.verify_google_id_token", _fake_verify)
+    monkeypatch.setattr("services.google_oauth.verify_google_id_token", _fake_verify)
     r = client.post(
         "/api/auth/google",
         json={"credential": "fake-google-id-token"},
@@ -211,7 +211,7 @@ def test_google_login_rejects_unregistered_email(monkeypatch) -> None:
             "iss": "accounts.google.com",
         }
 
-    monkeypatch.setattr("api.application.verify_google_id_token", _fake_verify)
+    monkeypatch.setattr("services.google_oauth.verify_google_id_token", _fake_verify)
     r = client.post("/api/auth/google", json={"credential": "x"})
     assert r.status_code == 403
 

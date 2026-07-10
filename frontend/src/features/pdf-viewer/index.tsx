@@ -96,11 +96,22 @@ const HISTORY_NOISE_EVENT_TYPES = new Set([
 const findVersionReviewEvent = (
   events: ReviewEventItem[],
   versionId: string,
-): ReviewEventItem | undefined => {
-  const meaningful = events.find(
+): ReviewEventItem | undefined =>
+  events.find(
     (e) => e.document_version_id === versionId && !HISTORY_NOISE_EVENT_TYPES.has(e.event_type),
   );
-  return meaningful ?? events.find((e) => e.document_version_id === versionId);
+
+const collectVersionPageViewLogs = (events: ReviewEventItem[], versionId: string): string[] => {
+  const seen = new Set<string>();
+  const logs: string[] = [];
+  for (const e of events) {
+    if (e.document_version_id !== versionId || e.event_type !== "page_view") continue;
+    const title = e.action_title?.trim();
+    if (!title || seen.has(title)) continue;
+    seen.add(title);
+    logs.push(title);
+  }
+  return logs;
 };
 
 const reviewEventToVersion = (event: ReviewEventItem): EnhancedDocVersion => ({
@@ -138,13 +149,18 @@ const buildHistoryFromVersions = (
   type Row = EnhancedDocVersion & { sortAt: string };
   const rows: Row[] = versions.map((v) => {
     const ev = findVersionReviewEvent(events, v.id);
+    const pageViewLogs = collectVersionPageViewLogs(events, v.id);
+    const actionsLog = [
+      ...(ev?.reason ? [ev.reason] : []),
+      ...pageViewLogs,
+    ];
     return {
       ver: v.version_label,
       date: formatEventDate(v.created_at),
       user: resolveActorName(v.created_by_stakeholder_id, v.created_by_email),
       action: ev?.action_title || versionSourceLabel(v.source),
       status: (ev?.status as WorkflowStatus) || "draft",
-      actionsLog: ev?.reason ? [ev.reason] : [],
+      actionsLog,
       isMajor: ev?.is_major ?? /\.0\.0$/.test(v.version_label),
       versionId: v.id,
       sortAt: v.created_at,
@@ -397,6 +413,18 @@ export default function ViewerModal({
   const latestVersionIdx = useMemo(() => findLatestVersionEntryIndex(history), [history]);
   const viewingLatestVersion =
     latestVersionIdx >= 0 && activeVerIdx === latestVersionIdx;
+
+  const openVersionSnapRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      openVersionSnapRef.current = false;
+      return;
+    }
+    if (!openVersionSnapRef.current && latestVersionIdx >= 0) {
+      openVersionSnapRef.current = true;
+      setActiveVerIdx(latestVersionIdx);
+    }
+  }, [isOpen, latestVersionIdx, setActiveVerIdx]);
 
   useEffect(() => {
     if (!isOpen || latestVersionIdx < 0) return;

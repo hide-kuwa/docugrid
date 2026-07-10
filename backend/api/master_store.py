@@ -19,7 +19,11 @@ from api.constants import (
     SYSTEM_CONFIG_PATH,
     _role_permissions_cache,
 )
-from api.deps import _get_role_permissions, _invalidate_role_permissions_cache
+from api.deps import (
+    _get_role_permissions,
+    _invalidate_role_permissions_cache,
+    _invalidate_stakeholder_maps_cache,
+)
 from api.schemas import (
     ClientMasterClient,
     ClientMasterGroup,

@@ -131,7 +131,8 @@ export const ViewerHeader = ({
                           : "bg-slate-600"
                 }`}
         >
-          {activeVersion.ver} {activeVersion.action}
+          {activeVersion.ver}
+          {activeVersion.action ? ` ${activeVersion.action}` : ""}
         </span>
         {unsavedCount > 0 && !isReadOnly && (
           <span className="text-[10px] text-yellow-400 font-bold flex items-center animate-pulse">

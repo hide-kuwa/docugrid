@@ -59,7 +59,7 @@ def _fake_google(monkeypatch: pytest.MonkeyPatch, email: str, name: str = "Test 
             "iss": "accounts.google.com",
         }
 
-    monkeypatch.setattr("api.application.verify_google_id_token", _verify)
+    monkeypatch.setattr("services.google_oauth.verify_google_id_token", _verify)
 
 
 def test_register_firm_creates_representative(

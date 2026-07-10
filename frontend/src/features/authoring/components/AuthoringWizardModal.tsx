@@ -52,8 +52,11 @@ export function AuthoringWizardModal({
   const [slotLocked, setSlotLocked] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [listError, setListError] = useState("");
+  const [openError, setOpenError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
 
   const filtered = useMemo(() => {
@@ -76,7 +79,9 @@ export function AuthoringWizardModal({
     setSaveSlotLabel("");
     setSlotLocked(false);
     setMissing([]);
-    setError("");
+    setListError("");
+    setOpenError("");
+    setActionError("");
     setMessage("");
   }, []);
 
@@ -86,11 +91,17 @@ export function AuthoringWizardModal({
       return;
     }
     void (async () => {
+      setListLoading(true);
+      setListError("");
+      setOpenError("");
       try {
         const data = await listAuthoringTemplates(clientId);
         setTemplates([...data.global, ...data.local]);
       } catch {
-        setError("ひな形の読み込みに失敗しました。");
+        setTemplates([]);
+        setListError("ひな形一覧の読み込みに失敗しました。");
+      } finally {
+        setListLoading(false);
       }
     })();
   }, [open, clientId, reset]);
@@ -119,7 +130,7 @@ export function AuthoringWizardModal({
 
   const loadTemplate = async (template: AuthoringTemplate) => {
     setLoading(true);
-    setError("");
+    setOpenError("");
     setSelected(template);
     try {
       const result = await renderAuthoringTemplate(template.id, clientId, {});
@@ -128,7 +139,7 @@ export function AuthoringWizardModal({
       applySlotTarget(template, result.targetSlotLabel);
       setStep("edit");
     } catch {
-      setError("ひな形の読み込みに失敗しました。");
+      setOpenError("このひな形を開けませんでした。基本情報の取得に失敗した可能性があります。");
       setSelected(null);
     } finally {
       setLoading(false);
@@ -138,7 +149,7 @@ export function AuthoringWizardModal({
   const handleSave = async () => {
     if (!selected || !editorText.trim()) return;
     setSaving(true);
-    setError("");
+    setActionError("");
     setMessage("");
     try {
       const title = selected.title.replace(/（.+）/, "").trim();
@@ -164,7 +175,7 @@ export function AuthoringWizardModal({
         onClose();
       }, 1200);
     } catch {
-      setError("PDF の生成または保存に失敗しました。");
+      setActionError("PDF の生成または保存に失敗しました。");
     } finally {
       setSaving(false);
     }
@@ -205,6 +216,12 @@ export function AuthoringWizardModal({
               />
             </div>
             <ul className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
+              {listLoading && templates.length === 0 && (
+                <li className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  ひな形を読み込み中…
+                </li>
+              )}
               {filtered.map((t) => (
                 <li key={t.id}>
                   <button
@@ -226,10 +243,22 @@ export function AuthoringWizardModal({
                   </button>
                 </li>
               ))}
-              {filtered.length === 0 && (
-                <li className="py-8 text-center text-sm text-slate-400">該当するひな形がありません</li>
+              {filtered.length === 0 && !listLoading && (
+                <li className="py-8 text-center text-sm text-slate-400">
+                  {listError || "該当するひな形がありません"}
+                </li>
               )}
             </ul>
+            {openError && (
+              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                {openError}
+              </p>
+            )}
+            {listError && templates.length > 0 && (
+              <p className="mt-2 text-[10px] text-amber-700">
+                一覧の再読み込みに失敗しましたが、表示中のひな形は利用できます。
+              </p>
+            )}
             {loading && (
               <p className="mt-2 flex items-center justify-center gap-2 text-xs text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -245,7 +274,10 @@ export function AuthoringWizardModal({
               <h3 className="text-sm font-bold text-slate-800">{selected.title}</h3>
               <button
                 type="button"
-                onClick={() => setStep("pick")}
+                onClick={() => {
+                  setOpenError("");
+                  setStep("pick");
+                }}
                 className="text-[11px] font-bold text-indigo-600 hover:underline"
               >
                 ひな形を選び直す
@@ -310,9 +342,9 @@ export function AuthoringWizardModal({
           </div>
         )}
 
-        {(error || message) && (
+        {(actionError || message) && (
           <div className="border-t border-slate-100 px-5 py-2">
-            {error && <p className="text-xs font-bold text-red-600">{error}</p>}
+            {actionError && <p className="text-xs font-bold text-red-600">{actionError}</p>}
             {message && <p className="text-xs font-bold text-emerald-700">{message}</p>}
           </div>
         )}
