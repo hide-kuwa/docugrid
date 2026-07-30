@@ -28,6 +28,9 @@ forms:
   maps_to:
     tax_type: CORP_TAX_RETURN
     slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: true
   anchors:
   - region: top_right
     any_of:
@@ -203,3 +206,411 @@ forms:
   filename_hints:
   - 代理権限
   - tax_proxy
+- form_id: etax_receipt
+  label_ja: 受信通知（e-Tax）
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: common
+    required: true
+  anchors:
+  - region: top_right
+    any_of:
+    - 受信通知
+  - region: any
+    any_of:
+    - 受信通知
+    - メール詳細
+    - 受付番号
+    - 納付区分番号通知
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 受信通知
+- form_id: tax_payment_summary
+  label_ja: 納付税額一覧表
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 納付税額一覧表
+  - region: any
+    any_of:
+    - 納付税額一覧表
+    - 納付すべき税額
+    - 納付税額
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 納付税額一覧表
+- form_id: corp_tax_beppyo_2
+  label_ja: 別表二 同族会社等の判定に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: true
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表二
+    - 別表２
+    - 別表2
+  - region: any
+    any_of:
+    - 同族会社等の判定
+    - 同族会社
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表二
+  - 別表２
+  - 別表2
+- form_id: corp_tax_beppyo_3_1
+  label_ja: 別表三（一）特定同族会社の留保金額に対する税額の計算に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表三
+    - 別表３
+    - 別表3
+    - 別表三（一）
+    - 別表3(1)
+  - region: any
+    any_of:
+    - 特定同族会社の留保金額
+    - 留保金額に対する税額
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表三
+  - 別表３
+  - 別表3
+  - 別表三（一）
+  - 別表3(1)
+- form_id: corp_tax_beppyo_5_2
+  label_ja: 別表五（二）租税公課の納付状況等に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: true
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表五
+    - 別表５
+    - 別表5
+    - 別表五（二）
+    - 別表5(2)
+  - region: any
+    any_of:
+    - 租税公課の納付状況
+    - 納税充当金
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表五
+  - 別表５
+  - 別表5
+  - 別表五（二）
+  - 別表5(2)
+- form_id: corp_tax_beppyo_6_1
+  label_ja: 別表六（一）所得税額の控除に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表六
+    - 別表６
+    - 別表6
+    - 別表六（一）
+    - 別表6(1)
+  - region: any
+    any_of:
+    - 所得税額の控除
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表六
+  - 別表６
+  - 別表6
+  - 別表六（一）
+  - 別表6(1)
+- form_id: corp_tax_beppyo_7_1
+  label_ja: 別表七（一）欠損金の損金算入等に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表七
+    - 別表７
+    - 別表7
+    - 別表七（一）
+    - 別表7(1)
+  - region: any
+    any_of:
+    - 欠損金の損金算入
+    - 欠損金額
+    - 繰越欠損金
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表七
+  - 別表７
+  - 別表7
+  - 別表七（一）
+  - 別表7(1)
+- form_id: corp_tax_beppyo_8_1
+  label_ja: 別表八（一）受取配当等の益金不算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表八
+    - 別表８
+    - 別表8
+    - 別表八（一）
+    - 別表8(1)
+  - region: any
+    any_of:
+    - 受取配当等の益金不算入
+    - 受取配当
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表八
+  - 別表８
+  - 別表8
+  - 別表八（一）
+  - 別表8(1)
+- form_id: corp_tax_beppyo_11_1
+  label_ja: 別表十一（一）個別評価金銭債権に係る貸倒引当金の損金算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十一
+    - 別表11
+    - 別表十一（一）
+    - 別表11(1)
+  - region: any
+    any_of:
+    - 個別評価金銭債権
+    - 貸倒引当金
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十一
+  - 別表11
+  - 別表十一（一）
+  - 別表11(1)
+- form_id: corp_tax_beppyo_11_1_2
+  label_ja: 別表十一（一の二）一括評価金銭債権に係る貸倒引当金の損金算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十一（一の二）
+    - 別表11(1の2)
+  - region: any
+    any_of:
+    - 一括評価金銭債権
+    - 貸倒引当金
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十一（一の二）
+  - 別表11(1の2)
+- form_id: corp_tax_beppyo_14_2
+  label_ja: 別表十四（二）寄附金の損金算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十四
+    - 別表14
+    - 別表十四（二）
+    - 別表14(2)
+  - region: any
+    any_of:
+    - 寄附金の損金算入
+    - 寄附金
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十四
+  - 別表14
+  - 別表十四（二）
+  - 別表14(2)
+- form_id: corp_tax_beppyo_15
+  label_ja: 別表十五 交際費等の損金算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十五
+    - 別表15
+  - region: any
+    any_of:
+    - 交際費等の損金算入
+    - 交際費
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十五
+  - 別表15
+- form_id: corp_tax_beppyo_16_1
+  label_ja: 別表十六（一）旧定額法又は定額法による減価償却資産の償却額の計算に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十六
+    - 別表16
+    - 別表十六（一）
+    - 別表16(1)
+  - region: any
+    any_of:
+    - 定額法による減価償却
+    - 減価償却資産の償却額
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十六
+  - 別表16
+  - 別表十六（一）
+  - 別表16(1)
+- form_id: corp_tax_beppyo_16_2
+  label_ja: 別表十六（二）旧定率法又は定率法による減価償却資産の償却額の計算に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十六（二）
+    - 別表16(2)
+  - region: any
+    any_of:
+    - 定率法による減価償却
+    - 減価償却資産の償却額
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十六（二）
+  - 別表16(2)
+- form_id: corp_tax_beppyo_16_7
+  label_ja: 別表十六（七）少額減価償却資産の取得価額の損金算入の特例に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十六（七）
+    - 別表16(7)
+  - region: any
+    any_of:
+    - 少額減価償却資産
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十六（七）
+  - 別表16(7)
+- form_id: corp_tax_beppyo_16_8
+  label_ja: 別表十六（八）一括償却資産の損金算入に関する明細書
+  role: body
+  maps_to:
+    tax_type: CORP_TAX_RETURN
+    slot_label: 法人税申告書
+    category: corp_tax
+    type_id: tax_return_corporate
+    required: null
+  anchors:
+  - region: top_right
+    any_of:
+    - 別表十六（八）
+    - 別表16(8)
+  - region: any
+    any_of:
+    - 一括償却資産
+  page_scan:
+    continuation: true
+  filename_hints:
+  - 別表十六（八）
+  - 別表16(8)

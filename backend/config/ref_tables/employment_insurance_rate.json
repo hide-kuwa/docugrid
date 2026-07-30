@@ -1,0 +1,64 @@
+{
+  "id": "employment_insurance_rate",
+  "label_ja": "雇用保険料率",
+  "category": "労働保険",
+  "unit": "per_mille",
+  "source_law": "雇用保険法附則・厚生労働省告示",
+  "source_url": "https://www.mhlw.go.jp/content/001401966.pdf",
+  "notes": [
+    "率は 1/1000 単位（‰）。労働者負担＝失業等給付・育児休業給付分、事業主負担＝同分＋雇用保険二事業分。",
+    "園芸サービス・牛馬の育成・酪農・養鶏・養豚・内水面養殖・特定の船員を雇用する事業は、農林水産業でも「一般の事業」の率を適用。",
+    "適用の基準日は原則として賃金の支給日（締日基準の運用もあるため就業規則・給与規程に合わせる）。"
+  ],
+  "match_columns": ["business"],
+  "versions": [
+    {
+      "valid_from": "2025-04-01",
+      "valid_to": null,
+      "label": "令和7年度",
+      "columns": [
+        { "key": "business", "label": "事業の種類", "type": "text" },
+        { "key": "worker", "label": "労働者負担", "type": "per_mille" },
+        { "key": "employer", "label": "事業主負担", "type": "per_mille" },
+        { "key": "total", "label": "合計", "type": "per_mille" }
+      ],
+      "rows": [
+        { "business": "一般の事業", "worker": 0.005, "employer": 0.0085, "total": 0.0135 },
+        { "business": "農林水産・清酒製造の事業", "worker": 0.006, "employer": 0.0095, "total": 0.0155 },
+        { "business": "建設の事業", "worker": 0.006, "employer": 0.0105, "total": 0.0165 }
+      ]
+    },
+    {
+      "valid_from": "2024-04-01",
+      "valid_to": "2025-03-31",
+      "label": "令和6年度",
+      "columns": [
+        { "key": "business", "label": "事業の種類", "type": "text" },
+        { "key": "worker", "label": "労働者負担", "type": "per_mille" },
+        { "key": "employer", "label": "事業主負担", "type": "per_mille" },
+        { "key": "total", "label": "合計", "type": "per_mille" }
+      ],
+      "rows": [
+        { "business": "一般の事業", "worker": 0.006, "employer": 0.0095, "total": 0.0155 },
+        { "business": "農林水産・清酒製造の事業", "worker": 0.007, "employer": 0.0105, "total": 0.0175 },
+        { "business": "建設の事業", "worker": 0.007, "employer": 0.0115, "total": 0.0185 }
+      ]
+    },
+    {
+      "valid_from": "2022-10-01",
+      "valid_to": "2024-03-31",
+      "label": "令和4年10月〜令和5年度",
+      "columns": [
+        { "key": "business", "label": "事業の種類", "type": "text" },
+        { "key": "worker", "label": "労働者負担", "type": "per_mille" },
+        { "key": "employer", "label": "事業主負担", "type": "per_mille" },
+        { "key": "total", "label": "合計", "type": "per_mille" }
+      ],
+      "rows": [
+        { "business": "一般の事業", "worker": 0.005, "employer": 0.0085, "total": 0.0135 },
+        { "business": "農林水産・清酒製造の事業", "worker": 0.006, "employer": 0.0095, "total": 0.0155 },
+        { "business": "建設の事業", "worker": 0.006, "employer": 0.0105, "total": 0.0165 }
+      ]
+    }
+  ]
+}

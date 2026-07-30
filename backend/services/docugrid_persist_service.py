@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -50,7 +50,7 @@ def save_workspace(
             original_filename=first_name[:512],
             mime_type="application/pdf",
             page_count=len(body.page_order),
-            updated_at=datetime.utcnow(),
+            updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             files_json=json.dumps(body.files_by_id, ensure_ascii=False),
             page_order_json=json.dumps(body.page_order, ensure_ascii=False),
             client_id=client_id,

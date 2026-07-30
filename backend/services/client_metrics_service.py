@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -100,7 +100,7 @@ def seed_client_metrics_if_empty(
         ).fetchone()[0]
         if count > 0:
             return
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         for fact in _default_seed(base_yen):
             conn.execute(
                 """
@@ -167,7 +167,7 @@ def upsert_metric_fact(
     source_ref: Optional[str] = None,
 ) -> dict:
     init_client_metrics_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(METRICS_DB_PATH) as conn:
         conn.execute(
             """
@@ -297,7 +297,7 @@ def seed_valuation_if_empty(firm_id: str, client_id: str, profile: Optional[Dict
         issued = _parse_profile_yen(profile.get("issued_shares"), 1000)
         profit = _parse_profile_yen(profile.get("profit_taxable_income"), max(round(capital * 0.15), 1))
         net_assets = max(round(capital * 2.5), capital)
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         seeds = [
             ("valuation.issued_shares", issued, None),
             ("valuation.capital_yen", capital, None),

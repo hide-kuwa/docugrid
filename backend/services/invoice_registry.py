@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import error, request
@@ -68,14 +68,14 @@ def ensure_invoice_cache_seed() -> None:
             "name": "デモ株式会社（チェックデジット検証済）",
             "status": "active",
             "address": "東京都千代田区",
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "source": "seed",
         },
         "T1234567890123": {
             "name": "サンプル商店（失効デモ）",
             "status": "revoked",
             "address": "大阪府大阪市",
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "source": "seed",
         },
     }
@@ -121,7 +121,7 @@ def _fetch_nta_public(reg_no: str) -> Optional[dict]:
             "status": "not_found",
             "address": None,
             "source": "nta_web",
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         }
 
     name = None
@@ -143,7 +143,7 @@ def _fetch_nta_public(reg_no: str) -> Optional[dict]:
         "status": status,
         "address": address,
         "source": "nta_web",
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     }
 
 
@@ -188,7 +188,7 @@ def verify_invoice_registration(
     if cached and cached.get("updated_at"):
         try:
             updated = datetime.fromisoformat(str(cached["updated_at"]))
-            if datetime.utcnow() - updated < timedelta(hours=cache_max_age_hours):
+            if datetime.now(timezone.utc).replace(tzinfo=None) - updated < timedelta(hours=cache_max_age_hours):
                 use_online = False
         except ValueError:
             pass

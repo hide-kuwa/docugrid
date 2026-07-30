@@ -202,7 +202,7 @@ async def route_capture_to_matrix(request: Request, item_id: str, body: CaptureR
     sha = hashlib.sha256(pdf_bytes).hexdigest()
     identity = resolve_identity(request)
     uploaded_by = identity.stakeholder_id or identity.email or ""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     classify_meta = (item.get("metadata") or {}).get("classify")
     metadata_json = None
     if classify_meta and isinstance(classify_meta, dict):

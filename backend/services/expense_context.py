@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +29,7 @@ def _load_events() -> Dict[str, List[dict]]:
 
 
 def _default_demo_events() -> Dict[str, List[dict]]:
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     d = today.isoformat()
     return {
         "c1": [
@@ -77,7 +77,7 @@ def ensure_demo_calendar_seed() -> None:
 
 def extract_receipt_date(text: str) -> Optional[str]:
     """OCR テキストから日付 YYYY-MM-DD を推定。"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     for pat in _DATE_PATTERNS:
         m = pat.search(text)
         if not m:

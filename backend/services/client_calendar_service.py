@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -81,7 +81,7 @@ def seed_calendar_if_empty(firm_id: str, client_id: str) -> None:
             return
         legacy = _load_legacy_json()
         events = legacy.get(client_id) or legacy.get("c1") or []
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         for ev in events:
             conn.execute(
                 """
@@ -127,7 +127,7 @@ def list_calendar_events(firm_id: str, client_id: str, *, event_date: Optional[s
 def upsert_calendar_event(firm_id: str, client_id: str, payload: dict) -> dict:
     init_client_calendar_db()
     event_id = str(payload.get("id") or uuid.uuid4().hex)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(CALENDAR_DB_PATH) as conn:
         existing = conn.execute(
             "SELECT id FROM client_calendar_events WHERE id=? AND firm_id=?",

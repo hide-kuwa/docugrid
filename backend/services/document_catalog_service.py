@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from services.client_master_store import find_client
 from services.client_metrics_service import get_metric_fact, init_client_metrics_db
+from services.document_types import catalog_spec_for_type, list_catalog_enabled_types
 from services.document_version_service import get_version, slot_status_map
 from services.extracted_document_meta import fiscal_label_from_period_key
 
@@ -16,60 +17,19 @@ SLOT_DOCS_DB_PATH = STORAGE_DIR / "slot_documents.db"
 
 SortField = Dict[str, str]
 
-CATALOG_SPECS: Dict[str, Dict[str, Any]] = {
-    "tax_return_corporate": {
-        "label": "法人税申告書",
-        "default_period_key": "year:2",
-        "sort_fields": [
-            {"id": "client_name", "label": "顧問先"},
-            {"id": "submission", "label": "提出"},
-            {"id": "taxable_revenue", "label": "売上（指標）"},
-            {"id": "taxable_profit", "label": "利益（指標）"},
-            {"id": "uploaded_at", "label": "提出日"},
-        ],
-        "metrics": {
-            "taxable_revenue": "annual.revenue",
-            "taxable_profit": "annual.profit",
-        },
-    },
-    "tax_return_consumption": {
-        "label": "消費税申告書",
-        "default_period_key": "year:2",
-        "sort_fields": [
-            {"id": "client_name", "label": "顧問先"},
-            {"id": "submission", "label": "提出"},
-            {"id": "consumption_taxable", "label": "課税標準額"},
-            {"id": "uploaded_at", "label": "提出日"},
-        ],
-        "metrics": {
-            "consumption_taxable": "annual.consumption_taxable",
-        },
-    },
-    "corporate_registry": {
-        "label": "履歴事項全部証明書",
-        "default_period_key": "perm",
-        "sort_fields": [
-            {"id": "client_name", "label": "顧問先"},
-            {"id": "submission", "label": "提出"},
-            {"id": "uploaded_at", "label": "提出日"},
-        ],
-        "metrics": {},
-    },
-    "articles_of_incorporation": {
-        "label": "定款",
-        "default_period_key": "perm",
-        "sort_fields": [
-            {"id": "client_name", "label": "顧問先"},
-            {"id": "submission", "label": "提出"},
-            {"id": "uploaded_at", "label": "提出日"},
-        ],
-        "metrics": {},
-    },
-}
+
+def _catalog_specs() -> Dict[str, Dict[str, Any]]:
+    """document_types マスタからカタログ有効な種別の spec dict を構築。"""
+    specs: Dict[str, Dict[str, Any]] = {}
+    for t in list_catalog_enabled_types():
+        spec = catalog_spec_for_type(t["id"])
+        if spec:
+            specs[t["id"]] = spec
+    return specs
 
 
 def list_catalog_field_defs(category_id: str) -> Optional[dict]:
-    spec = CATALOG_SPECS.get(category_id)
+    spec = catalog_spec_for_type(category_id)
     if not spec:
         return None
     return {
@@ -81,7 +41,11 @@ def list_catalog_field_defs(category_id: str) -> Optional[dict]:
 
 
 def list_all_catalog_field_defs() -> List[dict]:
-    return [spec for cid in CATALOG_SPECS if (spec := list_catalog_field_defs(cid))]
+    return [
+        spec
+        for t in list_catalog_enabled_types()
+        if (spec := list_catalog_field_defs(t["id"]))
+    ]
 
 
 def _client_name(client_id: str) -> str:
@@ -137,7 +101,7 @@ def build_catalog_rows(
     order: str = "asc",
     metadata_status: Optional[str] = None,
 ) -> dict:
-    spec = CATALOG_SPECS.get(category_id)
+    spec = catalog_spec_for_type(category_id)
     if not spec:
         raise ValueError(f"unknown category: {category_id}")
 

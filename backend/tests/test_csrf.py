@@ -12,7 +12,7 @@ client = TestClient(app)
 def test_login_sets_csrf_cookie() -> None:
     r = client.post(
         "/api/auth/login",
-        json={"email": "admin@tax.co.jp", "password": "password", "stakeholder_id": ""},
+        json={"email": "admin@taxx.jp", "password": "password", "stakeholder_id": ""},
     )
     assert r.status_code == 200, r.text
     assert SESSION_COOKIE_NAME in r.cookies

@@ -75,6 +75,7 @@ async def classify_document(
         cfg = _load_system_config(ctx.firm_id)
         excerpt = str(result.get("text_excerpt") or "")
         conf = float(result.get("confidence") or 0)
+        text_prompt_tpl, _ = get_prompt_template(ctx.firm_id, PROMPT_KEY_CLASSIFY_TEXT)
         if cfg.ocr_auto_extract_enabled and conf < 0.6:
             catalog_boost = try_catalog_slot_classify(content, file.filename, norm_candidates)
             if catalog_boost and float(catalog_boost.get("confidence") or 0) > conf:
@@ -92,6 +93,7 @@ async def classify_document(
                         norm_candidates,
                         api_key,
                         cfg.ai_openai_model,
+                        prompt_template=text_prompt_tpl,
                     )
                     if boost and float(boost.get("confidence") or 0) > conf:
                         result["best"] = boost["best"]
@@ -108,6 +110,7 @@ async def classify_document(
                         norm_candidates,
                         gemini_key,
                         cfg.ai_gemini_model,
+                        prompt_template=text_prompt_tpl,
                     )
                     if boost and float(boost.get("confidence") or 0) > conf:
                         result["best"] = boost["best"]
@@ -631,6 +634,7 @@ async def classify_documents_batch(
     use_openai_vision = bool(cfg.ocr_auto_extract_enabled and cfg.ai_openai_enabled and openai_key)
     use_gemini_vision = bool(cfg.ocr_auto_extract_enabled and cfg.ai_gemini_enabled and gemini_key)
     use_vision = use_openai_vision or use_gemini_vision
+    vision_prompt_tpl, _ = get_prompt_template(ctx.firm_id, PROMPT_KEY_CLASSIFY_VISION)
 
     documents: List[dict] = []
     for upload in files:
@@ -658,6 +662,7 @@ async def classify_documents_batch(
                     gemini_model=cfg.ai_gemini_model,
                     use_openai_vision=use_openai_vision,
                     use_gemini_vision=use_gemini_vision,
+                    prompt_template=vision_prompt_tpl,
                 )
             doc_type, conf, reason = infer_type_from_text(_excerpt, _fname)
             return {

@@ -1,0 +1,90 @@
+# 書類カテゴリ（中分類）マスタ — 単一正本（SSOT）
+# 階層: 大分類（書類種別 document_types.yaml） → 中分類（この YAML） → 様式（form_catalog.yaml）
+# 編集: 開発コンソール /dev/form-catalog → カテゴリ（中分類）タブ
+# match: 様式(form_catalog) の maps_to をこの中分類へ紐付ける条件（上から順に最初に一致した中分類へ所属）
+version: 1
+categories:
+  - id: corp_tax
+    label: 法人税申告書
+    group: 税務申告書類
+    type_id: tax_return_corporate
+    match:
+      categories: [corp_tax, common]
+      tax_types: [CORP_TAX_RETURN]
+      slot_labels: [法人税申告書]
+
+  - id: local_tax
+    label: 地方税申告書
+    group: 税務申告書類
+    match:
+      tax_types: [LOCAL_TAX, LOCAL_TAX_RETURN]
+      slot_labels: [地方税申告書, 事業税・住民税, 都道府県民税, 市町村民税]
+
+  - id: consumption_tax
+    label: 消費税申告書
+    group: 税務申告書類
+    type_id: tax_return_consumption
+    match:
+      tax_types: [CONSUMPTION_TAX]
+      slot_labels: [消費税申告書]
+
+  - id: account_breakdown
+    label: 勘定科目内訳明細書
+    group: 決算・申告付属
+    match:
+      tax_types: [ACCOUNT_DETAILS]
+      slot_labels: [勘定科目内訳明細書]
+
+  - id: business_overview
+    label: 事業概況説明書
+    group: 決算・申告付属
+    match:
+      tax_types: [CORP_SUMMARY]
+      slot_labels: [法人事業概況説明書, 事業概況説明書]
+
+  - id: tax_agent_authority
+    label: 税務代理権限証書
+    group: 決算・申告付属
+    match:
+      tax_types: [TAX_PROXY]
+      slot_labels: [税務代理権限証書]
+
+  - id: articles_registry
+    label: 定款・謄本
+    group: 登記・定款
+    match:
+      type_ids: [articles_of_incorporation, corporate_registry]
+      slot_labels: [定款, 履歴事項全部証明書, 現在事項全部証明書]
+
+  - id: ledger
+    label: 元帳・決算関係
+    group: 会計帳簿
+    type_id: ledger
+    match:
+      tax_types: [TRIAL_BALANCE]
+      type_ids: [ledger]
+      slot_labels: [総勘定元帳, 決算報告書]
+
+  - id: fixed_assets
+    label: 固定資産台帳
+    group: 会計帳簿
+    match:
+      slot_labels: [固定資産台帳, 減価償却資産台帳]
+
+  - id: notifications
+    label: 届出
+    group: 届出・その他
+    match:
+      slot_labels: [届出書, 異動届出書, 給与支払事務所等の開設届出書]
+
+  - id: payroll
+    label: 給与関連
+    group: 給与関係
+    match:
+      slot_labels: [給与支払報告書, 源泉徴収票, 年末調整, 源泉所得税]
+
+  - id: etax_id
+    label: 利用者識別番号等
+    group: 電子申告
+    match:
+      slot_labels: [利用者識別番号, 受信通知, メール詳細, e-Tax, eLTAX]

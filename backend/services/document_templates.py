@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -53,7 +53,7 @@ def save_document_template(
         "firmId": firm_id,
         "templateName": (template_name or existing["templateName"]).strip() or DEFAULT_TEMPLATE_NAME,
         "sortOrder": _sanitize_sort_order(sort_order or existing["sortOrder"]),
-        "updatedAt": datetime.utcnow().isoformat(),
+        "updatedAt": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     }
     _write_json(document_templates_path(firm_id), payload)
     return payload

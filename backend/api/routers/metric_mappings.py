@@ -16,6 +16,13 @@ from api.route_helpers import *  # noqa: F403
 
 router = APIRouter()
 
+
+def _require_authenticated(request: Request) -> None:
+    identity = resolve_identity(request)
+    if not identity.email and not identity.role:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+
 # --- Metric mappings (dev.metrics) ---
 
 

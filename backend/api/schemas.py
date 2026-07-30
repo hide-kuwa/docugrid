@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -107,9 +107,11 @@ class SystemConfigPayload(BaseModel):
     ai_openai_enabled: bool = False
     ai_openai_model: str = "gpt-4o-mini"
     ai_openai_key_configured: bool = False
+    ai_openai_key_last4: Optional[str] = None
     ai_gemini_enabled: bool = False
     ai_gemini_model: str = "gemini-2.5-flash"
     ai_gemini_key_configured: bool = False
+    ai_gemini_key_last4: Optional[str] = None
     drive_root_folder_id: Optional[str] = None
     drive_credentials_configured: bool = False
     drive_mode: str = "unconfigured"
@@ -655,6 +657,66 @@ class FormCatalogAnchorItem(BaseModel):
 class FormCatalogMapsTo(BaseModel):
     tax_type: Optional[str] = None
     slot_label: Optional[str] = None
+    category: Optional[str] = None
+    required: Optional[bool] = None
+    type_id: Optional[str] = None
+
+
+
+class DocumentTypeFlagsItem(BaseModel):
+    ocr: bool = False
+    dashboard: bool = False
+    alert: bool = False
+
+
+
+class DocumentTypeCatalogItem(BaseModel):
+    enabled: bool = False
+    default_period_key: Optional[str] = None
+    sort_fields: list[Dict[str, str]] = Field(default_factory=list)
+    metrics: Dict[str, str] = Field(default_factory=dict)
+
+
+
+class DocumentTypeItem(BaseModel):
+    id: str
+    label: str
+    flags: DocumentTypeFlagsItem = Field(default_factory=DocumentTypeFlagsItem)
+    catalog: DocumentTypeCatalogItem = Field(default_factory=DocumentTypeCatalogItem)
+
+
+
+class DocumentTypeListPayload(BaseModel):
+    version: int
+    type_count: int
+    config_path: str
+    types: list[DocumentTypeItem]
+
+
+
+class DocumentCategoryFormRef(BaseModel):
+    form_id: str
+    label_ja: str
+
+
+
+class DocumentCategoryItem(BaseModel):
+    id: str
+    label: str
+    group: str = ""
+    type_id: Optional[str] = None
+    form_count: int = 0
+    forms: list[DocumentCategoryFormRef] = Field(default_factory=list)
+
+
+
+class DocumentCategoryListPayload(BaseModel):
+    version: int
+    category_count: int
+    config_path: str
+    categories: list[DocumentCategoryItem]
+    unmatched: list[DocumentCategoryFormRef] = Field(default_factory=list)
+    unmatched_count: int = 0
 
 
 
@@ -726,6 +788,10 @@ class FormCatalogReloadPayload(BaseModel):
 
 
 
+class FormCatalogReorderBody(BaseModel):
+    form_ids: list[str] = Field(default_factory=list)
+
+
 class FormCatalogWriteBody(BaseModel):
     form_id: str = Field(..., min_length=1)
     label_ja: str = Field(..., min_length=1)
@@ -780,6 +846,21 @@ class FormCatalogSampleListPayload(BaseModel):
 
 
 
+class FormCatalogSampleCoverageItem(BaseModel):
+    form_id: str
+    label_ja: str
+    configured: bool = False
+    sample_count: int = 0
+    annotation_count: int = 0
+    last_uploaded_at: Optional[str] = None
+
+
+class FormCatalogSampleCoveragePayload(BaseModel):
+    form_count: int
+    configured_count: int
+    items: list[FormCatalogSampleCoverageItem] = Field(default_factory=list)
+
+
 class FormCatalogCompilePayload(BaseModel):
     forms_updated: int
     form_ids: list[str] = Field(default_factory=list)
@@ -792,6 +873,33 @@ class FormCatalogPromptPreviewPayload(BaseModel):
     prompt_preview: str
     annotation_count: int
     sample_count: int
+
+
+class AiPromptDefinitionItem(BaseModel):
+    key: str
+    template: str
+    source: str
+    variables: list[str] = Field(default_factory=list)
+    builtin_default: str = ""
+
+
+class AiPromptListPayload(BaseModel):
+    prompts: list[AiPromptDefinitionItem] = Field(default_factory=list)
+
+
+class AiPromptUpdateBody(BaseModel):
+    template: str
+    scope: str = "firm"
+
+
+class AiPromptTestResultPayload(BaseModel):
+    key: str
+    engine: str
+    prompt_used: str
+    text_excerpt: str = ""
+    raw_response: Optional[Any] = None
+    parsed: Optional[Any] = None
+    error: Optional[str] = None
 
 
 
@@ -871,6 +979,109 @@ class LegalMasterRatePayload(BaseModel):
     master_version_id: Optional[str] = None
     jurisdiction: Optional[str] = None
     label_ja: Optional[str] = None
+
+
+
+class LegalMasterNtaPreviewBody(BaseModel):
+    template: str = Field(default="income_tax_speed_table", pattern="^(income_tax_speed_table)$")
+    url: Optional[str] = None
+    text: Optional[str] = None
+    valid_from: str = Field(..., min_length=1)
+    valid_to: Optional[str] = None
+    source_law: Optional[str] = None
+    jurisdiction: Optional[str] = None
+
+
+
+class LegalMasterNtaPreviewPayload(BaseModel):
+    template: str
+    source: str
+    entries: List[LegalMasterWriteBody] = Field(default_factory=list)
+    csv_text: str = ""
+    warnings: List[str] = Field(default_factory=list)
+
+
+
+class WithholdingTableSummary(BaseModel):
+    table_type: str
+    label_ja: str
+    year_label: str = ""
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_law: Optional[str] = None
+    source_url: Optional[str] = None
+    row_count: int = 0
+
+
+class WithholdingMonthlyPayload(BaseModel):
+    tables: List[WithholdingTableSummary] = Field(default_factory=list)
+    table: Optional[Dict[str, Any]] = None
+
+
+class WithholdingLookupPayload(BaseModel):
+    salary: int
+    dependents: int
+    kind: str
+    tax: int
+    method: str
+    valid_from: Optional[str] = None
+    year_label: Optional[str] = None
+
+
+
+class CorporateTaxRatePayload(BaseModel):
+    table: Optional[Dict[str, Any]] = None
+
+
+class CorporateTaxCalcPayload(BaseModel):
+    taxable_income: int
+    fiscal_year_start: str
+    small_business: bool
+    excluded_business: bool
+    reduced_rate: Optional[float] = None
+    standard_rate: float
+    threshold: int
+    reduced_portion: int
+    standard_portion: int
+    tax: int
+    valid_from: Optional[str] = None
+
+
+class RefTableSummary(BaseModel):
+    id: str
+    label_ja: str
+    category: str = ""
+    unit: str = ""
+    source_law: Optional[str] = None
+    source_url: Optional[str] = None
+    version_count: int = 0
+    latest_valid_from: Optional[str] = None
+
+
+class RefTableListPayload(BaseModel):
+    tables: List[RefTableSummary] = Field(default_factory=list)
+
+
+class RefTableDetailPayload(BaseModel):
+    table: Optional[Dict[str, Any]] = None
+
+
+class RefTableRowUpsertBody(BaseModel):
+    valid_from: str = Field(..., description="対象バージョンの valid_from (YYYY-MM-DD)")
+    match_key: str = Field("prefecture_code", description="upsert の照合キー")
+    row: Dict[str, Any] = Field(..., description="追加・更新する行")
+
+
+class SimplifiedConsumptionCalcBody(BaseModel):
+    tax_by_type: Dict[int, float] = Field(default_factory=dict)
+    unclassified_tax: float = 0.0
+    unclassified_types: Optional[List[int]] = None
+    as_of: Optional[str] = None
+
+
+class DefenseSurtaxCalcBody(BaseModel):
+    corporate_tax_amount: int = Field(..., ge=0)
+    as_of: str
 
 
 
@@ -1206,6 +1417,10 @@ __all__ = [
     "AuditLink",
     "AuditPoint",
     "AuthConfigResponse",
+    "AiPromptDefinitionItem",
+    "AiPromptListPayload",
+    "AiPromptTestResultPayload",
+    "AiPromptUpdateBody",
     "AuthoringExportPdfBody",
     "AuthoringTemplateCreateBody",
     "AuthoringTemplateParseBody",
@@ -1254,14 +1469,24 @@ __all__ = [
     "FormCatalogFormItem",
     "FormCatalogImportBody",
     "FormCatalogImportPayload",
+    "DocumentTypeCatalogItem",
+    "DocumentTypeFlagsItem",
+    "DocumentTypeItem",
+    "DocumentTypeListPayload",
+    "DocumentCategoryFormRef",
+    "DocumentCategoryItem",
+    "DocumentCategoryListPayload",
     "FormCatalogListPayload",
     "FormCatalogMapsTo",
     "FormCatalogPageAnnotationBody",
     "FormCatalogPageScan",
     "FormCatalogPromptPreviewPayload",
     "FormCatalogReloadPayload",
+    "FormCatalogReorderBody",
     "FormCatalogSampleItem",
     "FormCatalogSampleListPayload",
+    "FormCatalogSampleCoverageItem",
+    "FormCatalogSampleCoveragePayload",
     "FormCatalogTextMarkerItem",
     "FormCatalogValidateBody",
     "FormCatalogValidatePayload",
@@ -1287,8 +1512,21 @@ __all__ = [
     "LegalMasterCsvValidatePayload",
     "LegalMasterEntryItem",
     "LegalMasterListPayload",
+    "LegalMasterNtaPreviewBody",
+    "LegalMasterNtaPreviewPayload",
     "LegalMasterRatePayload",
     "LegalMasterWriteBody",
+    "WithholdingTableSummary",
+    "WithholdingMonthlyPayload",
+    "WithholdingLookupPayload",
+    "CorporateTaxRatePayload",
+    "CorporateTaxCalcPayload",
+    "RefTableSummary",
+    "RefTableListPayload",
+    "RefTableDetailPayload",
+    "RefTableRowUpsertBody",
+    "SimplifiedConsumptionCalcBody",
+    "DefenseSurtaxCalcBody",
     "LoginRequest",
     "MaAssumptionsBody",
     "McpTokenResponse",

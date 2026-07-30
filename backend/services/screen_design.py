@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +68,7 @@ def load_member_design(firm_id: str, member_id: str) -> dict[str, Any]:
 def save_platform_design(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload)
     data["layer"] = "platform"
-    data["updated_at"] = datetime.utcnow().isoformat()
+    data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     _write_json(PLATFORM_DESIGN_PATH, data)
     return data
 
@@ -77,7 +77,7 @@ def save_firm_design(firm_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload)
     data["layer"] = "firm"
     data["firm_id"] = firm_id
-    data["updated_at"] = datetime.utcnow().isoformat()
+    data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     _write_json(_firm_design_path(firm_id), data)
     return data
 
@@ -87,7 +87,7 @@ def save_member_design(firm_id: str, member_id: str, payload: dict[str, Any]) ->
     data["layer"] = "member"
     data["firm_id"] = firm_id
     data["member_id"] = member_id
-    data["updated_at"] = datetime.utcnow().isoformat()
+    data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     _write_json(_member_design_path(firm_id, member_id), data)
     return data
 

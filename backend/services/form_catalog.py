@@ -319,6 +319,28 @@ def delete_form(form_id: str) -> None:
     save_form_catalog_config(cfg)
 
 
+def reorder_forms(form_ids: list[str]) -> FormCatalogConfig:
+    """form_ids の順序で forms を並べ替えて保存する。
+
+    指定に含まれない既存 form は元の相対順のまま末尾へ寄せる（欠落しても消さない）。
+    未知の form_id は無視する。
+    """
+    cfg = load_form_catalog_config()
+    by_id = {f["form_id"]: f for f in cfg["forms"]}
+    ordered: list[FormCatalogEntry] = []
+    seen: set[str] = set()
+    for fid in form_ids:
+        key = str(fid).strip()
+        if key in by_id and key not in seen:
+            ordered.append(by_id[key])
+            seen.add(key)
+    for form in cfg["forms"]:
+        if form["form_id"] not in seen:
+            ordered.append(form)
+    cfg["forms"] = ordered
+    return save_form_catalog_config(cfg)
+
+
 def import_yaml_text(text: str, *, mode: ImportMode = "merge") -> FormCatalogConfig:
     errors, parsed = validate_yaml_text(text)
     if errors or parsed is None:

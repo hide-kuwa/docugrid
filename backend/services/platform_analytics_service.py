@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,11 +32,11 @@ PAYING_BILLING_STATUSES = frozenset({"active", "trialing", "past_due"})
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _today_key() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d")
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
 
 
 def init_platform_metrics_db() -> None:
@@ -115,7 +115,7 @@ def _partner_commission_yen(mrr_yen: int, billing: dict[str, Any]) -> int:
     ends_raw = billing.get("partnerCommissionEndsAt")
     if ends_raw:
         try:
-            if datetime.fromisoformat(str(ends_raw)) < datetime.utcnow():
+            if datetime.fromisoformat(str(ends_raw)) < datetime.now(timezone.utc).replace(tzinfo=None):
                 return 0
         except ValueError:
             pass
@@ -269,7 +269,7 @@ def _record_daily_snapshot(summary: dict[str, Any]) -> None:
 
 def load_mrr_trend(days: int = 90) -> list[dict[str, Any]]:
     init_platform_metrics_db()
-    cutoff = (datetime.utcnow() - timedelta(days=max(1, days))).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=max(1, days))).strftime("%Y-%m-%d")
     with sqlite3.connect(SNAPSHOTS_DB_PATH) as conn:
         rows = conn.execute(
             """

@@ -1,0 +1,102 @@
+{
+  "id": "corporate_enterprise_tax",
+  "label_ja": "法人事業税 所得割（1号・普通法人）",
+  "category": "地方税（法人）",
+  "unit": "percent",
+  "source_law": "地方税法第72条の2ほか・東京都都税条例",
+  "source_url": "https://www.tax.metro.tokyo.lg.jp/",
+  "notes": [
+    "地方税法上の事業の区分1号（付加価値額・資本金等・所得を課税標準）のうち、普通法人の所得割。",
+    "軽減税率適用法人は年400万円以下／400万超〜800万／800万超の段階税率。軽減税率不適用法人は全額に年800万超の税率を適用。",
+    "超過税率は自治体の超過課税。標準税率は不均一課税適用法人向けの税率。",
+    "外形標準課税法人（資本金1億円超など）の所得割・付加価値割・資本割は別行／将来拡張。",
+    "2〜4号（収入金額課税）と事業所税は本マスタの対象外。"
+  ],
+  "match_columns": ["corp_type", "income_band"],
+  "versions": [
+    {
+      "valid_from": "2022-04-01",
+      "valid_to": null,
+      "label": "令和4年4月1日以後開始",
+      "columns": [
+        { "key": "corp_type", "label": "法人の種類", "type": "text" },
+        { "key": "income_band", "label": "所得区分", "type": "text" },
+        { "key": "income_max", "label": "所得上限（円）", "type": "yen" },
+        { "key": "standard_rate", "label": "標準税率", "type": "rate" },
+        { "key": "excess_rate", "label": "超過税率", "type": "rate" }
+      ],
+      "rows": [
+        {
+          "corp_type": "普通法人",
+          "income_band": "年400万円以下の所得",
+          "income_max": 4000000,
+          "standard_rate": 0.035,
+          "excess_rate": 0.0375
+        },
+        {
+          "corp_type": "普通法人",
+          "income_band": "年400万円超〜800万円以下の所得",
+          "income_max": 8000000,
+          "standard_rate": 0.053,
+          "excess_rate": 0.05665
+        },
+        {
+          "corp_type": "普通法人",
+          "income_band": "年800万円超の所得",
+          "income_max": null,
+          "standard_rate": 0.07,
+          "excess_rate": 0.0748
+        },
+        {
+          "corp_type": "特別法人",
+          "income_band": "年400万円以下の所得",
+          "income_max": 4000000,
+          "standard_rate": 0.035,
+          "excess_rate": 0.0375
+        },
+        {
+          "corp_type": "特別法人",
+          "income_band": "年400万円超の所得",
+          "income_max": null,
+          "standard_rate": 0.049,
+          "excess_rate": 0.05235
+        }
+      ]
+    },
+    {
+      "valid_from": "2020-04-01",
+      "valid_to": "2022-03-31",
+      "label": "令和2年4月1日〜令和4年3月31日開始",
+      "columns": [
+        { "key": "corp_type", "label": "法人の種類", "type": "text" },
+        { "key": "income_band", "label": "所得区分", "type": "text" },
+        { "key": "income_max", "label": "所得上限（円）", "type": "yen" },
+        { "key": "standard_rate", "label": "標準税率", "type": "rate" },
+        { "key": "excess_rate", "label": "超過税率", "type": "rate" }
+      ],
+      "rows": [
+        {
+          "corp_type": "普通法人",
+          "income_band": "年400万円以下の所得",
+          "income_max": 4000000,
+          "standard_rate": 0.035,
+          "excess_rate": 0.03675
+        },
+        {
+          "corp_type": "普通法人",
+          "income_band": "年400万円超〜800万円以下の所得",
+          "income_max": 8000000,
+          "standard_rate": 0.053,
+          "excess_rate": 0.05565
+        },
+        {
+          "corp_type": "普通法人",
+          "income_band": "年800万円超の所得",
+          "income_max": null,
+          "standard_rate": 0.07,
+          "excess_rate": 0.0745
+        }
+      ]
+    }
+  ]
+}

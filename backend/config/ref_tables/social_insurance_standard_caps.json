@@ -1,0 +1,59 @@
+{
+  "id": "social_insurance_standard_caps",
+  "label_ja": "社会保険 標準報酬・賞与上限",
+  "category": "社会保険",
+  "unit": "yen",
+  "source_law": "健康保険法・厚生年金保険法",
+  "source_url": "https://www.nenkin.go.jp/service/kounen/hokenryo/hoshu/20150515-01.html",
+  "notes": [
+    "保険料計算は実支給額に直接料率を乗じるのではなく、標準報酬月額・標準賞与額の上限でクリップしてから行う。",
+    "厚生年金の標準報酬月額は第32級 650,000円、健康保険の標準報酬月額は第50級 1,390,000円を上限とする。",
+    "厚生年金の標準賞与額は支給1回あたり150万円が上限。健康保険の標準賞与額は年度累計573万円が上限。",
+    "等級表そのもの（下限・上限レンジごとの標準報酬月額）は将来この表を拡張して管理する。"
+  ],
+  "match_columns": ["insurance", "basis"],
+  "versions": [
+    {
+      "valid_from": "2020-09-01",
+      "valid_to": null,
+      "label": "現行（主要上限）",
+      "columns": [
+        { "key": "insurance", "label": "制度", "type": "text" },
+        { "key": "basis", "label": "対象", "type": "text" },
+        { "key": "cap_amount", "label": "上限額", "type": "yen" },
+        { "key": "grade", "label": "等級・単位", "type": "text" },
+        { "key": "valid_note", "label": "適用メモ", "type": "text" }
+      ],
+      "rows": [
+        {
+          "insurance": "厚生年金",
+          "basis": "標準報酬月額",
+          "cap_amount": 650000,
+          "grade": "第32級",
+          "valid_note": "令和2年9月分から。報酬月額635,000円以上は650,000円。"
+        },
+        {
+          "insurance": "健康保険",
+          "basis": "標準報酬月額",
+          "cap_amount": 1390000,
+          "grade": "第50級",
+          "valid_note": "報酬月額1,355,000円以上は1,390,000円。協会けんぽ・組合で料率は別管理。"
+        },
+        {
+          "insurance": "厚生年金",
+          "basis": "標準賞与額",
+          "cap_amount": 1500000,
+          "grade": "支給1回あたり",
+          "valid_note": "賞与支給1回につき150万円を上限。"
+        },
+        {
+          "insurance": "健康保険",
+          "basis": "標準賞与額",
+          "cap_amount": 5730000,
+          "grade": "年度累計",
+          "valid_note": "毎年4月1日から翌年3月31日までの累計で573万円を上限。"
+        }
+      ]
+    }
+  ]
+}

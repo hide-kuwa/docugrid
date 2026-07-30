@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import fitz
 import requests
 
+from services.ai_prompts import render_prompt
 from services.form_catalog import build_vision_prompt_snippet, load_form_catalog_config
 from services.tax_document_types import (
     AI_CLASSIFICATION_JSON_SCHEMA,
@@ -55,15 +56,51 @@ def pdf_pages_as_data_urls(content: bytes, max_pages: int = _MAX_VISION_PAGES) -
     return urls
 
 
-def _build_vision_prompt(filename: Optional[str], text_excerpt: str) -> str:
+def _vision_catalog_snippet() -> str:
+    if not load_form_catalog_config or not build_vision_prompt_snippet:
+        return ""
+    try:
+        from services.form_catalog_compiler import build_learning_vision_prompt
+
+        snippet = build_learning_vision_prompt(max_forms=8)
+        if not snippet:
+            forms = load_form_catalog_config()["forms"]
+            snippet = build_vision_prompt_snippet(forms, max_forms=8)
+        if snippet:
+            return f"\n\n## 様式カタログ（参照）\n{snippet}"
+    except Exception:
+        pass
+    return ""
+
+
+def _build_vision_prompt(
+    filename: Optional[str],
+    text_excerpt: str,
+    *,
+    template: Optional[str] = None,
+) -> str:
     types_line = ", ".join(TAX_DOCUMENT_TYPES)
+    filename_display = filename or "(不明)"
+    excerpt_display = text_excerpt[:1500] or "(なし)"
+    catalog = _vision_catalog_snippet()
+
+    tpl = (template or "").strip() or None
+    if tpl:
+        return render_prompt(
+            tpl,
+            filename=filename_display,
+            text_excerpt=excerpt_display,
+            types_line=types_line,
+            catalog_snippet=catalog,
+        )
+
     base = (
         "あなたは日本の税務・会計書類を識別する専門家です。"
         "添付画像は税務・会計ソフトから出力された PDF のページです（複数ページの場合はページ番号順）。"
         "表紙・送付状をスキップし、各様式本体が何ページ目から始まるかも意識して判定してください。"
         "ヘッダー文字列・表構造・法定様式名から書類種別を判定してください。\n\n"
-        f"ファイル名: {filename or '(不明)'}\n"
-        f"抽出テキスト抜粋: {text_excerpt[:1500] or '(なし)'}\n\n"
+        f"ファイル名: {filename_display}\n"
+        f"抽出テキスト抜粋: {excerpt_display}\n\n"
         f"identifiedType は次のいずれか: {types_line}\n"
         "- TAX_PROXY: 税務代理権限証書\n"
         "- CORP_TAX_RETURN: 法人税申告書・別表\n"
@@ -73,18 +110,8 @@ def _build_vision_prompt(filename: Optional[str], text_excerpt: str) -> str:
         "- CONSUMPTION_TAX: 消費税申告書・試算表\n"
         "- UNKNOWN: 判定不能\n"
     )
-    if load_form_catalog_config and build_vision_prompt_snippet:
-        try:
-            from services.form_catalog_compiler import build_learning_vision_prompt
-
-            snippet = build_learning_vision_prompt(max_forms=8)
-            if not snippet:
-                forms = load_form_catalog_config()["forms"]
-                snippet = build_vision_prompt_snippet(forms, max_forms=8)
-            if snippet:
-                return f"{base}\n\n## 様式カタログ（参照）\n{snippet}"
-        except Exception:
-            pass
+    if catalog:
+        return base + catalog
     return base
 
 
@@ -94,6 +121,8 @@ def vision_classify_openai(
     text_excerpt: str,
     api_key: str,
     model: str = "gpt-4o-mini",
+    *,
+    prompt_template: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     """OpenAI Vision + Structured Outputs で書類種別を返す。"""
     if not api_key:
@@ -103,7 +132,7 @@ def vision_classify_openai(
     if not images:
         return None
 
-    prompt = _build_vision_prompt(filename, text_excerpt)
+    prompt = _build_vision_prompt(filename, text_excerpt, template=prompt_template)
     user_content: List[dict] = [{"type": "text", "text": prompt}]
     for url in images:
         user_content.append({"type": "image_url", "image_url": {"url": url, "detail": "low"}})
@@ -153,6 +182,8 @@ def vision_classify_gemini(
     text_excerpt: str,
     api_key: str,
     model: str = "gemini-2.5-flash",
+    *,
+    prompt_template: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     """Gemini Vision + JSON 出力で書類種別を返す。"""
     if not api_key:
@@ -162,7 +193,7 @@ def vision_classify_gemini(
     if not images:
         return None
 
-    prompt = _build_vision_prompt(filename, text_excerpt)
+    prompt = _build_vision_prompt(filename, text_excerpt, template=prompt_template)
     parts: List[dict] = [{"text": prompt}]
     for b64 in images:
         parts.append({"inline_data": {"mime_type": "image/png", "data": b64}})
@@ -216,6 +247,7 @@ def classify_tax_document(
     gemini_model: str = "gemini-2.5-flash",
     use_openai_vision: bool = True,
     use_gemini_vision: bool = False,
+    prompt_template: Optional[str] = None,
 ) -> Dict[str, object]:
     """ルール → OpenAI Vision → Gemini Vision の順で TaxDocumentType を判定。"""
     rule_type, rule_conf, rule_reason = infer_type_from_text(text_excerpt, filename)
@@ -229,9 +261,23 @@ def classify_tax_document(
 
     best: Optional[Dict[str, object]] = None
     if use_openai_vision and openai_key:
-        best = vision_classify_openai(content, filename, text_excerpt, openai_key, openai_model)
+        best = vision_classify_openai(
+            content,
+            filename,
+            text_excerpt,
+            openai_key,
+            openai_model,
+            prompt_template=prompt_template,
+        )
     if (not best or float(best.get("confidence") or 0) <= rule_conf) and use_gemini_vision and gemini_key:
-        gemini = vision_classify_gemini(content, filename, text_excerpt, gemini_key, gemini_model)
+        gemini = vision_classify_gemini(
+            content,
+            filename,
+            text_excerpt,
+            gemini_key,
+            gemini_model,
+            prompt_template=prompt_template,
+        )
         if gemini and float(gemini.get("confidence") or 0) > float((best or {}).get("confidence") or rule_conf):
             best = gemini
 

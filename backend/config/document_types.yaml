@@ -1,0 +1,103 @@
+# 書類種別マスタ — 大分類の単一正本（SSOT）
+# 編集: 開発コンソール /dev/form-catalog → 書類種別タブ
+# 統合元: frontend organization.ts DOCUMENT_CATEGORIES + document_catalog_service CATALOG_SPECS
+version: 1
+types:
+  - id: articles_of_incorporation
+    label: 定款
+    flags:
+      ocr: true
+      dashboard: true
+      alert: false
+    catalog:
+      enabled: true
+      default_period_key: perm
+      sort_fields:
+        - id: client_name
+          label: 顧問先
+        - id: submission
+          label: 提出
+        - id: uploaded_at
+          label: 提出日
+      metrics: {}
+
+  - id: corporate_registry
+    label: 履歴事項全部証明書
+    flags:
+      ocr: true
+      dashboard: true
+      alert: false
+    catalog:
+      enabled: true
+      default_period_key: perm
+      sort_fields:
+        - id: client_name
+          label: 顧問先
+        - id: submission
+          label: 提出
+        - id: uploaded_at
+          label: 提出日
+      metrics: {}
+
+  - id: tax_return_corporate
+    label: 法人税申告書
+    flags:
+      ocr: true
+      dashboard: true
+      alert: true
+    catalog:
+      enabled: true
+      default_period_key: year:2
+      sort_fields:
+        - id: client_name
+          label: 顧問先
+        - id: submission
+          label: 提出
+        - id: taxable_revenue
+          label: 売上（指標）
+        - id: taxable_profit
+          label: 利益（指標）
+        - id: uploaded_at
+          label: 提出日
+      metrics:
+        taxable_revenue: annual.revenue
+        taxable_profit: annual.profit
+
+  - id: tax_return_consumption
+    label: 消費税申告書
+    flags:
+      ocr: true
+      dashboard: true
+      alert: true
+    catalog:
+      enabled: true
+      default_period_key: year:2
+      sort_fields:
+        - id: client_name
+          label: 顧問先
+        - id: submission
+          label: 提出
+        - id: consumption_taxable
+          label: 課税標準額
+        - id: uploaded_at
+          label: 提出日
+      metrics:
+        consumption_taxable: annual.consumption_taxable
+
+  - id: ledger
+    label: 総勘定元帳
+    flags:
+      ocr: true
+      dashboard: true
+      alert: false
+    catalog:
+      enabled: false
+
+  - id: bank_statement
+    label: 通帳コピー
+    flags:
+      ocr: true
+      dashboard: false
+      alert: false
+    catalog:
+      enabled: false

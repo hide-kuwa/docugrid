@@ -13,6 +13,8 @@ from fastapi.testclient import TestClient
 
 from main import app
 from services.doc_classifier import classify_text
+from services.firm_settings import ai_secrets_path, get_openai_key
+from services.tenancy import DEFAULT_FIRM_ID
 
 client = TestClient(app)
 
@@ -29,8 +31,8 @@ def _admin_headers() -> dict[str, str]:
 def _platform_admin_headers() -> dict[str, str]:
     return {
         "X-Docugrid-Role": "platform_admin",
-        "X-Docugrid-User": "admin@tax.co.jp",
-        "X-Docugrid-Stakeholder": "actor-admin",
+        "X-Docugrid-User": "admin@taxx.jp",
+        "X-Docugrid-Stakeholder": "super-admin",
         "X-Docugrid-Client": "c1",
     }
 
@@ -59,7 +61,7 @@ def test_auth_login_success() -> None:
     r = client.post(
         "/api/auth/login",
         json={
-            "email": "admin@tax.co.jp",
+            "email": "admin@taxx.jp",
             "password": "password",
             "stakeholder_id": "actor-admin",
         },
@@ -75,7 +77,7 @@ def test_auth_login_rejects_wrong_password() -> None:
     r = client.post(
         "/api/auth/login",
         json={
-            "email": "admin@tax.co.jp",
+            "email": "admin@taxx.jp",
             "password": "wrong-password-xyz",
             "stakeholder_id": "actor-admin",
         },
@@ -88,7 +90,7 @@ def test_bearer_auth_without_legacy_headers(monkeypatch) -> None:
     login = client.post(
         "/api/auth/login",
         json={
-            "email": "admin@tax.co.jp",
+            "email": "admin@taxx.jp",
             "password": "password",
             "stakeholder_id": "actor-admin",
         },
@@ -502,12 +504,13 @@ def test_client_upload_auto_shared_with_client_portal() -> None:
 
 def test_slot_document_soft_delete_hidden_from_operator() -> None:
     pdf = _minimal_pdf_bytes()
+    soft_slot_id = f"soft_del_op_{uuid.uuid4().hex[:8]}"
     up = client.post(
         "/api/slots",
         data={
             "client_id": "c1",
             "period_key": "year:9",
-            "slot_id": "soft_del_op",
+            "slot_id": soft_slot_id,
             "slot_label": "担当削除テスト",
         },
         files={"file": ("visible.pdf", io.BytesIO(pdf), "application/pdf")},
@@ -613,7 +616,7 @@ def test_delete_single_document_version() -> None:
     slot = {
         "client_id": "c1",
         "period_key": "year:9",
-        "slot_id": "ver_delete_one",
+        "slot_id": f"ver_delete_one_{uuid.uuid4().hex[:8]}",
         "slot_label": "版削除テスト",
     }
     up1 = client.post(
@@ -1060,7 +1063,8 @@ def test_review_events_timeline() -> None:
     assert "slot_label" in items[0]
 
 
-def test_system_config_masks_ai_keys() -> None:
+def test_system_config_masks_ai_keys(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr("services.firm_settings.STORAGE_DIR", tmp_path)
     r = client.put(
         "/api/system-config",
         headers=_admin_headers(),
@@ -1078,11 +1082,17 @@ def test_system_config_masks_ai_keys() -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["ai_openai_key_configured"] is True
+    assert body["ai_openai_key_last4"] == "-key"
     assert "sk-test" not in json.dumps(body)
+    stored = ai_secrets_path(DEFAULT_FIRM_ID).read_text(encoding="utf-8")
+    assert "sk-test-secret-key" not in stored
+    assert "openai_api_key_encrypted" in stored
+    assert get_openai_key(DEFAULT_FIRM_ID) == "sk-test-secret-key"
     get_r = client.get("/api/system-config", headers=_admin_headers())
     assert get_r.status_code == 200
     get_body = get_r.json()
     assert get_body["ai_openai_key_configured"] is True
+    assert get_body["ai_openai_key_last4"] == "-key"
     assert "sk-test" not in json.dumps(get_body)
 
 

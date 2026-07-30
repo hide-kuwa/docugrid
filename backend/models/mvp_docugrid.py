@@ -6,12 +6,16 @@ FK のみ定義し、Relationship は付けない（SQLAlchemy 2 / SQLModel の�
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import Column, Text
 from sqlmodel import Field, SQLModel
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(SQLModel, table=True):
@@ -22,7 +26,7 @@ class User(SQLModel, table=True):
     role: str = Field(max_length=64, description="viewer | operator | admin 等")
     stakeholder_id: Optional[str] = Field(default=None, max_length=128, index=True)
     hashed_password: Optional[str] = Field(default=None, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow_naive)
 
 
 class Document(SQLModel, table=True):
@@ -34,8 +38,8 @@ class Document(SQLModel, table=True):
     original_filename: str = Field(max_length=512)
     mime_type: str = Field(default="application/pdf", max_length=128)
     page_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow_naive)
+    updated_at: datetime = Field(default_factory=_utcnow_naive)
     files_json: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     page_order_json: str = Field(default="[]", sa_column=Column(Text))
     client_id: Optional[str] = Field(default=None, max_length=128, index=True)
@@ -68,4 +72,4 @@ class Highlight(SQLModel, table=True):
     h: float = Field()
     z_index: int = 0
     extra_json: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow_naive)

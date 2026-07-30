@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -67,7 +67,7 @@ def seed_client_comms_if_empty(
         ).fetchone()[0]
         if count > 0:
             return
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         seeds = [
             (
                 "email",
@@ -135,7 +135,7 @@ def upsert_comm_thread(
 ) -> dict:
     init_client_comms_db()
     thread_id = str(payload.get("id") or uuid.uuid4().hex)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     channel = str(payload.get("channel") or "email")
     subject = str(payload.get("subject") or "").strip() or "（件名なし）"
     preview = str(payload.get("preview") or "")

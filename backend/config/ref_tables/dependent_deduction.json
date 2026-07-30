@@ -1,0 +1,34 @@
+{
+  "id": "dependent_deduction",
+  "label_ja": "扶養控除（区分別）",
+  "category": "所得控除",
+  "unit": "yen",
+  "source_law": "所得税法第84条",
+  "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm",
+  "notes": [
+    "扶養親族の年齢・同居状況による区分別控除額。",
+    "16歳未満（年少扶養）は所得税・住民税とも扶養控除の対象外（住民税の非課税限度額判定には影響）。",
+    "扶養親族の合計所得要件は令和8年度から48万円以下→58万円以下に引き上げ（別途スカラー管理）。",
+    "国外居住親族は「留学」「障害者」「送金38万円以上」等の要件を満たす場合のみ対象。"
+  ],
+  "match_columns": ["category"],
+  "versions": [
+    {
+      "valid_from": "2011-01-01",
+      "valid_to": null,
+      "label": "現行",
+      "columns": [
+        { "key": "category", "label": "区分", "type": "text" },
+        { "key": "age", "label": "年齢・要件", "type": "text" },
+        { "key": "amount", "label": "控除額", "type": "yen" }
+      ],
+      "rows": [
+        { "category": "一般の控除対象扶養親族", "age": "16歳以上19歳未満・23歳以上70歳未満", "amount": 380000 },
+        { "category": "特定扶養親族", "age": "19歳以上23歳未満", "amount": 630000 },
+        { "category": "老人扶養親族（同居老親等以外）", "age": "70歳以上", "amount": 480000 },
+        { "category": "老人扶養親族（同居老親等）", "age": "70歳以上・同居", "amount": 580000 },
+        { "category": "年少扶養親族", "age": "16歳未満", "amount": 0 }
+      ]
+    }
+  ]
+}

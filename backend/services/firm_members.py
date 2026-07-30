@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -187,7 +187,7 @@ def upsert_member(
     persona_id: str | None = None,
 ) -> FirmMember:
     init_firm_members_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     normalized_email = email.strip().lower()
     resolved_persona = resolve_persona_id(
         stakeholder_id=stakeholder_id,
@@ -304,7 +304,7 @@ def _sync_member_from_directory(email: str) -> FirmMember | None:
 def bootstrap_firm_members() -> None:
     """Seed firms + dev personas from member_directory defaults (idempotent)."""
     init_firm_members_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(MEMBERS_DB_PATH) as conn:
         for firm_id, label in FIRM_LABELS.items():
             conn.execute(

@@ -1,0 +1,147 @@
+{
+  "master": "corporate_tax_rate",
+  "label_ja": "法人税の税率",
+  "law_asof": "令和7年4月1日現在法令等",
+  "source_law": "法法66、143、措法42の3の2、67の2、68、平28改正法附則21・26・27・29",
+  "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/hojin/5759.htm",
+  "valid_from": "2025-04-01",
+  "valid_to": null,
+  "small_business_threshold": 8000000,
+  "periods": [
+    { "label": "平28.4.1以後", "start": "2016-04-01" },
+    { "label": "平30.4.1以後", "start": "2018-04-01" },
+    { "label": "平31.4.1以後", "start": "2019-04-01" },
+    { "label": "令4.4.1以後", "start": "2022-04-01" },
+    { "label": "令7.4.1以後", "start": "2025-04-01" }
+  ],
+  "rows": [
+    {
+      "corp_type": "普通法人",
+      "segment": "資本金1億円以下の法人など",
+      "income_band": "年800万円以下の部分（下記以外の法人）",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": null,
+      "note": "本則19%を租特で15%に軽減。令7.4.1以後開始事業年度で所得が年10億円超の事業年度は17%"
+    },
+    {
+      "corp_type": "普通法人",
+      "segment": "資本金1億円以下の法人など",
+      "income_band": "年800万円以下の部分（適用除外事業者）",
+      "rates": [0.19, 0.19, 0.19, 0.19, 0.19],
+      "consolidated_rate": null,
+      "note": "適用除外事業者（前3年平均所得15億円超）は軽減税率の適用なし"
+    },
+    {
+      "corp_type": "普通法人",
+      "segment": "上記以外の普通法人（資本金1億円超の大法人等）／年800万円超の部分",
+      "income_band": "—",
+      "rates": [0.234, 0.232, 0.232, 0.232, 0.232],
+      "consolidated_rate": null,
+      "note": "標準税率"
+    },
+    {
+      "corp_type": "協同組合等",
+      "segment": "",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": 0.16,
+      "note": ""
+    },
+    {
+      "corp_type": "協同組合等",
+      "segment": "",
+      "income_band": "年800万円超の部分",
+      "rates": [0.19, 0.19, 0.19, 0.19, 0.19],
+      "consolidated_rate": 0.20,
+      "note": "店舗物品供給事業の収入が年1,000億円以上等の一定要件を満たすものの年10億円超は22%"
+    },
+    {
+      "corp_type": "公益法人等（公益社団・財団法人／非営利型法人）",
+      "segment": "収益事業から生じた所得",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "公益法人等（公益社団・財団法人／非営利型法人）",
+      "segment": "収益事業から生じた所得",
+      "income_band": "年800万円超の部分",
+      "rates": [0.234, 0.232, 0.232, 0.232, 0.232],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "公益法人等とみなされているもの",
+      "segment": "",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": null,
+      "note": "認可地縁団体・管理組合法人・特定非営利活動法人 等"
+    },
+    {
+      "corp_type": "公益法人等とみなされているもの",
+      "segment": "",
+      "income_band": "年800万円超の部分",
+      "rates": [0.19, 0.19, 0.19, 0.19, 0.19],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "上記以外の公益法人等",
+      "segment": "",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "上記以外の公益法人等",
+      "segment": "",
+      "income_band": "年800万円超の部分",
+      "rates": [0.19, 0.19, 0.19, 0.19, 0.19],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "人格のない社団等",
+      "segment": "",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "人格のない社団等",
+      "segment": "",
+      "income_band": "年800万円超の部分",
+      "rates": [0.234, 0.232, 0.232, 0.232, 0.232],
+      "consolidated_rate": null,
+      "note": ""
+    },
+    {
+      "corp_type": "特定の医療法人",
+      "segment": "措法67条の2 承認法人",
+      "income_band": "年800万円以下の部分",
+      "rates": [0.15, 0.15, 0.15, 0.15, 0.15],
+      "consolidated_rate": 0.16,
+      "note": "適用除外事業者は19%（連結親法人の場合20%）"
+    },
+    {
+      "corp_type": "特定の医療法人",
+      "segment": "措法67条の2 承認法人",
+      "income_band": "年800万円超の部分",
+      "rates": [0.19, 0.19, 0.19, 0.19, 0.19],
+      "consolidated_rate": 0.20,
+      "note": ""
+    }
+  ],
+  "notes": [
+    "（注7）令和7年4月1日以後に開始する事業年度で、所得金額が年10億円を超える事業年度は、年800万円以下の部分の税率が17%となる（普通法人・協同組合等・公益法人等・特定の医療法人の軽減税率対象）。",
+    "資本金1億円以下でも、資本金5億円以上の大法人による完全支配関係がある法人、相互会社、投資法人、特定目的会社、受託法人などは軽減税率の対象外。",
+    "【 】内は協同組合等または特定の医療法人が連結親法人である場合の税率。"
+  ],
+  "special_10b_reduced_rate": 0.17,
+  "special_10b_threshold": 1000000000,
+  "special_10b_from": "2025-04-01"
+}

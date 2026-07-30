@@ -26,7 +26,7 @@ def _admin_headers() -> dict[str, str]:
 def _platform_headers() -> dict[str, str]:
     return {
         "X-Docugrid-Role": "platform_admin",
-        "X-Docugrid-User": "admin@tax.co.jp",
+        "X-Docugrid-User": "admin@taxx.jp",
         "X-Docugrid-Stakeholder": "actor-admin",
         "X-Docugrid-Client": "c1",
     }

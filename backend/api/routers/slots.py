@@ -34,7 +34,7 @@ async def upsert_slot_document(
     sha = hashlib.sha256(content).hexdigest()
     identity = resolve_identity(request)
     uploaded_by = identity.stakeholder_id or identity.email or ""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     auto_share_with_client = _is_client_portal_role(identity.role)
     client_shared_at = now if auto_share_with_client else None
     client_shared_by = uploaded_by if auto_share_with_client else None
@@ -438,7 +438,7 @@ async def delete_slot_document(request: Request, doc_id: str, mode: str = "delet
         # Soft delete (default) — 復元可能
         if row["deleted_at"] if "deleted_at" in row.keys() else None:
             raise HTTPException(status_code=409, detail="Already deleted")
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         deleted_slot_id = f"deleted_{doc_id}"
         conn.execute(
             """
@@ -571,7 +571,7 @@ async def share_slot_with_client(request: Request, doc_id: str):
             raise HTTPException(status_code=409, detail="Cannot share deleted document")
         if row["client_shared_at"] if "client_shared_at" in row.keys() else None:
             return {"ok": True, "already_shared": True, "item": _enrich_slot_item(row)}
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         shared_by = identity.stakeholder_id or identity.email or ""
         conn.execute(
             "UPDATE slot_documents SET client_shared_at=?, client_shared_by=? WHERE id=?",
@@ -701,7 +701,7 @@ def _update_slot_current_version(
     """slot_documents の current ポインタを最新版に更新する。"""
     client_firm = get_client_firm_id(client_id)
     _init_slot_documents_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         prev = conn.execute(
@@ -855,7 +855,7 @@ async def delete_document_version_endpoint(request: Request, version_id: str):
                         promoted.content_sha256,
                         promoted.byte_size,
                         promoted.id,
-                        datetime.utcnow().isoformat(),
+                        datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                         slot_row["id"],
                     ),
                 )

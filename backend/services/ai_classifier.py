@@ -7,6 +7,8 @@ from typing import Dict, List, Optional
 
 import requests
 
+from services.ai_prompts import render_prompt
+
 
 def _parse_ai_label_response(
     parsed: dict,
@@ -33,14 +35,31 @@ def _parse_ai_label_response(
     }
 
 
-def _build_classify_prompt(text: str, filename: Optional[str], labels: List[str]) -> str:
+def _build_classify_prompt(
+    text: str,
+    filename: Optional[str],
+    labels: List[str],
+    *,
+    template: Optional[str] = None,
+) -> str:
     excerpt = (text or "")[:3000]
+    filename_display = filename or "(不明)"
+    labels_display = ", ".join(labels)
+    excerpt_display = excerpt or "(テキストなし)"
+    tpl = (template or "").strip() or None
+    if tpl:
+        return render_prompt(
+            tpl,
+            filename=filename_display,
+            excerpt=excerpt_display,
+            labels=labels_display,
+        )
     return (
         "あなたは日本の税務・会計書類の分類アシスタントです。"
         "以下の PDF から抽出したテキストとファイル名から、最も適切な書類種別を1つ選んでください。\n\n"
-        f"ファイル名: {filename or '(不明)'}\n\n"
-        f"テキスト抜粋:\n{excerpt or '(テキストなし)'}\n\n"
-        f"候補ラベル: {', '.join(labels)}\n\n"
+        f"ファイル名: {filename_display}\n\n"
+        f"テキスト抜粋:\n{excerpt_display}\n\n"
+        f"候補ラベル: {labels_display}\n\n"
         'JSON のみで返答: {"label":"<候補のいずれか>","confidence":0.0-1.0,"reason":"短い理由"}'
     )
 
@@ -51,6 +70,8 @@ def ai_classify_boost(
     candidates: List[Dict[str, str]],
     api_key: str,
     model: str = "gpt-4o-mini",
+    *,
+    prompt_template: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     """低確信度時に AI で候補ラベルを推定。失敗時は None。"""
     if not api_key or not candidates:
@@ -60,7 +81,7 @@ def ai_classify_boost(
     if not labels:
         return None
 
-    prompt = _build_classify_prompt(text, filename, labels)
+    prompt = _build_classify_prompt(text, filename, labels, template=prompt_template)
 
     try:
         res = requests.post(
@@ -93,6 +114,8 @@ def gemini_classify_boost(
     candidates: List[Dict[str, str]],
     api_key: str,
     model: str = "gemini-2.5-flash",
+    *,
+    prompt_template: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     """低確信度時に Gemini で候補ラベルを推定。失敗時は None。"""
     if not api_key or not candidates:
@@ -102,7 +125,7 @@ def gemini_classify_boost(
     if not labels:
         return None
 
-    prompt = _build_classify_prompt(text, filename, labels)
+    prompt = _build_classify_prompt(text, filename, labels, template=prompt_template)
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ AI_USAGE_DB_PATH = STORAGE_DIR / "ai_usage.db"
 
 
 def _period_key() -> str:
-    return datetime.utcnow().strftime("%Y-%m")
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m")
 
 
 def included_tokens_per_client() -> int:
@@ -55,7 +55,7 @@ def init_ai_usage_db() -> None:
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _get_wallet(firm_id: str) -> dict[str, Any]:

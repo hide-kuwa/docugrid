@@ -250,7 +250,7 @@ async def export_review_events(
         _query_review_events(client_id, period_key, slot_id, firm_id=ctx.firm_id),
     )
     items = [_row_to_review_event(r) for r in rows]
-    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    stamp = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%dT%H%M%S")
     base_name = f"review-events_{client_id}_{period_key or 'all'}_{stamp}"
 
     if format == "json":

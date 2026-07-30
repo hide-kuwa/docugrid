@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -91,7 +91,7 @@ def seed_records_from_profile(
             raw = (profile.get(field) or "").strip()
             if not raw:
                 continue
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
             lines = _split_profile_lines(raw)
             for idx, line in enumerate(lines):
                 title = default_title if len(lines) == 1 else f"{default_title} {idx + 1}"
@@ -129,7 +129,7 @@ def upsert_record_item(firm_id: str, client_id: str, payload: dict) -> dict:
     if domain not in VALID_DOMAINS:
         raise ValueError(f"domain must be one of {sorted(VALID_DOMAINS)}")
     item_id = str(payload.get("id") or uuid.uuid4().hex)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     title = str(payload.get("title") or "").strip()
     body = str(payload.get("body") or "")
     sort_order = int(payload.get("sort_order") or 0)

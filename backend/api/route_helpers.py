@@ -168,7 +168,7 @@ def _append_review_event(
     """追記専用（append-only）の業務監査イベントを記録する。"""
     _init_review_events_db()
     event_id = uuid.uuid4().hex
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     event_firm_id = get_client_firm_id(client_id)
     with sqlite3.connect(REVIEW_EVENTS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -218,7 +218,7 @@ def _update_slot_current_version(
     """slot_documents の current ポインタを最新版に更新する。"""
     client_firm = get_client_firm_id(client_id)
     _init_slot_documents_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         prev = conn.execute(

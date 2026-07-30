@@ -1,0 +1,73 @@
+{
+  "id": "minimum_wage",
+  "label_ja": "地域別最低賃金（都道府県別）",
+  "category": "労働",
+  "unit": "yen",
+  "source_law": "最低賃金法",
+  "source_url": "https://saiteichingin.mhlw.go.jp/",
+  "notes": [
+    "時間額（円）。毎年10月頃に改定・発効。値は公表値の取り込みであり、改定のたびに要更新（本マスタはブラウザから編集可）。",
+    "換算時給（基本給 ÷ 月平均所定労働時間）が事業所所在地の最低賃金を下回る場合は給与確定前に警告する運用を推奨。"
+  ],
+  "match_columns": ["prefecture"],
+  "versions": [
+    {
+      "valid_from": "2024-10-01",
+      "valid_to": null,
+      "label": "令和6年度",
+      "columns": [
+        { "key": "prefecture", "label": "都道府県", "type": "text" },
+        { "key": "amount", "label": "最低賃金（時間額）", "type": "yen" }
+      ],
+      "rows": [
+        { "prefecture": "北海道", "amount": 1010 },
+        { "prefecture": "青森県", "amount": 953 },
+        { "prefecture": "岩手県", "amount": 952 },
+        { "prefecture": "宮城県", "amount": 973 },
+        { "prefecture": "秋田県", "amount": 951 },
+        { "prefecture": "山形県", "amount": 955 },
+        { "prefecture": "福島県", "amount": 955 },
+        { "prefecture": "茨城県", "amount": 1005 },
+        { "prefecture": "栃木県", "amount": 1004 },
+        { "prefecture": "群馬県", "amount": 985 },
+        { "prefecture": "埼玉県", "amount": 1078 },
+        { "prefecture": "千葉県", "amount": 1076 },
+        { "prefecture": "東京都", "amount": 1163 },
+        { "prefecture": "神奈川県", "amount": 1162 },
+        { "prefecture": "新潟県", "amount": 985 },
+        { "prefecture": "富山県", "amount": 998 },
+        { "prefecture": "石川県", "amount": 984 },
+        { "prefecture": "福井県", "amount": 984 },
+        { "prefecture": "山梨県", "amount": 988 },
+        { "prefecture": "長野県", "amount": 998 },
+        { "prefecture": "岐阜県", "amount": 1001 },
+        { "prefecture": "静岡県", "amount": 1034 },
+        { "prefecture": "愛知県", "amount": 1077 },
+        { "prefecture": "三重県", "amount": 1023 },
+        { "prefecture": "滋賀県", "amount": 1017 },
+        { "prefecture": "京都府", "amount": 1058 },
+        { "prefecture": "大阪府", "amount": 1114 },
+        { "prefecture": "兵庫県", "amount": 1052 },
+        { "prefecture": "奈良県", "amount": 986 },
+        { "prefecture": "和歌山県", "amount": 980 },
+        { "prefecture": "鳥取県", "amount": 957 },
+        { "prefecture": "島根県", "amount": 962 },
+        { "prefecture": "岡山県", "amount": 982 },
+        { "prefecture": "広島県", "amount": 1020 },
+        { "prefecture": "山口県", "amount": 979 },
+        { "prefecture": "徳島県", "amount": 980 },
+        { "prefecture": "香川県", "amount": 970 },
+        { "prefecture": "愛媛県", "amount": 956 },
+        { "prefecture": "高知県", "amount": 952 },
+        { "prefecture": "福岡県", "amount": 992 },
+        { "prefecture": "佐賀県", "amount": 956 },
+        { "prefecture": "長崎県", "amount": 953 },
+        { "prefecture": "熊本県", "amount": 952 },
+        { "prefecture": "大分県", "amount": 954 },
+        { "prefecture": "宮崎県", "amount": 952 },
+        { "prefecture": "鹿児島県", "amount": 953 },
+        { "prefecture": "沖縄県", "amount": 952 }
+      ]
+    }
+  ]
+}

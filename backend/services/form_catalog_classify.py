@@ -128,16 +128,26 @@ def try_catalog_slot_classify(
         return None
 
     maps_to = seg.get("maps_to") if isinstance(seg.get("maps_to"), dict) else {}
+    from services.document_types import resolve_type_id_from_maps_to
+
+    resolved_type_id = resolve_type_id_from_maps_to(maps_to)
     slot_label = str(maps_to.get("slot_label") or "").strip()
     form_label = str(seg.get("label_ja") or "").strip()
     labels_to_try = [x for x in (slot_label, form_label) if x]
 
     match = None
-    for candidate in candidates:
-        clabel = str(candidate.get("label") or "").strip()
-        if clabel in labels_to_try:
-            match = candidate
-            break
+    if resolved_type_id:
+        for candidate in candidates:
+            cid = str(candidate.get("id") or "").strip()
+            if cid == resolved_type_id:
+                match = candidate
+                break
+    if not match:
+        for candidate in candidates:
+            clabel = str(candidate.get("label") or "").strip()
+            if clabel in labels_to_try:
+                match = candidate
+                break
     if not match:
         for candidate in candidates:
             clabel = str(candidate.get("label") or "").strip()

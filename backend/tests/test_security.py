@@ -182,7 +182,7 @@ def test_google_login_issues_jwt(monkeypatch) -> None:
     def _fake_verify(token: str, *, client_id: str | None = None):
         assert token == "fake-google-id-token"
         return {
-            "email": "admin@tax.co.jp",
+            "email": "admin@taxx.jp",
             "email_verified": True,
             "iss": "accounts.google.com",
         }
@@ -195,8 +195,8 @@ def test_google_login_issues_jwt(monkeypatch) -> None:
     assert r.status_code == 200, r.text
     token = r.json()["access_token"]
     payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALG])
-    assert payload["sub"] == "admin@tax.co.jp"
-    assert payload["stid"] == "actor-admin"
+    assert payload["sub"] == "admin@taxx.jp"
+    assert payload["stid"] == "super-admin"
     assert payload["role"] == "platform_admin"
 
 
@@ -266,14 +266,14 @@ def test_login_jwt_includes_member_id_from_registry() -> None:
     r = client.post(
         "/api/auth/login",
         json={
-            "email": "admin@tax.co.jp",
+            "email": "tanaka@tax.co.jp",
             "password": "password",
-            "stakeholder_id": "actor-admin",
+            "stakeholder_id": "actor-s1",
         },
     )
     assert r.status_code == 200, r.text
     payload = jwt.decode(r.json()["access_token"], _jwt_secret(), algorithms=[JWT_ALG])
-    assert payload["mid"] == "actor-admin"
+    assert payload["mid"] == "actor-s1"
     assert payload["firm_id"] == DEFAULT_FIRM_ID
 
 
@@ -493,7 +493,7 @@ def test_mcp_token_issued_for_authenticated_user(monkeypatch) -> None:
     login = client.post(
         "/api/auth/login",
         json={
-            "email": "admin@tax.co.jp",
+            "email": "admin@taxx.jp",
             "password": "password",
             "stakeholder_id": "actor-admin",
         },
@@ -517,7 +517,7 @@ def test_mcp_token_issued_for_authenticated_user(monkeypatch) -> None:
         audience=MCP_JWT_AUDIENCE,
     )
     assert payload["aud"] == MCP_JWT_AUDIENCE
-    assert payload["sub"] == "admin@tax.co.jp"
+    assert payload["sub"] == "admin@taxx.jp"
     assert payload["role"] == "platform_admin"
 
     me = client.get(
@@ -525,4 +525,26 @@ def test_mcp_token_issued_for_authenticated_user(monkeypatch) -> None:
         headers={"Authorization": f"Bearer {body['access_token']}"},
     )
     assert me.status_code == 200
-    assert me.json()["email"] == "admin@tax.co.jp"
+    assert me.json()["email"] == "admin@taxx.jp"
+
+
+def test_super_admin_auth_me_returns_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "true")
+    login = client.post(
+        "/api/auth/login",
+        json={
+            "email": "admin@taxx.jp",
+            "password": "password",
+            "stakeholder_id": "",
+        },
+    )
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200, me.text
+    body = me.json()
+    assert body["email"] == "admin@taxx.jp"
+    assert body["role"] == "platform_admin"
+    assert "settings.platform" in body["permissions"]
+    assert "document.upload" in body["permissions"]

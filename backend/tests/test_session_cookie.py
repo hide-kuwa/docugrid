@@ -13,13 +13,13 @@ client = TestClient(app)
 def test_login_sets_session_cookie() -> None:
     r = client.post(
         "/api/auth/login",
-        json={"email": "admin@tax.co.jp", "password": "password", "stakeholder_id": ""},
+        json={"email": "admin@taxx.jp", "password": "password", "stakeholder_id": ""},
     )
     assert r.status_code == 200, r.text
     assert SESSION_COOKIE_NAME in r.cookies
     token = r.cookies[SESSION_COOKIE_NAME]
     payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALG])
-    assert payload["sub"] == "admin@tax.co.jp"
+    assert payload["sub"] == "admin@taxx.jp"
 
 
 def test_auth_me_via_cookie_without_bearer() -> None:
@@ -36,12 +36,12 @@ def test_auth_me_via_cookie_without_bearer() -> None:
 def test_firm_members_list_for_admin() -> None:
     headers = {
         "X-Docugrid-Role": "platform_admin",
-        "X-Docugrid-User": "admin@tax.co.jp",
-        "X-Docugrid-Stakeholder": "actor-admin",
+        "X-Docugrid-User": "admin@taxx.jp",
+        "X-Docugrid-Stakeholder": "super-admin",
         "X-Docugrid-Firm": DEFAULT_FIRM_ID,
     }
     r = client.get("/api/firm-members", headers=headers)
     assert r.status_code == 200, r.text
     rows = r.json()
     assert len(rows) >= 1
-    assert any(row["email"] == "admin@tax.co.jp" for row in rows)
+    assert any(row["email"] == "admin@taxx.jp" for row in rows)

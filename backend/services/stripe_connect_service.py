@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ PARTNERS_PATH = STORAGE_DIR / "sales_partners.json"
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _load_partners_raw() -> dict[str, Any]:
@@ -153,7 +153,7 @@ def start_partner_commission_period(firm_id: str) -> dict[str, Any] | None:
     years = int(record.get("partnerContractYears") or 0)
     if not partner_id or years < PARTNER_CONTRACT_YEARS_MIN:
         return None
-    ends = (datetime.utcnow() + timedelta(days=365 * years)).isoformat()
+    ends = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=365 * years)).isoformat()
     return save_billing_record(
         firm_id,
         {
@@ -173,7 +173,7 @@ def partner_commission_active(firm_id: str) -> dict[str, Any] | None:
     ends_raw = record.get("partnerCommissionEndsAt")
     if ends_raw:
         try:
-            if datetime.fromisoformat(str(ends_raw)) < datetime.utcnow():
+            if datetime.fromisoformat(str(ends_raw)) < datetime.now(timezone.utc).replace(tzinfo=None):
                 return None
         except ValueError:
             pass

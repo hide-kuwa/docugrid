@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -49,7 +49,7 @@ def _issue_session_token(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
             """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                 resolved_stakeholder_id,
                 email,
                 role,

@@ -57,6 +57,18 @@ from database import init_db
 from schemas.docugrid_persist import DocugridSaveRequest
 from schemas.order_payload import OrderPayload
 from services.ai_classifier import ai_classify_boost, gemini_classify_boost
+from services.ai_prompts import (
+    PROMPT_KEY_CLASSIFY_TEXT,
+    PROMPT_KEY_CLASSIFY_VISION,
+    PROMPT_KEYS,
+    PROMPT_VARIABLES,
+    builtin_default,
+    execute_prompt_test,
+    get_prompt_template,
+    list_prompt_definitions,
+    reset_prompt_template,
+    save_prompt_template,
+)
 from services.firm_members import (
     MEMBER_STATUS_ACTIVE,
     MEMBER_STATUS_INACTIVE,
@@ -221,6 +233,48 @@ from services.legal_master_service import (
     update_entry as update_legal_master_entry,
     validate_csv_text as validate_legal_master_csv,
 )
+from services.legal_master_nta_import import (
+    preview_nta_import as preview_legal_master_nta_import,
+)
+from services.withholding_tax_service import (
+    get_table as get_withholding_monthly_table,
+    list_tables as list_withholding_tables,
+    lookup_monthly as lookup_withholding_monthly,
+    reload_tables as reload_withholding_tables,
+)
+from services.corporate_tax_service import (
+    compute_corporate_tax,
+    get_table as get_corporate_tax_table,
+    list_tables as list_corporate_tax_tables,
+    reload_table as reload_corporate_tax_table,
+)
+from services.ref_table_service import (
+    effective_version as ref_table_effective_version,
+    get_ref_table,
+    list_ref_tables,
+    reload_ref_tables,
+    save_ref_table,
+    upsert_ref_table_row,
+)
+from services.legal_calc_service import (
+    build_association_health_amount_table,
+    calc_association_health_premium,
+    calc_corporate_enterprise_tax,
+    calc_corporate_local_taxes,
+    calc_defense_surtax,
+    calc_employment_income,
+    calc_employment_insurance,
+    calc_individual_resident_tax,
+    calc_simplified_consumption,
+    check_minimum_wage,
+    clip_social_insurance_basis,
+    list_association_health_prefectures,
+    lookup_association_health_rate,
+    lookup_basic_deduction,
+    lookup_corporate_percapita,
+    lookup_spouse_deduction,
+    lookup_standard_grade,
+)
 from services.handoff_dry_run import (
     HandoffTestContext,
     get_last_test_result,
@@ -241,6 +295,16 @@ from services.integration_registry import (
     update_port as update_integration_port,
     validate_yaml_text as validate_integration_ports_yaml,
 )
+from services.document_types import (
+    config_summary as document_types_config_summary,
+    list_types as list_document_types,
+    reload_document_types_config,
+)
+from services.document_categories import (
+    config_summary as document_categories_config_summary,
+    list_categories_with_forms as list_document_categories_with_forms,
+    reload_document_categories_config,
+)
 from services.form_catalog import (
     config_path as form_catalog_config_path,
     config_summary as form_catalog_config_summary,
@@ -251,6 +315,7 @@ from services.form_catalog import (
     import_yaml_text as import_form_catalog_yaml,
     list_forms as list_form_catalog_forms,
     reload_form_catalog_config,
+    reorder_forms as reorder_form_catalog_entries,
     update_form as update_form_catalog_entry,
     validate_yaml_text as validate_form_catalog_yaml,
 )
@@ -273,6 +338,7 @@ from services.form_catalog_samples import (
     get_sample as get_form_catalog_sample,
     list_samples as list_form_catalog_samples,
     render_sample_page_png,
+    sample_coverage_by_form as form_catalog_sample_coverage,
     upsert_page_annotation as upsert_form_catalog_page_annotation,
 )
 from services.capture_analyzer import analyze_capture_content, reaudit_capture_metadata

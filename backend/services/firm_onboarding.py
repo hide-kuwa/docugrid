@@ -6,7 +6,7 @@ import secrets
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from services.firm_members import (
@@ -49,7 +49,7 @@ class FirmInvite:
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _join_code() -> str:
@@ -205,7 +205,7 @@ def create_member_invite(
         raise ValueError("email_required")
     token = secrets.token_urlsafe(24)
     invite_id = f"inv-{uuid.uuid4().hex[:12]}"
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     expires = (now + timedelta(days=INVITE_TTL_DAYS)).isoformat()
     with sqlite3.connect(ONBOARDING_DB_PATH) as conn:
         conn.execute(
@@ -252,7 +252,7 @@ def preview_invite(token: str) -> dict[str, str] | None:
     invite = get_invite_by_token(token)
     if not invite or invite.status != INVITE_STATUS_PENDING:
         return None
-    if datetime.fromisoformat(invite.expires_at) < datetime.utcnow():
+    if datetime.fromisoformat(invite.expires_at) < datetime.now(timezone.utc).replace(tzinfo=None):
         return None
     masked = invite.email
     if "@" in masked:
@@ -270,7 +270,7 @@ def accept_invite(*, token: str, email: str, display_name: str | None = None) ->
     invite = get_invite_by_token(token)
     if not invite or invite.status != INVITE_STATUS_PENDING:
         raise ValueError("invite_invalid")
-    if datetime.fromisoformat(invite.expires_at) < datetime.utcnow():
+    if datetime.fromisoformat(invite.expires_at) < datetime.now(timezone.utc).replace(tzinfo=None):
         raise ValueError("invite_expired")
     normalized = email.strip().lower()
     if normalized != invite.email.strip().lower():

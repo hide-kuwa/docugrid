@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 import unicodedata
@@ -10,6 +11,61 @@ import fitz
 
 from services.doc_classifier import extract_page_text_from_doc
 from services.form_catalog import FormCatalogEntry, load_form_catalog_config
+
+# 縦書き対応: 空白・改行を落とした「圧縮版」テキストとも照合する。
+# 縦書きの「別表一」は抽出時に "別\n表\n一" のように 1 文字ずつ分割されやすい。
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _top_right_vertical_text(page: "fitz.Page") -> str:
+    """右上に縦書きで書かれた様式名（別表一 等）を縦書き読み順で再構成する。
+
+    既定の get_text() は縦書きだと文字順が崩れ、隣の縦列と混ざりやすい。
+    右上領域の文字を「列ごとに右→左、各列は上→下」で並べ直し、
+    "別表一" のような連なりを保った文字列にする。
+    """
+    try:
+        rect = page.rect
+        width = float(rect.width) or 1.0
+        height = float(rect.height) or 1.0
+        raw = page.get_text("rawdict") or {}
+    except Exception:
+        return ""
+
+    x_min = width * 0.5
+    y_max = height * 0.5
+    chars: list[tuple[float, float, str]] = []
+    for block in raw.get("blocks") or []:
+        for line in block.get("lines") or []:
+            for span in line.get("spans") or []:
+                for ch in span.get("chars") or []:
+                    c = str(ch.get("c") or "")
+                    if not c.strip():
+                        continue
+                    bbox = ch.get("bbox") or [0, 0, 0, 0]
+                    cx = (float(bbox[0]) + float(bbox[2])) / 2.0
+                    cy = (float(bbox[1]) + float(bbox[3])) / 2.0
+                    if cx >= x_min and cy <= y_max:
+                        chars.append((cx, cy, c))
+
+    if not chars:
+        return ""
+
+    # 右→左に列をまとめ、各列は上→下に並べる。
+    chars.sort(key=lambda t: -t[0])
+    tol = width * 0.02
+    columns: list[list[tuple[float, float, str]]] = []
+    for cx, cy, c in chars:
+        if columns and abs(columns[-1][0][0] - cx) <= tol:
+            columns[-1].append((cx, cy, c))
+        else:
+            columns.append([(cx, cy, c)])
+
+    lines_out: list[str] = []
+    for col in columns:
+        col.sort(key=lambda t: t[1])
+        lines_out.append("".join(c for _, _, c in col))
+    return "\n".join(lines_out)
 
 
 def extract_page_texts(content: bytes, max_pages: int) -> list[dict[str, Any]]:
@@ -23,12 +79,20 @@ def extract_page_texts(content: bytes, max_pages: int) -> list[dict[str, Any]]:
     limit = min(len(doc), max(1, max_pages))
     for i in range(limit):
         text, engine = extract_page_text_from_doc(doc, i)
+        # 縦書きの様式名を読み順で再構成し、先頭に付与（excerpt から切れないように）。
+        vertical = ""
+        if text:
+            try:
+                vertical = _top_right_vertical_text(doc[i])
+            except Exception:
+                vertical = ""
+        combined = f"{vertical}\n{text}" if vertical else text
         pages.append(
             {
                 "page": i + 1,
                 "text": text,
                 "engine": engine if text else "none",
-                "excerpt": (text or "")[:800],
+                "excerpt": (combined or "")[:800],
             }
         )
 
@@ -42,6 +106,7 @@ def _score_form_on_page(
 ) -> tuple[float, list[str], list[str]]:
     haystack = page_text or ""
     haystack_norm = unicodedata.normalize("NFKC", haystack)
+    haystack_compact = _WHITESPACE_RE.sub("", haystack_norm)
     fname = filename or ""
     matched: list[str] = []
     reasons: list[str] = []
@@ -51,7 +116,12 @@ def _score_form_on_page(
             return False
         if needle in haystack:
             return True
-        return unicodedata.normalize("NFKC", needle) in haystack_norm
+        needle_norm = unicodedata.normalize("NFKC", needle)
+        if needle_norm in haystack_norm:
+            return True
+        # 縦書き（1 文字ずつ改行/空白区切り）に対応: 空白を除去して照合。
+        needle_compact = _WHITESPACE_RE.sub("", needle_norm)
+        return bool(needle_compact) and needle_compact in haystack_compact
 
     for neg in form.get("must_not") or []:
         if neg and _in_haystack(neg):

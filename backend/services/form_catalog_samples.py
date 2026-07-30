@@ -430,3 +430,35 @@ def all_annotations() -> list[tuple[SampleRecord, PageAnnotation]]:
         for ann in sample.get("annotations") or []:
             out.append((sample, ann))
     return out
+
+
+def sample_coverage_by_form() -> dict[str, dict[str, Any]]:
+    """様式(form_id)ごとの参考 PDF 設定状況。
+
+    注釈(annotation)に form_id が付いているサンプルを「設定済」とみなす。
+    返り値: {form_id: {sample_count, annotation_count, last_uploaded_at, sample_ids}}
+    """
+    coverage: dict[str, dict[str, Any]] = {}
+    for sample in _load_index_raw()["samples"]:
+        uploaded = str(sample.get("uploaded_at") or "")
+        sid = str(sample.get("id") or "")
+        for ann in sample.get("annotations") or []:
+            fid = str(ann.get("form_id") or "").strip()
+            if not fid:
+                continue
+            entry = coverage.setdefault(
+                fid,
+                {
+                    "sample_count": 0,
+                    "annotation_count": 0,
+                    "last_uploaded_at": "",
+                    "sample_ids": [],
+                },
+            )
+            entry["annotation_count"] += 1
+            if sid and sid not in entry["sample_ids"]:
+                entry["sample_ids"].append(sid)
+                entry["sample_count"] += 1
+            if uploaded > entry["last_uploaded_at"]:
+                entry["last_uploaded_at"] = uploaded
+    return coverage

@@ -1,0 +1,86 @@
+{
+  "id": "association_health_rates",
+  "label_ja": "協会けんぽ・厚生年金 保険料率（都道府県別）",
+  "category": "社会保険",
+  "unit": "percent",
+  "source_law": "健康保険法・厚生年金保険法・介護保険法・子ども・子育て支援法",
+  "source_url": "https://www.kyoukaikenpo.or.jp/g3/cat330/sb3150/",
+  "notes": [
+    "協会けんぽの健康保険料率は都道府県（支部）ごとに毎年改定される（通常は3月分から）。",
+    "介護保険料率は全国一律。40〜64歳（介護保険第2号被保険者）は健康保険料率に加算する。",
+    "子ども・子育て支援金率は被保険者・事業主折半。子ども・子育て拠出金率は事業主のみ負担。",
+    "厚生年金保険料率は全国一律（現状18.3%）。",
+    "他都道府県・他年度を追加する場合は、同じバージョン（同一の valid_from）に行を追加するか、新しいバージョンを追加する。"
+  ],
+  "match_columns": [
+    "prefecture_code"
+  ],
+  "versions": [
+    {
+      "valid_from": "2026-03-01",
+      "valid_to": null,
+      "label": "令和8年3月分〜",
+      "columns": [
+        {
+          "key": "prefecture_code",
+          "label": "支部コード",
+          "type": "text"
+        },
+        {
+          "key": "prefecture",
+          "label": "都道府県",
+          "type": "text"
+        },
+        {
+          "key": "health_rate",
+          "label": "健康保険料率",
+          "type": "rate"
+        },
+        {
+          "key": "care_rate",
+          "label": "介護保険料率",
+          "type": "rate"
+        },
+        {
+          "key": "health_care_rate",
+          "label": "健保＋介護",
+          "type": "rate"
+        },
+        {
+          "key": "child_support_rate",
+          "label": "子ども・子育て支援金率",
+          "type": "rate"
+        },
+        {
+          "key": "pension_rate",
+          "label": "厚生年金保険料率",
+          "type": "rate"
+        },
+        {
+          "key": "childcare_contrib_rate",
+          "label": "子ども・子育て拠出金率",
+          "type": "rate"
+        },
+        {
+          "key": "source_url",
+          "label": "出典PDF",
+          "type": "text"
+        }
+      ],
+      "rows": [
+        {
+          "prefecture_code": "13",
+          "prefecture": "東京都",
+          "health_rate": 0.0985,
+          "care_rate": 0.0162,
+          "health_care_rate": 0.1147,
+          "child_support_rate": 0.0023,
+          "pension_rate": 0.183,
+          "childcare_contrib_rate": 0.0036,
+          "source_url": "https://www.kyoukaikenpo.or.jp/assets/R8_13tokyo.pdf",
+          "note": "健康・介護は令和8年3月分〜。支援金は令和8年4月分（5月納付分）〜。年金は平成29年9月分〜。拠出金は令和2年4月分〜。"
+        }
+      ]
+    }
+  ]
+}

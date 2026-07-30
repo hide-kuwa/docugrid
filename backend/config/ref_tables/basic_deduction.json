@@ -1,0 +1,71 @@
+{
+  "id": "basic_deduction",
+  "label_ja": "基礎控除（所得段階）",
+  "category": "所得控除",
+  "unit": "yen",
+  "source_law": "所得税法第86条",
+  "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm",
+  "notes": [
+    "本人の合計所得金額に応じた段階制。金額は国税庁 No.1199 に基づく（改正の適用時期は要確認）。",
+    "非居住者は最高58万円に制限される。",
+    "令和7年分の規定は施行日（令和7年12月1日）前の準確定申告後に更正の請求で再計算する場合がある。"
+  ],
+  "match_columns": ["income_band"],
+  "versions": [
+    {
+      "valid_from": "2027-01-01",
+      "valid_to": null,
+      "label": "令和9年分以後",
+      "columns": [
+        { "key": "income_band", "label": "本人の合計所得金額", "type": "text" },
+        { "key": "amount", "label": "基礎控除額", "type": "yen" }
+      ],
+      "rows": [
+        { "income_band": "132万円以下", "amount": 950000, "income_max": 1320000 },
+        { "income_band": "132万円超 336万円以下", "amount": 580000, "income_max": 3360000 },
+        { "income_band": "336万円超 489万円以下", "amount": 480000, "income_max": 4890000 },
+        { "income_band": "489万円超 655万円以下", "amount": 480000, "income_max": 6550000 },
+        { "income_band": "655万円超 2,350万円以下", "amount": 480000, "income_max": 23500000 },
+        { "income_band": "2,350万円超 2,400万円以下", "amount": 320000, "income_max": 24000000 },
+        { "income_band": "2,400万円超 2,450万円以下", "amount": 160000, "income_max": 24500000 },
+        { "income_band": "2,450万円超 2,500万円以下", "amount": 0, "income_max": 25000000 },
+        { "income_band": "2,500万円超", "amount": 0, "income_max": null }
+      ]
+    },
+    {
+      "valid_from": "2025-01-01",
+      "valid_to": "2026-12-31",
+      "label": "令和7年分・令和8年分",
+      "columns": [
+        { "key": "income_band", "label": "本人の合計所得金額", "type": "text" },
+        { "key": "amount", "label": "基礎控除額", "type": "yen" }
+      ],
+      "rows": [
+        { "income_band": "132万円以下", "amount": 950000, "income_max": 1320000 },
+        { "income_band": "132万円超 336万円以下", "amount": 880000, "income_max": 3360000 },
+        { "income_band": "336万円超 489万円以下", "amount": 680000, "income_max": 4890000 },
+        { "income_band": "489万円超 655万円以下", "amount": 630000, "income_max": 6550000 },
+        { "income_band": "655万円超 2,350万円以下", "amount": 580000, "income_max": 23500000 },
+        { "income_band": "2,350万円超 2,400万円以下", "amount": 320000, "income_max": 24000000 },
+        { "income_band": "2,400万円超 2,450万円以下", "amount": 160000, "income_max": 24500000 },
+        { "income_band": "2,450万円超 2,500万円以下", "amount": 0, "income_max": 25000000 },
+        { "income_band": "2,500万円超", "amount": 0, "income_max": null }
+      ]
+    },
+    {
+      "valid_from": "2020-01-01",
+      "valid_to": "2024-12-31",
+      "label": "令和6年分以前",
+      "columns": [
+        { "key": "income_band", "label": "本人の合計所得金額", "type": "text" },
+        { "key": "amount", "label": "基礎控除額", "type": "yen" }
+      ],
+      "rows": [
+        { "income_band": "2,400万円以下", "amount": 480000, "income_max": 24000000 },
+        { "income_band": "2,400万円超 2,450万円以下", "amount": 320000, "income_max": 24500000 },
+        { "income_band": "2,450万円超 2,500万円以下", "amount": 160000, "income_max": 25000000 },
+        { "income_band": "2,500万円超", "amount": 0, "income_max": null }
+      ]
+    }
+  ]
+}

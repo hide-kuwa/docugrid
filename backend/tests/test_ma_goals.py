@@ -28,6 +28,10 @@ def ma_storage(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("services.platform_analytics_service.STORAGE_DIR", tmp_path)
     monkeypatch.setattr("services.stripe_billing_service.STORAGE_DIR", tmp_path)
     monkeypatch.setattr(
+        "services.ma_goals_service.ASSUMPTIONS_PATH",
+        tmp_path / "platform_ma_assumptions.json",
+    )
+    monkeypatch.setattr(
         "services.platform_analytics_service.load_client_master_raw",
         lambda: {"clients": [], "groups": []},
     )

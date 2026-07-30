@@ -67,6 +67,7 @@ def beta_client_master(tmp_path, monkeypatch):
     }
     master_path.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(main_module, "CLIENT_MASTER_PATH", master_path)
+    monkeypatch.setattr("api.master_store.CLIENT_MASTER_PATH", master_path)
     monkeypatch.setattr(
         "services.tenancy.CLIENT_MASTER_PATH",
         master_path,
@@ -190,7 +191,7 @@ def test_files_list_scoped_to_firm(tmp_path, monkeypatch) -> None:
     (firm_a_dir / "a-only.pdf").write_bytes(_minimal_pdf_bytes())
     (firm_b_dir / "b-only.pdf").write_bytes(_minimal_pdf_bytes())
 
-    monkeypatch.setattr(main_module, "STORAGE_DIR", tmp_path / "storage")
+    monkeypatch.setattr("api.routers.audit.STORAGE_DIR", tmp_path / "storage")
     r = client.get("/files", headers=_admin_headers())
     assert r.status_code == 200
     names = {f["name"] for f in r.json()}
@@ -204,7 +205,6 @@ def test_version_pdf_stored_under_firm_path(beta_client_master, tmp_path, monkey
     storage_root = tmp_path / "storage"
     monkeypatch.setattr("services.document_version_service.STORAGE_DIR", storage_root)
     monkeypatch.setattr("services.storage_paths.STORAGE_DIR", storage_root)
-    monkeypatch.setattr(main_module, "STORAGE_DIR", storage_root)
 
     period = f"year:ver-{uuid.uuid4().hex[:8]}"
     upload = client.post(

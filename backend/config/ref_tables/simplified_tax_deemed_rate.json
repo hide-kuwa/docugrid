@@ -1,0 +1,34 @@
+{
+  "id": "simplified_tax_deemed_rate",
+  "label_ja": "消費税 簡易課税 みなし仕入率",
+  "category": "消費税",
+  "unit": "percent",
+  "source_law": "消費税法第37条・消費税法施行令第57条",
+  "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6505.htm",
+  "notes": [
+    "みなし仕入率は事業区分ごとに適用。仕入控除税額＝課税標準に対する消費税額 × みなし仕入率。",
+    "2種類以上の事業を営み、課税売上を事業区分ごとに区分していない場合は、その区分していない事業のうち最も低いみなし仕入率を適用する。",
+    "簡易課税制度選択届出書は原則2年間継続適用（2年縛り）。基準期間の課税売上高5,000万円以下が要件。"
+  ],
+  "match_columns": ["business_type"],
+  "versions": [
+    {
+      "valid_from": "2015-04-01",
+      "valid_to": null,
+      "label": "現行",
+      "columns": [
+        { "key": "business_type", "label": "事業区分", "type": "text" },
+        { "key": "deemed_rate", "label": "みなし仕入率", "type": "percent" },
+        { "key": "example", "label": "代表例", "type": "text" }
+      ],
+      "rows": [
+        { "business_type": "第1種事業", "deemed_rate": 0.9, "example": "卸売業", "type_no": 1 },
+        { "business_type": "第2種事業", "deemed_rate": 0.8, "example": "小売業、農林漁業（飲食料品の譲渡）", "type_no": 2 },
+        { "business_type": "第3種事業", "deemed_rate": 0.7, "example": "製造業、建設業、農林漁業（飲食料品以外）", "type_no": 3 },
+        { "business_type": "第4種事業", "deemed_rate": 0.6, "example": "飲食店業、その他の事業", "type_no": 4 },
+        { "business_type": "第5種事業", "deemed_rate": 0.5, "example": "サービス業、運輸通信業、金融保険業", "type_no": 5 },
+        { "business_type": "第6種事業", "deemed_rate": 0.4, "example": "不動産業", "type_no": 6 }
+      ]
+    }
+  ]
+}

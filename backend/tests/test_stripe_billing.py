@@ -137,7 +137,7 @@ def test_billing_me_requires_attention_when_past_due(
 def test_billing_me_stripe_key_without_prices_is_not_enforced(
     firm_billing_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_stripe_configured", lambda: True)
     monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: False)
     save_billing_record("firm_default", {"status": "none", "planId": "firm"})
     r = client.get("/api/billing/me", headers=_admin_headers())

@@ -170,8 +170,8 @@ def test_billing_checkout_blocked_for_operator(firm_billing_path, monkeypatch: p
 
 
 def test_billing_checkout_allowed_for_firm_admin(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
-    monkeypatch.setattr("api.application.create_checkout_session", lambda *a, **k: "https://checkout.stripe.test/session")
+    monkeypatch.setattr("services.stripe_billing_service.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.create_checkout_session", lambda *a, **k: "https://checkout.stripe.test/session")
     r = client.post(
         "/api/billing/checkout",
         headers=_firm_admin_headers(),

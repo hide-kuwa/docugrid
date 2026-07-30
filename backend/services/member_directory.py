@@ -13,7 +13,7 @@ MEMBER_DIRECTORY_PATH = STORAGE_DIR / "member_directory.json"
 
 # Dev defaults aligned with frontend STAKEHOLDER_MASTER personas.
 DEFAULT_EMAIL_TO_STAKEHOLDER: dict[str, str] = {
-    "admin@tax.co.jp": "actor-admin",
+    "admin@taxx.jp": "actor-admin",
     "tanaka@tax.co.jp": "actor-s1",
     "sato@tax.co.jp": "actor-s2",
     "yamamoto@tax.co.jp": "actor-s3",
@@ -57,7 +57,7 @@ def _load_email_map() -> dict[str, str]:
             pass
     if is_production():
         return merged
-    # Dev personas always keep default emails (example file must not break admin@tax.co.jp login).
+    # Dev personas always keep default emails (example file must not break admin@taxx.jp login).
     for email, sid in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
         merged.setdefault(email.lower(), sid)
     return merged

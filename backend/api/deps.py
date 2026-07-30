@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -376,7 +376,7 @@ def _log_audit_event(request: Request, action: str, result: str, detail: str = "
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
             """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                 stid or "",
                 email or "",
                 role or "",
@@ -410,7 +410,7 @@ def _log_audit_denial(request: Request, status_code: int, detail: str) -> None:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                 stid or "",
                 email or "",
                 role or "",

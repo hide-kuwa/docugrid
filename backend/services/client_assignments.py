@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from services.firm_members import member_firm_id
@@ -152,7 +152,7 @@ def replace_member_assignments(
     assignment_role: str = "main",
 ) -> None:
     init_client_assignments_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with sqlite3.connect(ASSIGNMENTS_DB_PATH) as conn:
         conn.execute(
             "DELETE FROM client_assignments WHERE firm_id=? AND member_id=?",

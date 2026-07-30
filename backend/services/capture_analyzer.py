@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import fitz
@@ -250,7 +250,7 @@ def analyze_capture_content(
         "period_key": period_key,
         "slot_id": slot_id,
         "metadata": {
-            "analyzed_at": datetime.utcnow().isoformat(),
+            "analyzed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "ocr_engine": engine,
             "classify": classify,
             "deduction_audit": audit if category in ("deduction_cert", "marufu") else None,
@@ -317,7 +317,7 @@ def reaudit_capture_metadata(
         "audit_message": audit_message,
         "metadata": {
             **metadata,
-            "analyzed_at": datetime.utcnow().isoformat(),
+            "analyzed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "deduction_audit": audit if category in ("deduction_cert", "marufu") else metadata.get("deduction_audit"),
             "expense_context": expense_ctx,
             "invoice_audit": invoice_audit,

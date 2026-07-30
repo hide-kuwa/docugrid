@@ -5,7 +5,6 @@ consumption_tax,consumption_tax.reduced_rate,消費税軽減税率,0.08,,,2019-1
 deduction_amount,deduction.basic,基礎控除,480000,,,2025-01-01,,所得税法,,ded-basic-2025
 deduction_amount,deduction.dependent,扶養控除,380000,,,2025-01-01,,所得税法,,ded-dependent-2025
 deduction_amount,deduction.spouse,配偶者控除,380000,,,2025-01-01,,所得税法,,ded-spouse-2025
-deduction_amount,deduction.social_insurance_cap,社会保険料控除上限,120000,,,2025-01-01,,所得税法,,ded-si-cap-2025
 income_tax_surcharge,income_tax.reconstruction_surcharge_rate,復興特別所得税率,0.021,,,2013-01-01,,復興特別所得税法,,its-recon-2013
 income_tax_bracket,income_tax.bracket.1,所得税5%区分,0.05,,,2025-01-01,,所得税法,"{""bracket_min"":0,""bracket_max"":1950000,""base_deduction"":0}",itb-1-2025
 income_tax_bracket,income_tax.bracket.2,所得税10%区分,0.10,,,2025-01-01,,所得税法,"{""bracket_min"":1950000,""bracket_max"":3300000,""base_deduction"":97500}",itb-2-2025
@@ -14,3 +13,17 @@ income_tax_bracket,income_tax.bracket.4,所得税23%区分,0.23,,,2025-01-01,,�
 income_tax_bracket,income_tax.bracket.5,所得税33%区分,0.33,,,2025-01-01,,所得税法,"{""bracket_min"":9000000,""bracket_max"":18000000,""base_deduction"":1536000}",itb-5-2025
 income_tax_bracket,income_tax.bracket.6,所得税40%区分,0.40,,,2025-01-01,,所得税法,"{""bracket_min"":18000000,""bracket_max"":40000000,""base_deduction"":2796000}",itb-6-2025
 income_tax_bracket,income_tax.bracket.7,所得税45%区分,0.45,,,2025-01-01,,所得税法,"{""bracket_min"":40000000,""bracket_max"":null,""base_deduction"":4796000}",itb-7-2025
+social_insurance,social_insurance.pension.rate,厚生年金保険料率,0.183,,,2017-09-01,,厚生年金保険法,,si-pension-rate-2017
+corporate_tax_surcharge,corporate_tax.defense_special_rate,防衛特別法人税率,0.04,,,2026-04-01,,防衛特別法人税（基準法人税額に対する付加税）,"{""base"":""corporate_tax_amount"",""note"":""令和8年4月1日以後開始事業年度""}",corp-defense-2026
+corporate_tax_surcharge,corporate_tax.local_corporate_rate,地方法人税率,0.103,,,2019-10-01,,地方法人税法,"{""base"":""corporate_tax_amount"",""note"":""法人税額に対する割合（令和元年10月1日以後）""}",corp-local-2019
+corporate_tax_surcharge,corporate_tax.special_enterprise_rate,特別法人事業税率（所得割ベース）,0.37,,,2019-10-01,,特別法人事業税法,"{""base"":""enterprise_income_levy"",""note"":""外形標準課税対象外の所得割額に対する37%（令和元年10月1日以後）""}",corp-se-2019
+individual_resident_tax,resident_tax.income_levy.prefecture,個人住民税 所得割（都道府県）,0.04,,,2007-01-01,,地方税法,,irt-income-pref-2007
+individual_resident_tax,resident_tax.income_levy.municipal,個人住民税 所得割（市町村）,0.06,,,2007-01-01,,地方税法,,irt-income-city-2007
+individual_resident_tax,resident_tax.income_levy.designated_city.prefecture,個人住民税 所得割（政令市・道府県）,0.02,,,2018-01-01,,地方税法（県費負担教職員の税源移譲）,,irt-income-desig-pref-2018
+individual_resident_tax,resident_tax.income_levy.designated_city.municipal,個人住民税 所得割（政令市・市）,0.08,,,2018-01-01,,地方税法（県費負担教職員の税源移譲）,,irt-income-desig-city-2018
+individual_resident_tax,resident_tax.percapita.prefecture,個人住民税 均等割（都道府県）,1000,,,2024-01-01,,地方税法,,irt-percapita-pref-2024
+individual_resident_tax,resident_tax.percapita.municipal,個人住民税 均等割（市町村）,3000,,,2024-01-01,,地方税法,,irt-percapita-city-2024
+individual_resident_tax,resident_tax.forest_environment,森林環境税（国税・均等割と併徴）,1000,,,2024-04-01,,森林環境税及び森林環境譲与税に関する法律,,irt-forest-2024
+individual_resident_tax,resident_tax.income_levy.other_rate,配当割・利子割・株式等譲渡所得割,0.05,,,2013-01-01,,地方税法,,irt-other-2013
+deduction_amount,deduction.dependent_income_requirement,扶養親族の合計所得要件,480000,,,2020-01-01,2025-12-31,所得税法,,ded-dep-req-2020
+deduction_amount,deduction.dependent_income_requirement,扶養親族の合計所得要件,580000,,,2026-01-01,,所得税法（令和8年度改正）,,ded-dep-req-2026

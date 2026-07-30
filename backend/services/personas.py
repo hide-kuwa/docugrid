@@ -32,6 +32,7 @@ PERSONA_LABELS: dict[str, str] = {
 # Dev stakeholder_id → default persona (overridable via firm_members.persona_id)
 STAKEHOLDER_PERSONA_BY_ID: dict[str, str] = {
     "actor-admin": PERSONA_PLATFORM_ADMIN,
+    "super-admin": PERSONA_PLATFORM_ADMIN,
     "actor-s1": PERSONA_FIRM_STAFF_MAIN,
     "actor-s2": PERSONA_FIRM_STAFF_SUPPORT,
     "actor-s3": PERSONA_FIRM_DIRECTOR,

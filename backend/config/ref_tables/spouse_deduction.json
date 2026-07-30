@@ -1,0 +1,40 @@
+{
+  "id": "spouse_deduction",
+  "label_ja": "配偶者控除・配偶者特別控除",
+  "category": "所得控除",
+  "unit": "yen",
+  "source_law": "所得税法第83条・第83条の2",
+  "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm",
+  "notes": [
+    "配偶者の合計所得金額（縦）と本人の合計所得金額（横）による二次元判定。本人の合計所得1,000万円超は適用なし。",
+    "配偶者控除は配偶者の合計所得48万円以下。48万円超133万円以下は配偶者特別控除。",
+    "令和7年度税制改正により所得要件・控除額が改定される見込み。値は改正前ベースのため要確認・編集。"
+  ],
+  "match_columns": ["spouse_income"],
+  "versions": [
+    {
+      "valid_from": "2020-01-01",
+      "valid_to": null,
+      "label": "改正前ベース",
+      "columns": [
+        { "key": "spouse_income", "label": "配偶者の合計所得金額", "type": "text" },
+        { "key": "h900", "label": "本人 900万円以下", "type": "yen" },
+        { "key": "h950", "label": "900万円超 950万円以下", "type": "yen" },
+        { "key": "h1000", "label": "950万円超 1,000万円以下", "type": "yen" }
+      ],
+      "rows": [
+        { "spouse_income": "48万円以下（配偶者70歳未満）", "h900": 380000, "h950": 260000, "h1000": 130000, "spouse_income_max": 480000, "elderly": false, "kind": "control" },
+        { "spouse_income": "48万円以下（配偶者70歳以上）", "h900": 480000, "h950": 320000, "h1000": 160000, "spouse_income_max": 480000, "elderly": true, "kind": "control" },
+        { "spouse_income": "48万円超 95万円以下", "h900": 380000, "h950": 260000, "h1000": 130000, "spouse_income_max": 950000, "kind": "special" },
+        { "spouse_income": "95万円超 100万円以下", "h900": 360000, "h950": 240000, "h1000": 120000, "spouse_income_max": 1000000, "kind": "special" },
+        { "spouse_income": "100万円超 105万円以下", "h900": 310000, "h950": 210000, "h1000": 110000, "spouse_income_max": 1050000, "kind": "special" },
+        { "spouse_income": "105万円超 110万円以下", "h900": 260000, "h950": 180000, "h1000": 90000, "spouse_income_max": 1100000, "kind": "special" },
+        { "spouse_income": "110万円超 115万円以下", "h900": 210000, "h950": 140000, "h1000": 70000, "spouse_income_max": 1150000, "kind": "special" },
+        { "spouse_income": "115万円超 120万円以下", "h900": 160000, "h950": 110000, "h1000": 60000, "spouse_income_max": 1200000, "kind": "special" },
+        { "spouse_income": "120万円超 125万円以下", "h900": 110000, "h950": 80000, "h1000": 40000, "spouse_income_max": 1250000, "kind": "special" },
+        { "spouse_income": "125万円超 130万円以下", "h900": 60000, "h950": 40000, "h1000": 20000, "spouse_income_max": 1300000, "kind": "special" },
+        { "spouse_income": "130万円超 133万円以下", "h900": 30000, "h950": 20000, "h1000": 10000, "spouse_income_max": 1330000, "kind": "special" }
+      ]
+    }
+  ]
+}

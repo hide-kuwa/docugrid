@@ -102,7 +102,7 @@ def _save_system_config(firm_id: str, body: SystemConfigUpdateBody) -> SystemCon
         ai_gemini_model=body.ai_gemini_model or "gemini-2.5-flash",
         drive_root_folder_id=(body.drive_root_folder_id or "").strip() or None,
         matrix_year_display_count=_clamp_matrix_year_display_count(body.matrix_year_display_count),
-        updated_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         **configured_flags(firm_id),
         drive_credentials_configured=drive_credentials_configured(firm_id),
         drive_mode=resolve_drive_mode(firm_id),
@@ -110,7 +110,9 @@ def _save_system_config(firm_id: str, body: SystemConfigUpdateBody) -> SystemCon
     store = next_payload.model_dump(
         exclude={
             "ai_openai_key_configured",
+            "ai_openai_key_last4",
             "ai_gemini_key_configured",
+            "ai_gemini_key_last4",
             "drive_credentials_configured",
             "drive_mode",
         }
@@ -153,7 +155,9 @@ def _mask_system_config_for_role(payload: SystemConfigPayload, role: str) -> Sys
             "ai_openai_enabled": False,
             "ai_gemini_enabled": False,
             "ai_openai_key_configured": False,
+            "ai_openai_key_last4": None,
             "ai_gemini_key_configured": False,
+            "ai_gemini_key_last4": None,
             "drive_credentials_configured": False,
             "drive_mode": "unconfigured",
             "drive_root_folder_id": None,
@@ -234,7 +238,7 @@ def _merge_client_master_for_firm(ctx: AuthContext, payload: ClientMasterPayload
     return ClientMasterPayload(
         clients=merged_clients,
         groups=merged_groups,
-        updated_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     )
 
 
@@ -317,7 +321,7 @@ def _save_role_permissions(payload: RolePermissionsPayload) -> RolePermissionsPa
     }
     saved = RolePermissionsPayload(
         permissionsByRole=normalized,
-        updated_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     )
     ROLE_PERMISSIONS_PATH.write_text(
         json.dumps(saved.model_dump(), ensure_ascii=False, indent=2),
@@ -347,7 +351,7 @@ def _save_stakeholder_master(payload: StakeholderMasterPayload) -> StakeholderMa
     next_payload = StakeholderMasterPayload(
         roleByStakeholderId=roles,
         clientScopesByStakeholderId=payload.clientScopesByStakeholderId,
-        updated_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     )
     STAKEHOLDER_MASTER_PATH.write_text(next_payload.model_dump_json(indent=2), encoding="utf-8")
     sync_assignments_from_scope_map(payload.clientScopesByStakeholderId)

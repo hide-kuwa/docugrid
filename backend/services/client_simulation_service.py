@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -71,7 +71,7 @@ def upsert_simulation_overlay(
     if panel_key not in VALID_PANEL_KEYS:
         raise ValueError(f"invalid panel_key: {panel_key}")
     init_client_simulation_db()
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
     blob = json.dumps(payload, ensure_ascii=False)
     with sqlite3.connect(SIMULATION_DB_PATH) as conn:
         conn.execute(

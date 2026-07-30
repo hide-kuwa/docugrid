@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,7 @@ VALID_AVG_CLIENTS_MODES = frozenset({"planning", "actual", "auto"})
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def load_ma_assumptions() -> dict[str, Any]:

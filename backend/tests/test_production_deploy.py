@@ -27,8 +27,8 @@ def test_production_member_directory_ignores_dev_defaults(
 
     mapping = _load_email_map()
     assert mapping == {"real@firm.co.jp": "actor-s1"}
-    assert "admin@tax.co.jp" not in mapping
-    assert resolve_stakeholder_for_login("admin@tax.co.jp", "actor-admin") is None
+    assert "admin@taxx.jp" not in mapping
+    assert resolve_stakeholder_for_login("admin@taxx.jp", "actor-admin") is None
     assert resolve_stakeholder_for_login("real@firm.co.jp", "") == "actor-s1"
 
 
@@ -40,7 +40,7 @@ def test_development_member_directory_includes_dev_defaults(
     monkeypatch.setattr("services.member_directory.MEMBER_DIRECTORY_PATH", path)
 
     mapping = _load_email_map()
-    assert mapping["admin@tax.co.jp"] == DEFAULT_EMAIL_TO_STAKEHOLDER["admin@tax.co.jp"]
+    assert mapping["admin@taxx.jp"] == DEFAULT_EMAIL_TO_STAKEHOLDER["admin@taxx.jp"]
 
 
 def test_validate_production_env_script_importable() -> None:
@@ -133,4 +133,4 @@ def test_bootstrap_seed_skips_dev_emails_for_real_production(tmp_path, monkeypat
     assert added == 0
     data = json.loads(member_path.read_text(encoding="utf-8"))
     assert data["emailToStakeholderId"] == {}
-    assert "admin@tax.co.jp" not in data["emailToStakeholderId"]
+    assert "admin@taxx.jp" not in data["emailToStakeholderId"]

@@ -1,0 +1,34 @@
+{
+  "id": "corporate_resident_percapita",
+  "label_ja": "法人住民税 均等割",
+  "category": "地方税（法人）",
+  "unit": "yen",
+  "source_law": "地方税法第52条・第312条",
+  "source_url": "https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/150790_08.html",
+  "notes": [
+    "標準税率（年額）。自治体により超過課税がある。従業者数は事業年度末日時点で判定。",
+    "資本金等の額＝資本金＋資本準備金（地方税法上の定義）。",
+    "均等割は所得が赤字でも課税される。"
+  ],
+  "match_columns": ["capital_band"],
+  "versions": [
+    {
+      "valid_from": "2015-04-01",
+      "valid_to": null,
+      "label": "現行（標準税率）",
+      "columns": [
+        { "key": "capital_band", "label": "資本金等の額", "type": "text" },
+        { "key": "pref", "label": "都道府県民税", "type": "yen" },
+        { "key": "city_over50", "label": "市町村民税（従業者50人超）", "type": "yen" },
+        { "key": "city_le50", "label": "市町村民税（従業者50人以下）", "type": "yen" }
+      ],
+      "rows": [
+        { "capital_band": "1千万円以下", "pref": 20000, "city_over50": 120000, "city_le50": 50000, "capital_max": 10000000 },
+        { "capital_band": "1千万円超 1億円以下", "pref": 50000, "city_over50": 150000, "city_le50": 130000, "capital_max": 100000000 },
+        { "capital_band": "1億円超 10億円以下", "pref": 130000, "city_over50": 400000, "city_le50": 160000, "capital_max": 1000000000 },
+        { "capital_band": "10億円超 50億円以下", "pref": 540000, "city_over50": 1750000, "city_le50": 410000, "capital_max": 5000000000 },
+        { "capital_band": "50億円超", "pref": 800000, "city_over50": 3000000, "city_le50": 410000, "capital_max": null }
+      ]
+    }
+  ]
+}

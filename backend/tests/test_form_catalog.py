@@ -61,6 +61,28 @@ def test_scan_pdf_minimal() -> None:
     assert result["pages"][0]["form_id"] == "corp_tax_beppyo_1"
 
 
+def test_scan_pdf_vertical_top_right_title() -> None:
+    """右上に縦書きの「別表四」だけがある PDF を検出できる（縦書き対応）。"""
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()  # 既定 612x792 (Letter)
+    # 右上に 2 列の縦書きを配置し、既定抽出では列が混ざるようにする。
+    right_col = [("別", 72), ("表", 96), ("四", 120)]
+    left_col = [("所", 72), ("得", 96)]
+    for ch, y in right_col:
+        page.insert_text((545, y), ch, fontname="japan")
+    for ch, y in left_col:
+        page.insert_text((505, y), ch, fontname="japan")
+    # 本文にはカタログのアンカー語を置かない（縦書きタイトルのみで判定させる）。
+    page.insert_text((72, 400), "参考資料メモ数値表", fontname="japan")
+    content = doc.tobytes()
+    doc.close()
+
+    result = scan_pdf_pages(content, filename="scan_0001.pdf", max_pages=3)
+    assert result["pages"][0]["form_id"] == "corp_tax_beppyo_4"
+
+
 def test_classify_pdf_splits_bundle_without_vision(monkeypatch) -> None:
     mock_scan = {
         "page_count_scanned": 3,

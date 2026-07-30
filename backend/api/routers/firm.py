@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from api.router_imports import *  # noqa: F403
+from api.constants import KNOWN_APP_PERMISSIONS  # noqa: F401 — used in auth_me super-admin branch
 from api.constants import *  # noqa: F403
 from api.deps import *  # noqa: F403
 from api.persistence import *  # noqa: F403

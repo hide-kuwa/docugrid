@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 def _form_catalog_write_dict(body: FormCatalogWriteBody) -> dict:
-    maps = body.maps_to.model_dump() if body.maps_to else {}
+    maps = body.maps_to.model_dump(exclude_none=True) if body.maps_to else {}
     page_scan = body.page_scan.model_dump() if body.page_scan else {}
     return {
         "form_id": body.form_id.strip(),
@@ -118,6 +118,25 @@ async def reload_dev_form_catalog(request: Request):
     )
 
 
+@router.post("/api/dev/form-catalog/reorder", response_model=FormCatalogListPayload)
+async def reorder_dev_form_catalog(request: Request, body: FormCatalogReorderBody):
+    _require_platform_settings(request)
+    try:
+        reorder_form_catalog_entries(body.form_ids)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    summary = form_catalog_config_summary()
+    forms = list_form_catalog_forms()
+    _log_audit_event(request, "dev.form_catalog.reorder", "success", f"count={len(forms)}")
+    return FormCatalogListPayload(
+        version=int(summary["version"]),
+        form_count=int(summary["form_count"]),
+        config_path=str(summary["config_path"]),
+        max_scan_pages=int(summary["max_scan_pages"]),
+        forms=[FormCatalogFormItem(**f) for f in forms],
+    )
+
+
 @router.post("/api/dev/form-catalog/forms", response_model=FormCatalogFormItem, status_code=201)
 async def create_dev_form_catalog_form(request: Request, body: FormCatalogWriteBody):
     _require_platform_settings(request)
@@ -199,6 +218,43 @@ async def list_dev_form_catalog_samples(request: Request):
         samples=[FormCatalogSampleItem(**s) for s in samples],
         presets=list_form_presets(),
         slot_options=slot_label_options(),
+    )
+
+
+@router.get("/api/dev/form-catalog/sample-coverage", response_model=FormCatalogSampleCoveragePayload)
+async def get_dev_form_catalog_sample_coverage(request: Request):
+    """様式ごとに参考 PDF（サンプル注釈）が設定済みかを一覧する。"""
+    _require_platform_settings(request)
+    coverage = form_catalog_sample_coverage()
+    forms = list_form_catalog_forms()
+    items = []
+    configured = 0
+    for form in forms:
+        fid = str(form.get("form_id") or "")
+        cov = coverage.get(fid) or {}
+        is_configured = bool(cov)
+        if is_configured:
+            configured += 1
+        items.append(
+            FormCatalogSampleCoverageItem(
+                form_id=fid,
+                label_ja=str(form.get("label_ja") or fid),
+                configured=is_configured,
+                sample_count=int(cov.get("sample_count") or 0),
+                annotation_count=int(cov.get("annotation_count") or 0),
+                last_uploaded_at=(cov.get("last_uploaded_at") or None),
+            )
+        )
+    _log_audit_event(
+        request,
+        "dev.form_catalog.sample_coverage",
+        "success",
+        f"configured={configured}/{len(items)}",
+    )
+    return FormCatalogSampleCoveragePayload(
+        form_count=len(items),
+        configured_count=configured,
+        items=items,
     )
 
 
@@ -357,4 +413,71 @@ async def preview_dev_form_catalog_prompt(request: Request):
         sample_count=len(samples),
     )
 
+
+# --- Document types (書類種別マスタ) ---
+
+
+@router.get("/api/dev/document-types", response_model=DocumentTypeListPayload)
+async def list_dev_document_types(request: Request):
+    _require_platform_settings(request)
+    summary = document_types_config_summary()
+    types = list_document_types()
+    _log_audit_event(request, "dev.document_types.list", "success", f"count={len(types)}")
+    return DocumentTypeListPayload(
+        version=int(summary["version"]),
+        type_count=int(summary["type_count"]),
+        config_path=str(summary["config_path"]),
+        types=[DocumentTypeItem(**t) for t in types],
+    )
+
+
+@router.post("/api/dev/document-types/reload")
+async def reload_dev_document_types(request: Request):
+    _require_platform_settings(request)
+    try:
+        reload_document_types_config()
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    summary = document_types_config_summary()
+    types = list_document_types()
+    _log_audit_event(request, "dev.document_types.reload", "success")
+    return DocumentTypeListPayload(
+        version=int(summary["version"]),
+        type_count=int(summary["type_count"]),
+        config_path=str(summary["config_path"]),
+        types=[DocumentTypeItem(**t) for t in types],
+    )
+
+
+# --- Document categories (中分類) ---
+
+
+def _document_categories_payload() -> DocumentCategoryListPayload:
+    forms = list_form_catalog_forms()
+    data = list_document_categories_with_forms(forms)
+    return DocumentCategoryListPayload(**data)
+
+
+@router.get("/api/dev/document-categories", response_model=DocumentCategoryListPayload)
+async def list_dev_document_categories(request: Request):
+    _require_platform_settings(request)
+    payload = _document_categories_payload()
+    _log_audit_event(
+        request,
+        "dev.document_categories.list",
+        "success",
+        f"count={payload.category_count} unmatched={payload.unmatched_count}",
+    )
+    return payload
+
+
+@router.post("/api/dev/document-categories/reload", response_model=DocumentCategoryListPayload)
+async def reload_dev_document_categories(request: Request):
+    _require_platform_settings(request)
+    try:
+        reload_document_categories_config()
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_audit_event(request, "dev.document_categories.reload", "success")
+    return _document_categories_payload()
 

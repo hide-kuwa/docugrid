@@ -1,0 +1,80 @@
+{
+  "id": "corporate_resident_levy",
+  "label_ja": "法人住民税 法人税割（東京都）",
+  "category": "地方税（法人）",
+  "unit": "percent",
+  "source_law": "地方税法・東京都都税条例（都民税法人税割）",
+  "source_url": "https://www.tax.metro.tokyo.lg.jp/",
+  "notes": [
+    "法人税割＝法人税額（国税）に乗じる税率。東京都の23区内と市町村で異なる。",
+    "超過税率は、所得・収入規模や外形標準課税法人など所定の条件を満たす場合に適用。",
+    "23区内の7.0%（標準）は道府県相当1.0%＋市町村相当6.0%の合算。超過10.4%は2.0%＋8.4%。",
+    "他自治体を追加する場合は同じバージョンに行を足す（jurisdiction をキーにする）。",
+    "事業所税は本マスタの対象外。"
+  ],
+  "match_columns": ["jurisdiction"],
+  "versions": [
+    {
+      "valid_from": "2019-10-01",
+      "valid_to": null,
+      "label": "令和元年10月1日以後開始",
+      "columns": [
+        { "key": "jurisdiction", "label": "区分コード", "type": "text" },
+        { "key": "jurisdiction_label", "label": "区分", "type": "text" },
+        { "key": "standard_rate", "label": "標準税率（不均一）", "type": "rate" },
+        { "key": "excess_rate", "label": "超過税率", "type": "rate" },
+        { "key": "pref_standard", "label": "道府県相当（標準）", "type": "rate" },
+        { "key": "city_standard", "label": "市町村相当（標準）", "type": "rate" },
+        { "key": "pref_excess", "label": "道府県相当（超過）", "type": "rate" },
+        { "key": "city_excess", "label": "市町村相当（超過）", "type": "rate" }
+      ],
+      "rows": [
+        {
+          "jurisdiction": "tokyo_23",
+          "jurisdiction_label": "23区内に事務所等がある場合",
+          "standard_rate": 0.07,
+          "excess_rate": 0.104,
+          "pref_standard": 0.01,
+          "city_standard": 0.06,
+          "pref_excess": 0.02,
+          "city_excess": 0.084
+        },
+        {
+          "jurisdiction": "tokyo_muni",
+          "jurisdiction_label": "市町村に事務所等がある場合",
+          "standard_rate": 0.01,
+          "excess_rate": 0.02,
+          "pref_standard": 0.01,
+          "city_standard": 0.0,
+          "pref_excess": 0.02,
+          "city_excess": 0.0
+        }
+      ]
+    },
+    {
+      "valid_from": "2014-10-01",
+      "valid_to": "2019-09-30",
+      "label": "平成26年10月1日〜令和元年9月30日開始",
+      "columns": [
+        { "key": "jurisdiction", "label": "区分コード", "type": "text" },
+        { "key": "jurisdiction_label", "label": "区分", "type": "text" },
+        { "key": "standard_rate", "label": "標準税率（不均一）", "type": "rate" },
+        { "key": "excess_rate", "label": "超過税率", "type": "rate" }
+      ],
+      "rows": [
+        {
+          "jurisdiction": "tokyo_23",
+          "jurisdiction_label": "23区内に事務所等がある場合",
+          "standard_rate": 0.129,
+          "excess_rate": 0.163
+        },
+        {
+          "jurisdiction": "tokyo_muni",
+          "jurisdiction_label": "市町村に事務所等がある場合",
+          "standard_rate": 0.032,
+          "excess_rate": 0.042
+        }
+      ]
+    }
+  ]
+}

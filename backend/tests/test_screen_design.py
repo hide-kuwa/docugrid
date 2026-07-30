@@ -12,7 +12,7 @@ client = TestClient(app)
 def _admin_headers() -> dict[str, str]:
     return {
         "X-Docugrid-Role": "admin",
-        "X-Docugrid-User": "admin@tax.co.jp",
+        "X-Docugrid-User": "admin@taxx.jp",
         "X-Docugrid-Stakeholder": "actor-admin",
         "X-Docugrid-Client": "c1",
         "X-Docugrid-Firm": DEFAULT_FIRM_ID,

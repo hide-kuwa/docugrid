@@ -1,0 +1,41 @@
+{
+  "id": "resident_tax_excess",
+  "label_ja": "個人住民税 超過課税（自治体別例外）",
+  "category": "地方税（個人）",
+  "unit": "",
+  "source_law": "地方税法（標準税率を超える税率の条例）",
+  "source_url": "https://www.soumu.go.jp/main_content/001005155.pdf",
+  "notes": [
+    "標準税率（所得割10%＝道府県4%＋市町村6%、均等割 道府県1,000円＋市町村3,000円）に対する上乗せ分。",
+    "森林環境保全・水源環境保全等の目的で超過課税を実施する自治体の例。実施状況は毎年見直されるため要更新。",
+    "均等割の超過額（円）と所得割の超過税率（％）を自治体コードで解決する。標準に加算して適用する。",
+    "政令指定都市は所得割の道府県/市町村の内訳が2%/8%になるが合計10%は不変。"
+  ],
+  "match_columns": ["jurisdiction_code"],
+  "versions": [
+    {
+      "valid_from": "2024-01-01",
+      "valid_to": null,
+      "label": "現行（主な例）",
+      "columns": [
+        { "key": "jurisdiction_code", "label": "団体コード", "type": "text" },
+        { "key": "jurisdiction", "label": "都道府県・市区町村", "type": "text" },
+        { "key": "levy_kind", "label": "対象", "type": "text" },
+        { "key": "percapita_add", "label": "均等割 超過額", "type": "yen" },
+        { "key": "income_rate_add", "label": "所得割 超過税率", "type": "percent" },
+        { "key": "purpose", "label": "目的", "type": "text" }
+      ],
+      "rows": [
+        { "jurisdiction_code": "12000", "jurisdiction": "千葉県", "levy_kind": "県民税", "percapita_add": 0, "income_rate_add": 0, "purpose": "" },
+        { "jurisdiction_code": "13000", "jurisdiction": "東京都", "levy_kind": "都民税", "percapita_add": 0, "income_rate_add": 0, "purpose": "" },
+        { "jurisdiction_code": "14000", "jurisdiction": "神奈川県", "levy_kind": "県民税", "percapita_add": 300, "income_rate_add": 0.00025, "purpose": "水源環境保全・再生（個人県民税超過課税）" },
+        { "jurisdiction_code": "20000", "jurisdiction": "長野県", "levy_kind": "県民税", "percapita_add": 500, "income_rate_add": 0, "purpose": "森林づくり県民税" },
+        { "jurisdiction_code": "28000", "jurisdiction": "兵庫県", "levy_kind": "県民税", "percapita_add": 800, "income_rate_add": 0, "purpose": "県民緑税" },
+        { "jurisdiction_code": "40000", "jurisdiction": "福岡県", "levy_kind": "県民税", "percapita_add": 500, "income_rate_add": 0, "purpose": "森林環境税" },
+        { "jurisdiction_code": "43000", "jurisdiction": "熊本県", "levy_kind": "県民税", "percapita_add": 500, "income_rate_add": 0, "purpose": "水とみどりの森づくり税" },
+        { "jurisdiction_code": "27100", "jurisdiction": "大阪市", "levy_kind": "市民税（政令市）", "percapita_add": 0, "income_rate_add": 0, "purpose": "所得割 道府県2%・市8%（税源移譲）" },
+        { "jurisdiction_code": "14100", "jurisdiction": "横浜市", "levy_kind": "市民税", "percapita_add": 4400, "income_rate_add": 0, "purpose": "横浜みどり税" }
+      ]
+    }
+  ]
+}

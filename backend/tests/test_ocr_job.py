@@ -66,7 +66,7 @@ def test_run_ocr_job_updates_metadata(ocr_env, monkeypatch) -> None:
 
     monkeypatch.setattr(
         "services.ocr_job_service.classify_pdf",
-        lambda content, name, candidates: {
+        lambda content, name, candidates, max_pages=None: {
             "confidence": 0.9,
             "engine": "pymupdf",
             "text_excerpt": "法人税申告書",
@@ -76,7 +76,7 @@ def test_run_ocr_job_updates_metadata(ocr_env, monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "services.ocr_job_service.extract_text_from_pdf",
-        lambda content: ("課税所得 1,000,000", "pymupdf"),
+        lambda content, max_pages=None: ("課税所得 1,000,000", "pymupdf"),
     )
     monkeypatch.setattr(
         "services.ocr_job_service.profile_fields_from_text",

@@ -251,6 +251,20 @@ async def delete_capture_gallery_item(request: Request, item_id: str):
     return {"ok": True}
 
 
+@router.get("/api/document-types", response_model=DocumentTypeListPayload)
+async def get_document_types(request: Request):
+    """書類種別マスタ一覧（認証済みユーザー向け・参照のみ）。"""
+    _require_permission(request, "document.view")
+    summary = document_types_config_summary()
+    types = list_document_types()
+    return DocumentTypeListPayload(
+        version=int(summary["version"]),
+        type_count=int(summary["type_count"]),
+        config_path=str(summary["config_path"]),
+        types=[DocumentTypeItem(**t) for t in types],
+    )
+
+
 @router.get("/api/document-catalog/fields")
 async def get_document_catalog_fields(
     request: Request,
