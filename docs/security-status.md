@@ -81,7 +81,7 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 | ~~**P1**~~ | ~~分類待ちアップロード PDF 検証~~ | ✅ 2026-07-04 |
 | ~~**P2**~~ | ~~アップロードサイズ上限~~ | ✅ `DOCUGRID_MAX_UPLOAD_BYTES`（デフォルト 50MiB） |
 | ~~**P2**~~ | ~~`resolve_storage_path` の `..` 拒否~~ | ✅ 2026-07-04 |
-| **P2** | メンバー管理 API / UI | `firm_members` DB のみ |
+| ~~**P2**~~ | ~~メンバー管理 API / UI~~ | ✅ list/invite/patch + 設定画面（ロール・ペルソナ編集） |
 | **P2** | firm 単位 RBAC | platform グローバル行列のみ |
 | **P2** | DocuGrid `Document.owner_user_id` | 定数のまま |
 | **P2** | AV スキャン / PDF 無害化 | なし |
@@ -102,7 +102,7 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 | **P0** | `DOCUGRID_CORS_ORIGINS`・HTTPS・Cookie Secure |
 | **P0** | `GOOGLE_OAUTH_CLIENT_ID` 実値 |
 | **P0** | `member_directory` から dev メール除去 |
-| **P0** | `admin@taxx.jp` 恒久 super-admin の本番無効化 |
+| **P0** | `admin@taxx.jp` 恒久 super-admin の本番無効化（本番デフォルト無効 / `DOCUGRID_SUPER_ADMIN_EMAIL`） |
 | **P0** | MCP 公開前チェック §D-2（`security-checklist.md`） |
 
 ### 5.3 インフラ・データ保管
@@ -136,8 +136,8 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 
 ## 6. 次にやること（推奨順）
 
-1. **P0** `validate_production_env.py` 通過 + production 起動確認
-2. **P2** メンバー管理 API / UI
+1. **P0** 実ホスト向け `.env.production` に Google Client ID / CORS / HTTPS を入れ、`validate_production_env.py` 通過 + production 起動確認（staging-local は除外）
+2. **P2** firm 単位 RBAC（権限行列の事務所オーバーライド）
 3. **P2** AV スキャン / PDF 無害化（必要に応じて）
 4. **P2** SQLi / ファイル認可の pytest 拡張
 5. **P2** CSP 設定

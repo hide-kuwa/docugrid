@@ -58,8 +58,17 @@ def _merge_lines(template: str, overrides: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _seed_member_directory(*, include_dev_defaults: bool) -> int:
+def _seed_member_directory(*, include_dev_defaults: bool, strip_dev_emails: bool) -> int:
     from services.member_directory import DEFAULT_EMAIL_TO_STAKEHOLDER
+
+    DEV_EMAILS = {e.lower() for e in DEFAULT_EMAIL_TO_STAKEHOLDER} | {
+        "admin@taxx.jp",
+        "tanaka@tax.co.jp",
+        "yamamoto@tax.co.jp",
+        "c1@client.example",
+        "ceo@client.example",
+        "bank@example.com",
+    }
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     if MEMBER_PATH.is_file():
@@ -68,6 +77,8 @@ def _seed_member_directory(*, include_dev_defaults: bool) -> int:
     else:
         mapping = {}
     added = 0
+    if strip_dev_emails:
+        mapping = {k: v for k, v in mapping.items() if str(k).lower() not in DEV_EMAILS}
     if include_dev_defaults:
         for email, sid in DEFAULT_EMAIL_TO_STAKEHOLDER.items():
             if email.lower() not in mapping:
@@ -94,6 +105,11 @@ def main() -> int:
         help="Use localhost URLs for Docker staging (still DOCUGRID_ENV=production)",
     )
     parser.add_argument("--skip-member-directory", action="store_true")
+    parser.add_argument(
+        "--strip-dev-emails",
+        action="store_true",
+        help="Remove known local/dev emails from member_directory.json (for real production)",
+    )
     args = parser.parse_args()
 
     if not EXAMPLE_PROD.is_file():
@@ -128,6 +144,7 @@ def main() -> int:
         "DOCUGRID_ALLOW_PASSWORD_LOGIN": "false",
         "DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK": "false",
         "DOCUGRID_CSRF": "true",
+        "DOCUGRID_SESSION_COOKIE_SECURE": "false" if args.staging_local else "true",
     }
 
     if args.staging_local:
@@ -168,7 +185,10 @@ def main() -> int:
     print(f"Wrote {OUT_FRONT_PROD}")
 
     if not args.skip_member_directory:
-        added = _seed_member_directory(include_dev_defaults=args.staging_local)
+        added = _seed_member_directory(
+            include_dev_defaults=args.staging_local,
+            strip_dev_emails=args.strip_dev_emails and not args.staging_local,
+        )
         if args.staging_local:
             print(f"member_directory.json: {added} dev email(s) added -> {MEMBER_PATH}")
         elif MEMBER_PATH.is_file():

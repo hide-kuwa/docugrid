@@ -30,11 +30,18 @@ export async function fetchFirmOnboarding(): Promise<FirmOnboardingInfo> {
   return (await res.json()) as FirmOnboardingInfo;
 }
 
-export async function inviteFirmMember(email: string): Promise<MemberInviteResult> {
+export async function inviteFirmMember(
+  email: string,
+  opts?: { firm_role?: string; persona_id?: string },
+): Promise<MemberInviteResult> {
   const res = await authFetch(`${API_BASE}/firm-members/invite`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email,
+      firm_role: opts?.firm_role || "operator",
+      persona_id: opts?.persona_id || null,
+    }),
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as MemberInviteResult;

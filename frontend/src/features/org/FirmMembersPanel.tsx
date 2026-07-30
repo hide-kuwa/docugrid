@@ -11,10 +11,19 @@ import {
 } from "@/features/org/firm-onboarding-api";
 import {
   fetchFirmMembers,
-  patchFirmMemberStatus,
+  patchFirmMember,
+  type FirmMemberRole,
   type FirmMemberRow,
 } from "@/features/org/firm-members-api";
 import { parseApiErrorBody } from "@/lib/parse-api-error";
+
+const FIRM_ROLES: { id: FirmMemberRole; label: string }[] = [
+  { id: "firm_admin", label: "事務所管理者" },
+  { id: "operator", label: "担当スタッフ" },
+  { id: "viewer", label: "閲覧のみ" },
+];
+
+const FIRM_PERSONAS = PERSONAS.filter((p) => p.audience === "firm");
 
 function statusLabel(status: string): string {
   if (status === "active") return "有効";
@@ -34,6 +43,8 @@ export function FirmMembersPanel() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<FirmMemberRole>("operator");
+  const [invitePersona, setInvitePersona] = useState("firm_staff_main");
   const [inviting, setInviting] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState("");
 
@@ -62,7 +73,7 @@ export function FirmMembersPanel() {
     if (row.status === "pending") return;
     const next = row.status === "active" ? "inactive" : "active";
     try {
-      const updated = await patchFirmMemberStatus(row.id, next);
+      const updated = await patchFirmMember(row.id, { status: next });
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMessage(`${row.email} を ${next === "active" ? "有効" : "無効"} にしました`);
     } catch (e) {
@@ -70,9 +81,31 @@ export function FirmMembersPanel() {
     }
   };
 
+  const updateRole = async (row: FirmMemberRow, firm_role: FirmMemberRole) => {
+    if (row.firm_role === firm_role) return;
+    try {
+      const updated = await patchFirmMember(row.id, { firm_role });
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setMessage(`${row.email} のロールを ${firm_role} に変更しました`);
+    } catch (e) {
+      setMessage(parseApiErrorBody(e) || "ロールの更新に失敗しました");
+    }
+  };
+
+  const updatePersona = async (row: FirmMemberRow, persona_id: string) => {
+    if (row.persona_id === persona_id) return;
+    try {
+      const updated = await patchFirmMember(row.id, { persona_id });
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setMessage(`${row.email} のペルソナを更新しました`);
+    } catch (e) {
+      setMessage(parseApiErrorBody(e) || "ペルソナの更新に失敗しました");
+    }
+  };
+
   const approvePending = async (row: FirmMemberRow) => {
     try {
-      const updated = await patchFirmMemberStatus(row.id, "active");
+      const updated = await patchFirmMember(row.id, { status: "active" });
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMessage(`${row.email} を承認しました`);
       void load();
@@ -83,7 +116,7 @@ export function FirmMembersPanel() {
 
   const rejectPending = async (row: FirmMemberRow) => {
     try {
-      const updated = await patchFirmMemberStatus(row.id, "inactive");
+      const updated = await patchFirmMember(row.id, { status: "inactive" });
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMessage(`${row.email} の参加申請を却下しました`);
       void load();
@@ -98,7 +131,10 @@ export function FirmMembersPanel() {
     setInviting(true);
     setMessage("");
     try {
-      const result = await inviteFirmMember(email);
+      const result = await inviteFirmMember(email, {
+        firm_role: inviteRole,
+        persona_id: invitePersona,
+      });
       setLastInviteUrl(result.inviteUrl);
       setInviteEmail("");
       setMessage(`${email} に招待リンクを発行しました`);
@@ -129,9 +165,6 @@ export function FirmMembersPanel() {
     }
   };
 
-  const personaLabel = (id: string) =>
-    PERSONAS.find((p) => p.id === id)?.shortLabel || id;
-
   const pendingRows = rows.filter((r) => r.status === "pending");
 
   return (
@@ -140,7 +173,7 @@ export function FirmMembersPanel() {
         sheetId="stakeholders"
         sheetLabel="MEMBERS"
         title="メンバー管理"
-        description="代表アカウントがメンバーを招待・承認します。スタッフは招待リンクまたは事務所コードで参加申請できます。"
+        description="代表アカウントがメンバーを招待・承認し、ロールとペルソナを設定します。"
       />
 
       {onboarding ? (
@@ -178,6 +211,28 @@ export function FirmMembersPanel() {
                 placeholder="staff@example.com"
                 className="min-w-[220px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as FirmMemberRole)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                {FIRM_ROLES.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={invitePersona}
+                onChange={(e) => setInvitePersona(e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                {FIRM_PERSONAS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.shortLabel}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 disabled={inviting || !inviteEmail.trim()}
@@ -256,8 +311,44 @@ export function FirmMembersPanel() {
               {rows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50/80">
                   <td className="px-4 py-3 font-medium text-slate-800">{row.email}</td>
-                  <td className="px-4 py-3">{personaLabel(row.persona_id)}</td>
-                  <td className="px-4 py-3 font-mono text-[10px]">{row.firm_role}</td>
+                  <td className="px-4 py-3">
+                    {row.status === "pending" ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <select
+                        value={row.persona_id || "firm_staff_main"}
+                        onChange={(e) => void updatePersona(row, e.target.value)}
+                        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+                      >
+                        {FIRM_PERSONAS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.shortLabel}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.status === "pending" ? (
+                      <span className="font-mono text-[10px]">{row.firm_role}</span>
+                    ) : (
+                      <select
+                        value={
+                          FIRM_ROLES.some((r) => r.id === row.firm_role)
+                            ? row.firm_role
+                            : "operator"
+                        }
+                        onChange={(e) => void updateRole(row, e.target.value as FirmMemberRole)}
+                        className="rounded border border-slate-200 bg-white px-2 py-1 font-mono text-[10px]"
+                      >
+                        {FIRM_ROLES.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.id}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusClass(row.status)}`}

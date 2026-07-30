@@ -244,6 +244,9 @@ class FirmMemberItem(BaseModel):
 
 class FirmMemberPatchBody(BaseModel):
     status: str | None = None
+    firm_role: str | None = None
+    persona_id: str | None = None
+    display_name: str | None = None
 
 
 

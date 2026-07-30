@@ -163,6 +163,62 @@ def validate(*, check_stripe: bool) -> int:
     # --- Phase 5: hardening (aligns with security-checklist §I) ---
     print("\n[5] Production hardening")
     if is_production():
+        from docugrid_auth import (
+            csrf_protection_enabled,
+            header_auth_allowed,
+            session_cookie_secure,
+        )
+        from services.member_directory import (
+            login_stakeholder_pick_allowed,
+            password_login_allowed,
+        )
+        from services.super_admin import (
+            LEGACY_DEV_SUPER_ADMIN_EMAIL,
+            get_super_admin_email,
+        )
+
+        if header_auth_allowed():
+            errors.append("DOCUGRID_ALLOW_HEADER_AUTH must be false in production")
+            _fail("header auth still enabled")
+        else:
+            _ok("header auth disabled")
+        if password_login_allowed() and not staging_local_enabled():
+            errors.append("DOCUGRID_ALLOW_PASSWORD_LOGIN must be false in production")
+            _fail("password login still enabled")
+        elif password_login_allowed() and staging_local_enabled():
+            _warn("staging-local: password login enabled")
+        else:
+            _ok("password login disabled")
+        if login_stakeholder_pick_allowed():
+            errors.append("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK must be false in production")
+            _fail("stakeholder pick still enabled")
+        else:
+            _ok("login stakeholder pick disabled")
+        if csrf_protection_enabled():
+            _ok("CSRF protection enabled")
+        else:
+            warnings.append("DOCUGRID_CSRF is false - enable for cookie sessions")
+            _warn("CSRF protection disabled")
+        if session_cookie_secure() or staging_local_enabled():
+            _ok("session cookie Secure flag OK for this mode")
+        else:
+            warnings.append("DOCUGRID_SESSION_COOKIE_SECURE should be true behind HTTPS")
+            _warn("session cookie Secure not forced")
+
+        super_email = get_super_admin_email()
+        if not super_email:
+            _ok("legacy super-admin email disabled")
+        elif super_email == LEGACY_DEV_SUPER_ADMIN_EMAIL and not staging_local_enabled():
+            errors.append(
+                "DOCUGRID_SUPER_ADMIN_EMAIL must not be admin@taxx.jp in production "
+                "(unset to disable, or set your operator email)"
+            )
+            _fail("legacy admin@taxx.jp super-admin still active")
+        elif super_email == LEGACY_DEV_SUPER_ADMIN_EMAIL:
+            _warn("staging-local: legacy admin@taxx.jp super-admin enabled")
+        else:
+            _ok(f"super-admin email configured ({super_email})")
+
         if legacy_files_enabled():
             errors.append("DOCUGRID_ALLOW_LEGACY_FILES must be false in production")
             _fail("DOCUGRID_ALLOW_LEGACY_FILES is enabled")
@@ -176,7 +232,14 @@ def validate(*, check_stripe: bool) -> int:
         else:
             errors.append("DOCUGRID_SECRET_ENCRYPTION_KEY must be set in production")
             _fail("DOCUGRID_SECRET_ENCRYPTION_KEY missing")
-        dev_emails = {"admin@taxx.jp", "tanaka@tax.co.jp", "c1@client.example"}
+        dev_emails = {
+            "admin@taxx.jp",
+            "tanaka@tax.co.jp",
+            "yamamoto@tax.co.jp",
+            "c1@client.example",
+            "ceo@client.example",
+            "bank@example.com",
+        }
         if MEMBER_DIRECTORY_PATH.is_file():
             try:
                 raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8"))

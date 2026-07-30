@@ -129,8 +129,87 @@ def test_bootstrap_seed_skips_dev_emails_for_real_production(tmp_path, monkeypat
     monkeypatch.setattr(mod, "STORAGE_DIR", tmp_path)
     monkeypatch.setattr(mod, "MEMBER_PATH", member_path)
 
-    added = mod._seed_member_directory(include_dev_defaults=False)
+    added = mod._seed_member_directory(include_dev_defaults=False, strip_dev_emails=False)
     assert added == 0
     data = json.loads(member_path.read_text(encoding="utf-8"))
     assert data["emailToStakeholderId"] == {}
     assert "admin@taxx.jp" not in data["emailToStakeholderId"]
+
+
+def test_bootstrap_strip_dev_emails(tmp_path, monkeypatch) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "bootstrap_production.py"
+    spec = importlib.util.spec_from_file_location("bootstrap_production", script)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    member_path = tmp_path / "member_directory.json"
+    member_path.write_text(
+        json.dumps(
+            {
+                "emailToStakeholderId": {
+                    "admin@taxx.jp": "actor-admin",
+                    "real@firm.example": "actor-s1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "STORAGE_DIR", tmp_path)
+    monkeypatch.setattr(mod, "MEMBER_PATH", member_path)
+
+    mod._seed_member_directory(include_dev_defaults=False, strip_dev_emails=True)
+    data = json.loads(member_path.read_text(encoding="utf-8"))
+    assert data["emailToStakeholderId"] == {"real@firm.example": "actor-s1"}
+
+
+def test_super_admin_disabled_by_default_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    from services.super_admin import get_super_admin_email, is_super_admin_email
+
+    monkeypatch.setenv("DOCUGRID_ENV", "production")
+    monkeypatch.delenv("DOCUGRID_STAGING_LOCAL", raising=False)
+    monkeypatch.delenv("DOCUGRID_SUPER_ADMIN_EMAIL", raising=False)
+    assert get_super_admin_email() == ""
+    assert not is_super_admin_email("admin@taxx.jp")
+
+
+def test_validate_production_env_passes_with_fixture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "validate_production_env.py"
+    spec = importlib.util.spec_from_file_location("validate_production_env", script)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    member_path = tmp_path / "member_directory.json"
+    member_path.write_text(
+        json.dumps({"emailToStakeholderId": {"ops@firm.example": "actor-s1"}}),
+        encoding="utf-8",
+    )
+    storage = tmp_path / "storage"
+    storage.mkdir()
+
+    monkeypatch.setenv("DOCUGRID_ENV", "production")
+    monkeypatch.setenv("DOCUGRID_JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("DOCUGRID_SECRET_ENCRYPTION_KEY", "y" * 40)
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_PASSWORD_LOGIN", "false")
+    monkeypatch.setenv("DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK", "false")
+    monkeypatch.setenv("DOCUGRID_CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("DOCUGRID_FRONTEND_URL", "https://app.example.com")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "real-client.apps.googleusercontent.com")
+    monkeypatch.setenv("DOCUGRID_CSRF", "true")
+    monkeypatch.setenv("DOCUGRID_SESSION_COOKIE_SECURE", "true")
+    monkeypatch.delenv("DOCUGRID_STAGING_LOCAL", raising=False)
+    monkeypatch.delenv("DOCUGRID_SUPER_ADMIN_EMAIL", raising=False)
+    monkeypatch.setattr(mod, "BACKEND_ROOT", tmp_path)
+    monkeypatch.setattr("services.member_directory.MEMBER_DIRECTORY_PATH", member_path)
+
+    assert mod.validate(check_stripe=False) == 0

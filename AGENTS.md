@@ -65,7 +65,7 @@ cd backend && python -m pytest tests/test_security.py -q
 
 - **§A-2 (firm cross-leak):** done — `pytest tests/test_security.py -q`
 - **§I (production pre-flight):** `python scripts/validate_production_env.py --env-file .env.production`
-- **Next code gap:** メンバー管理 API/UI、本番 env 適用（`validate_production_env.py`）
+- **Next code gap:** 本番 env の実ホスト適用（`validate_production_env.py`）、firm 単位 RBAC
 
 ## User prompt template (copy, fill brackets)
 

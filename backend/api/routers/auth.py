@@ -262,12 +262,17 @@ async def post_firm_member_invite(request: Request, body: FirmMemberInviteBody):
     from services.firm_onboarding import create_member_invite
     from services.stripe_client import frontend_base_url
 
+    from services.firm_members import ASSIGNABLE_FIRM_ROLES
+
+    role = (body.firm_role or "operator").strip()
+    if role not in ASSIGNABLE_FIRM_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid firm_role")
     try:
         invite = create_member_invite(
             firm_id=ctx.firm_id,
             email=body.email,
             invited_by_member_id=ctx.member_id,
-            firm_role=body.firm_role or "operator",
+            firm_role=role,
             persona_id=body.persona_id,
         )
     except ValueError as exc:
@@ -287,36 +292,78 @@ async def post_firm_member_invite(request: Request, body: FirmMemberInviteBody):
 @router.patch("/api/firm-members/{member_id}", response_model=FirmMemberItem)
 async def patch_firm_member(request: Request, member_id: str, body: FirmMemberPatchBody):
     ctx = _require_firm_billing_owner(request)
+    from services.firm_members import ASSIGNABLE_FIRM_ROLES, update_member_fields
     from services.firm_onboarding import MEMBER_STATUS_PENDING, approve_pending_member, reject_pending_member
+
+    def _item(m) -> FirmMemberItem:
+        return FirmMemberItem(
+            id=m.id,
+            email=m.email,
+            stakeholder_id=m.stakeholder_id,
+            firm_role=m.firm_role,
+            persona_id=m.persona_id or resolve_persona_id(
+                stakeholder_id=m.stakeholder_id,
+                stored_persona_id=m.persona_id,
+            ),
+            status=m.status,
+            display_name=m.display_name,
+        )
 
     member = get_member_by_id(member_id)
     if not member or member.firm_id != ctx.firm_id:
         raise HTTPException(status_code=404, detail="Member not found")
-    if body.status is not None:
-        allowed = (MEMBER_STATUS_ACTIVE, MEMBER_STATUS_INACTIVE, MEMBER_STATUS_PENDING)
-        if body.status not in allowed:
-            raise HTTPException(status_code=400, detail="Invalid status")
-        if member.status == MEMBER_STATUS_PENDING and body.status == MEMBER_STATUS_ACTIVE:
+    if body.firm_role is not None and body.firm_role not in ASSIGNABLE_FIRM_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid firm_role")
+
+    if member.status == MEMBER_STATUS_PENDING:
+        if body.status == MEMBER_STATUS_ACTIVE:
             member = approve_pending_member(member_id, firm_id=ctx.firm_id)
-        elif member.status == MEMBER_STATUS_PENDING and body.status == MEMBER_STATUS_INACTIVE:
+        elif body.status == MEMBER_STATUS_INACTIVE:
             member = reject_pending_member(member_id, firm_id=ctx.firm_id)
-        else:
-            member = set_member_status(member_id, body.status)
+            if not member:
+                raise HTTPException(status_code=404, detail="Member not found")
+            _log_audit_event(request, "firm_members.patch", "success", f"member={member_id} rejected")
+            return _item(member)
+        elif body.status is not None:
+            raise HTTPException(status_code=400, detail="Invalid status for pending member")
+        if not member:
+            raise HTTPException(status_code=404, detail="Member not found")
+
+    profile_status = None
+    if body.status in (MEMBER_STATUS_ACTIVE, MEMBER_STATUS_INACTIVE) and member.status != MEMBER_STATUS_PENDING:
+        # Pending→active already handled; only toggle active members here.
+        if member.status != body.status or body.status == MEMBER_STATUS_INACTIVE:
+            profile_status = body.status
+
+    if profile_status is not None or body.firm_role is not None or body.persona_id is not None or body.display_name is not None:
+        try:
+            updated = update_member_fields(
+                member_id,
+                firm_id=ctx.firm_id,
+                status=profile_status,
+                firm_role=body.firm_role,
+                persona_id=body.persona_id,
+                display_name=body.display_name,
+            )
+        except ValueError as exc:
+            if str(exc) == "last_firm_admin":
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "last_firm_admin", "message": "最後の firm_admin は変更できません"},
+                ) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if updated:
+            member = updated
+
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    _log_audit_event(request, "firm_members.patch", "success", f"member={member_id} status={member.status}")
-    return FirmMemberItem(
-        id=member.id,
-        email=member.email,
-        stakeholder_id=member.stakeholder_id,
-        firm_role=member.firm_role,
-        persona_id=member.persona_id or resolve_persona_id(
-            stakeholder_id=member.stakeholder_id,
-            stored_persona_id=member.persona_id,
-        ),
-        status=member.status,
-        display_name=member.display_name,
+    _log_audit_event(
+        request,
+        "firm_members.patch",
+        "success",
+        f"member={member_id} status={member.status} role={member.firm_role}",
     )
+    return _item(member)
 
 
 @router.get("/api/role-permissions", response_model=RolePermissionsPayload)

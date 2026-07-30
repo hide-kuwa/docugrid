@@ -21,6 +21,9 @@ MEMBERS_DB_PATH = STORAGE_DIR / "firm_members.db"
 MEMBER_STATUS_ACTIVE = "active"
 MEMBER_STATUS_INACTIVE = "inactive"
 
+# Roles assignable via firm member invite/patch (not platform_admin).
+ASSIGNABLE_FIRM_ROLES = frozenset({"firm_admin", "operator", "viewer"})
+
 
 @dataclass(frozen=True)
 class FirmMember:
@@ -252,6 +255,66 @@ def set_member_status(member_id: str, status: str) -> FirmMember | None:
         status=status,
         display_name=member.display_name,
         persona_id=member.persona_id,
+    )
+
+
+def update_member_fields(
+    member_id: str,
+    *,
+    firm_id: str,
+    status: str | None = None,
+    firm_role: str | None = None,
+    persona_id: str | None = None,
+    display_name: str | None = None,
+) -> FirmMember | None:
+    """Update member fields within a firm. Returns None if missing or wrong firm."""
+    member = get_member_by_id(member_id)
+    if not member or member.firm_id != firm_id:
+        return None
+    next_role = member.firm_role
+    if firm_role is not None:
+        normalized_role = firm_role.strip()
+        if normalized_role not in ASSIGNABLE_FIRM_ROLES:
+            raise ValueError(f"invalid_firm_role:{normalized_role}")
+        next_role = normalized_role
+    next_status = status if status is not None else member.status
+    next_display = member.display_name if display_name is None else (display_name.strip() or None)
+    next_persona = member.persona_id if persona_id is None else (persona_id.strip() or None)
+
+    if (
+        member.firm_role == "firm_admin"
+        and next_role != "firm_admin"
+        and next_status == MEMBER_STATUS_ACTIVE
+    ):
+        admins = [
+            m
+            for m in list_members_for_firm(firm_id)
+            if m.status == MEMBER_STATUS_ACTIVE and m.firm_role == "firm_admin" and m.id != member_id
+        ]
+        if not admins:
+            raise ValueError("last_firm_admin")
+    if (
+        member.firm_role == "firm_admin"
+        and next_status == MEMBER_STATUS_INACTIVE
+        and member.status == MEMBER_STATUS_ACTIVE
+    ):
+        admins = [
+            m
+            for m in list_members_for_firm(firm_id)
+            if m.status == MEMBER_STATUS_ACTIVE and m.firm_role == "firm_admin" and m.id != member_id
+        ]
+        if not admins:
+            raise ValueError("last_firm_admin")
+
+    return upsert_member(
+        member_id=member.id,
+        firm_id=member.firm_id,
+        email=member.email,
+        stakeholder_id=member.stakeholder_id,
+        firm_role=next_role,
+        status=next_status,
+        display_name=next_display,
+        persona_id=next_persona,
     )
 
 

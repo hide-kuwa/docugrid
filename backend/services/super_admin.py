@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from docugrid_auth import is_production, staging_local_enabled
 from services.firm_members import (
     MEMBER_STATUS_ACTIVE,
     FirmMember,
@@ -13,13 +14,33 @@ from services.firm_members import (
 from services.personas import PERSONA_PLATFORM_ADMIN
 from services.tenancy import DEFAULT_FIRM_ID
 
-SUPER_ADMIN_EMAIL = os.environ.get("DOCUGRID_SUPER_ADMIN_EMAIL", "admin@taxx.jp").strip().lower()
+# Dev default only outside production. Production requires an explicit env override
+# that is not the legacy admin@taxx.jp mailbox (see validate_production_env.py).
+_DEV_SUPER_ADMIN_EMAIL = "admin@taxx.jp"
+
+
+def _resolve_super_admin_email() -> str:
+    raw = os.environ.get("DOCUGRID_SUPER_ADMIN_EMAIL")
+    if raw is not None:
+        return raw.strip().lower()
+    if is_production() and not staging_local_enabled():
+        return ""
+    return _DEV_SUPER_ADMIN_EMAIL
+
+
+SUPER_ADMIN_EMAIL = ""  # resolved lazily via getter for env changes in tests
 SUPER_ADMIN_STAKEHOLDER_ID = "super-admin"
 SUPER_ADMIN_ROLE = "platform_admin"
+LEGACY_DEV_SUPER_ADMIN_EMAIL = _DEV_SUPER_ADMIN_EMAIL
+
+
+def get_super_admin_email() -> str:
+    return _resolve_super_admin_email()
 
 
 def is_super_admin_email(email: str | None) -> bool:
-    return bool(SUPER_ADMIN_EMAIL) and (email or "").strip().lower() == SUPER_ADMIN_EMAIL
+    configured = get_super_admin_email()
+    return bool(configured) and (email or "").strip().lower() == configured
 
 
 def all_app_permissions(known: set[str]) -> set[str]:
