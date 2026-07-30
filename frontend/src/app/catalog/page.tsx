@@ -170,7 +170,7 @@ function CatalogPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-700">
-      <DevConsoleChrome title="書類カタログ" subtitle="顧問先横断の提出・OCR 要確認（開発ツール）" />
+      <DevConsoleChrome title="提出状況ボード" subtitle="書類種別ごとの顧問先横断提出実績（業務レポート）" />
       <header className="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4">
           <Link
@@ -189,10 +189,10 @@ function CatalogPageContent() {
           <div className="min-w-0 flex-1">
             <h1 className="flex items-center gap-2 text-lg font-black text-slate-800">
               <Table2 className="h-5 w-5 text-indigo-600" />
-              書類カタログ
+              提出状況ボード
             </h1>
             <p className="text-xs text-slate-500">
-              書類種別ごとに顧問先横断で提出状況を一覧します（Phase A）
+              書類種別ごとに顧問先横断で提出状況を一覧します（定義は「書類種別マスタ」で管理）
             </p>
           </div>
           <AuthNavButtons variant="light" />

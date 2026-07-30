@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   FileText,
   Loader2,
   Sparkles,
@@ -177,6 +178,53 @@ export function FormCatalogLearnPanel() {
   const activePreset = presets.find((p) => p.form_id === selectedPresetId);
   const formName = activePreset?.form_name ?? customFormName.trim();
 
+  /** 選択した様式(form_id)の既存学習データと場所を探す（現在の資料を優先し、なければ全資料から）。 */
+  const findFormLocation = useCallback(
+    (formId: string): { sampleId: string; page: number; annotation: PageAnnotation } | null => {
+      if (selected) {
+        const inCurrent = selected.annotations.find((a) => a.form_id === formId);
+        if (inCurrent) return { sampleId: selected.id, page: inCurrent.page, annotation: inCurrent };
+      }
+      for (const s of samples) {
+        const found = s.annotations.find((a) => a.form_id === formId);
+        if (found) return { sampleId: s.id, page: found.page, annotation: found };
+      }
+      return null;
+    },
+    [samples, selected],
+  );
+
+  /** ドロップダウンで様式を切り替えたとき、PDF・参考資料・他項目もその様式の学習データに同期する。 */
+  const onSelectForm = (formId: string) => {
+    setSelectedPresetId(formId);
+    if (!formId) {
+      return;
+    }
+    setCustomFormName("");
+    const loc = findFormLocation(formId);
+    if (loc) {
+      if (loc.sampleId !== selectedId) setSelectedId(loc.sampleId);
+      setPage(loc.page);
+      setMarkers(loc.annotation.markers ?? []);
+      setExcludeText((loc.annotation.exclude_phrases ?? []).join(", "));
+      setPageNotes(loc.annotation.notes ?? "");
+    } else {
+      setMarkers([]);
+      setExcludeText("");
+      setPageNotes("");
+    }
+  };
+
+  const selectedFormLocation = selectedPresetId ? findFormLocation(selectedPresetId) : null;
+  const currentPageIsSelectedForm =
+    Boolean(selectedPresetId) && pageAnnotation?.form_id === selectedPresetId;
+  /** 選択中の様式が未登録（どの資料にも無い）で、現在ページは別様式として登録済み。 */
+  const showUnregisteredNotice =
+    Boolean(selectedPresetId) &&
+    Boolean(pageAnnotation) &&
+    !currentPageIsSelectedForm &&
+    !selectedFormLocation;
+
   const addMarker = (phrase: string) => {
     const p = phrase.trim();
     if (!p || markers.some((m) => m.phrase === p)) return;
@@ -301,6 +349,18 @@ export function FormCatalogLearnPanel() {
               事務所で使っている PDF を登録し、「このページは別表一」「ここにこの文言」と教えてください。
               登録内容から AI 分類用のプロンプトを自動生成し、OCR / Vision の精度を上げます。
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+              <span className="text-indigo-300/70">別表の様式 PDF はこちら:</span>
+              <a
+                href="https://www.nta.go.jp/taxes/tetsuzuki/shinsei/annai/hojin/shinkoku/itiran2026/01.htm"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-bold text-indigo-200 underline decoration-indigo-500/50 underline-offset-2 hover:text-indigo-100"
+              >
+                <ExternalLink className="h-3 w-3" />
+                国税庁 法人税 別表様式一覧（令和8年4月以降）
+              </a>
+            </div>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-indigo-300/90">
@@ -365,6 +425,13 @@ export function FormCatalogLearnPanel() {
         {/* 資料一覧 */}
         <aside className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/60 p-3">
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">参考資料</p>
+          {showUnregisteredNotice ? (
+            <p className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-2 py-2 text-[11px] leading-relaxed text-amber-100">
+              「{formName}」は<span className="font-bold text-amber-200">未設定</span>
+              <br />
+              この様式の参考資料はまだ登録されていません。
+            </p>
+          ) : null}
           {samples.length === 0 ? (
             <p className="text-xs text-slate-500">PDF を追加してください</p>
           ) : (
@@ -378,7 +445,7 @@ export function FormCatalogLearnPanel() {
                       setPage(1);
                     }}
                     className={`w-full rounded-lg px-2 py-2 text-left text-xs ${
-                      selectedId === s.id
+                      selectedId === s.id && !showUnregisteredNotice
                         ? "bg-indigo-900/60 font-bold text-indigo-100"
                         : "text-slate-300 hover:bg-slate-800"
                     }`}
@@ -398,6 +465,17 @@ export function FormCatalogLearnPanel() {
         <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
           {!selected ? (
             <p className="py-16 text-center text-sm text-slate-500">左から参考資料を選ぶか、PDF を追加</p>
+          ) : showUnregisteredNotice ? (
+            <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-700/50 bg-amber-950/20 px-6 text-center">
+              <FileText className="h-10 w-10 text-amber-500/70" />
+              <p className="text-sm font-bold text-amber-200">
+                「{formName}」の PDF は未登録です
+              </p>
+              <p className="max-w-xs text-xs leading-relaxed text-amber-100/80">
+                この様式の参考資料はまだ登録されていません。「参考 PDF を追加」からこの様式を含む PDF を登録し、
+                そのページで教えてください。
+              </p>
+            </div>
           ) : (
             <>
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -484,10 +562,7 @@ export function FormCatalogLearnPanel() {
                 <select
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-xs text-white"
                   value={selectedPresetId}
-                  onChange={(e) => {
-                    setSelectedPresetId(e.target.value);
-                    if (e.target.value) setCustomFormName("");
-                  }}
+                  onChange={(e) => onSelectForm(e.target.value)}
                 >
                   <option value="">— 選択 —</option>
                   {presets.map((p) => (
@@ -509,6 +584,19 @@ export function FormCatalogLearnPanel() {
                 </label>
               ) : null}
 
+              {showUnregisteredNotice ? (
+                <div className="space-y-2 rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-3 text-[11px] leading-relaxed text-amber-100">
+                  <p className="font-bold text-amber-200">
+                    「{formName}」の参考資料はまだ登録されていません
+                  </p>
+                  <p className="text-amber-100/80">
+                    表示中のページ（p.{page}）は「{pageAnnotation?.form_name}」として登録済みです。
+                    「{formName}」を教えるには、この様式のページを含む PDF を「参考 PDF を追加」から登録し、
+                    そのページで教えてください。
+                  </p>
+                </div>
+              ) : (
+                <>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-[11px] font-bold text-slate-400">
@@ -641,6 +729,8 @@ export function FormCatalogLearnPanel() {
               >
                 {saving ? "保存中…" : pageAnnotation ? "このページの教え方を更新" : "このページの教え方を保存"}
               </button>
+                </>
+              )}
             </>
           )}
         </aside>

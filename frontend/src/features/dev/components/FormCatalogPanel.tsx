@@ -14,6 +14,9 @@ import {
   Upload,
 } from "lucide-react";
 import { FormCatalogLearnPanel } from "@/features/dev/components/FormCatalogLearnPanel";
+import { DocumentMasterPanel } from "@/features/dev/components/DocumentMasterPanel";
+import { DocumentTypesPanel } from "@/features/dev/components/DocumentTypesPanel";
+import { DocumentCategoriesPanel } from "@/features/dev/components/DocumentCategoriesPanel";
 import {
   createFormCatalogEntry,
   deleteFormCatalogEntry,
@@ -31,7 +34,7 @@ import {
   type FormCatalogWriteBody,
 } from "@/lib/form-catalog-api";
 
-type Tab = "learn" | "test" | "advanced";
+type Tab = "types" | "categories" | "forms" | "learn" | "test" | "advanced";
 type LoadState = "loading" | "ready" | "error";
 
 function roleBadge(role: string) {
@@ -370,7 +373,7 @@ function TestScanPanel({
 }
 
 export function FormCatalogPanel() {
-  const [tab, setTab] = useState<Tab>("learn");
+  const [tab, setTab] = useState<Tab>("types");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<FormCatalogListResponse | null>(null);
@@ -390,7 +393,13 @@ export function FormCatalogPanel() {
     void load();
   }, [load]);
 
-  if (loadState === "loading" && tab !== "learn") {
+  if (
+    loadState === "loading" &&
+    tab !== "learn" &&
+    tab !== "types" &&
+    tab !== "categories" &&
+    tab !== "forms"
+  ) {
     return (
       <div className="flex items-center gap-2 text-slate-400">
         <Loader2 className="h-5 w-5 animate-spin" />
@@ -404,6 +413,9 @@ export function FormCatalogPanel() {
       <div className="flex gap-2 border-b border-slate-700 pb-2">
         {(
           [
+            ["types", "書類種別"],
+            ["categories", "カテゴリ（中分類）"],
+            ["forms", "様式・AI分類"],
             ["learn", "参考資料で覚える"],
             ["test", "判定テスト"],
             ["advanced", "上級者向け"],
@@ -422,10 +434,15 @@ export function FormCatalogPanel() {
         ))}
       </div>
 
-      {error && tab !== "learn" ? (
+      {error && tab !== "learn" && tab !== "types" && tab !== "categories" && tab !== "forms" ? (
         <p className="rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-2 text-xs text-red-200">{error}</p>
       ) : null}
 
+      {tab === "types" ? <DocumentTypesPanel error={error} setError={setError} /> : null}
+      {tab === "categories" ? <DocumentCategoriesPanel error={error} setError={setError} /> : null}
+      {tab === "forms" ? (
+        <DocumentMasterPanel data={data} onReload={load} error={error} setError={setError} />
+      ) : null}
       {tab === "learn" ? <FormCatalogLearnPanel /> : null}
       {tab === "test" ? <TestScanPanel data={data} error={error} setError={setError} /> : null}
       {tab === "advanced" ? (

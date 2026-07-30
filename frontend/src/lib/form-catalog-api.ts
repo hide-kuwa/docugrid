@@ -11,6 +11,10 @@ export type FormCatalogAnchor = {
 export type FormCatalogMapsTo = {
   tax_type?: string | null;
   slot_label?: string | null;
+  /** 書類マスタ用: 税目カテゴリ（法人税・消費税 など） */
+  category?: string | null;
+  /** 書類マスタ用: 必須帳票かどうか */
+  required?: boolean | null;
 };
 
 export type FormCatalogPageScan = {
@@ -85,7 +89,7 @@ export const EMPTY_FORM: FormCatalogWriteBody = {
   form_id: "",
   label_ja: "",
   role: "body",
-  maps_to: { tax_type: null, slot_label: null },
+  maps_to: { tax_type: null, slot_label: null, category: null, required: null },
   anchors: [{ region: "any", any_of: [""] }],
   must_not: [],
   page_scan: { continuation: true, skip_in_package: false },
@@ -176,6 +180,17 @@ export async function reloadFormCatalog(): Promise<void> {
   if (!res.ok) throw new Error(`reload-failed:${res.status}`);
 }
 
+export async function reorderFormCatalog(
+  formIds: string[],
+): Promise<FormCatalogListResponse> {
+  const res = await authFetch(`${API_BASE}/dev/form-catalog/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ form_ids: formIds }),
+  });
+  return parseJson(res);
+}
+
 export async function scanFormCatalogPdf(
   file: File,
   maxPages?: number,
@@ -262,6 +277,26 @@ export type CompileFromSamplesResult = {
 
 export async function fetchFormCatalogSamples(): Promise<FormCatalogSamplesResponse> {
   const res = await authFetch(`${API_BASE}/dev/form-catalog/samples`);
+  return parseJson(res);
+}
+
+export type FormCatalogSampleCoverageItem = {
+  form_id: string;
+  label_ja: string;
+  configured: boolean;
+  sample_count: number;
+  annotation_count: number;
+  last_uploaded_at?: string | null;
+};
+
+export type FormCatalogSampleCoverageResponse = {
+  form_count: number;
+  configured_count: number;
+  items: FormCatalogSampleCoverageItem[];
+};
+
+export async function fetchFormCatalogSampleCoverage(): Promise<FormCatalogSampleCoverageResponse> {
+  const res = await authFetch(`${API_BASE}/dev/form-catalog/sample-coverage`);
   return parseJson(res);
 }
 

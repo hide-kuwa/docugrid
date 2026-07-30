@@ -72,8 +72,8 @@ export default function FormCatalogPage() {
   return (
     <>
       <DevConsoleChrome
-        title="書類の覚え方（AI 分類）"
-        subtitle="実際の PDF を見ながら様式を教える · 自動でプロンプト化 · 非エンジニアでも設計可能"
+        title="書類定義マスタ"
+        subtitle="書類種別（大分類）と様式（別表・受信通知）の2段構成 · AI分類ルール編集"
       />
       <main className="mx-auto max-w-6xl px-4 py-8">
         <FormCatalogPanel />

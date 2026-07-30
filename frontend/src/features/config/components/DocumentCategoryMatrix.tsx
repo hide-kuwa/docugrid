@@ -1,6 +1,6 @@
 "use client";
 
-import type { DocumentCategoryConfig } from "@/config/organization";
+import type { DocumentCategoryConfig } from "@/lib/document-types-api";
 import { WipBanner } from "@/components/work-in-progress";
 import { formatConfigCellAddress } from "../lib/cell-address";
 import {
@@ -67,7 +67,7 @@ export function DocumentCategoryMatrix({
         </tbody>
       </ConfigMatrixTable>
 
-      <ConfigMatrixTable caption="書類カテゴリ × フラグ列（メインの資料枠定義元）">
+      <ConfigMatrixTable caption="書類種別 × フラグ列（マトリクスの資料枠定義元）">
         <ConfigMatrixHead>
           <tr>
             <ConfigMatrixTh className="min-w-[10rem]">カテゴリ（行）</ConfigMatrixTh>
@@ -103,8 +103,8 @@ export function DocumentCategoryMatrix({
       </ConfigMatrixTable>
       <WipBanner
         kind="planned"
-        title="書類カテゴリマトリクス（設定）"
-        message="フラグの編集はコード定義（organization.ts）のみ。セル単位の API 保存は未実装です。"
+        title="書類種別マスタ（設定）"
+        message="フラグの編集は document_types.yaml（書類定義マスタ）で管理。開発コンソールの「書類種別」タブから参照できます。"
         className="mt-3"
       />
     </div>
