@@ -618,6 +618,13 @@ export const usePdfEditor = ({
   const goLastPage = useCallback(() => {
     setCurrentPage(Math.max(0, pageCountSafe - 1));
   }, [pageCountSafe]);
+  const goToPage = useCallback(
+    (page: number) => {
+      const max = Math.max(0, pageCountSafe - 1);
+      setCurrentPage(Math.min(Math.max(0, page), max));
+    },
+    [pageCountSafe],
+  );
 
   const selectAllSlots = useCallback(() => {
     setSelectedSlots(pageOrder.map((_, idx) => idx));
@@ -659,6 +666,7 @@ export const usePdfEditor = ({
     goNextPage,
     goFirstPage,
     goLastPage,
+    goToPage,
     selectAllSlots,
     applyAnnotation,
     handleSaveReorder,

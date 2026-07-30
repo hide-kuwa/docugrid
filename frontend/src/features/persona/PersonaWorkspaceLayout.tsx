@@ -30,7 +30,7 @@ function navItemActive(pathname: string, href: string): boolean {
 export function PersonaWorkspaceLayout({ persona, user, design, children, demoMode }: Props) {
   const router = useRouter();
   const pathname = usePathname();
-  const accent = design?.accentColor || "#2563eb";
+  const accent = design?.accentColor || "#1fa98c";
   const title = design?.pageTitle || persona.label;
   const welcome = design?.welcomeMessage || persona.description;
   const isClientPortal = persona.audience === "client";

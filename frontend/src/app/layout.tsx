@@ -1,9 +1,31 @@
 import type { Metadata } from "next";
+import { Noto_Sans_JP, Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
+
+const notoSansJp = Noto_Sans_JP({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["700"],
+  variable: "--font-wordmark",
+  display: "swap",
+});
+
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-brand-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "DocuGrid",
-  description: "Tax Document Matrix",
+  description: "TAXX エコシステムの資料整理ハブ — 顧問先 × 期間のマトリクス",
 };
 
 export default function RootLayout({
@@ -13,7 +35,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className="antialiased bg-slate-100">
+      <body
+        className={`${notoSansJp.variable} ${spaceGrotesk.variable} ${spaceMono.variable} font-sans antialiased`}
+      >
         {children}
       </body>
     </html>

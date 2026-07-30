@@ -2267,6 +2267,26 @@ export default function DocuGridPage() {
 
   const slotIdentity = useMemo(() => {
     if (!activeSlotKey) return undefined;
+    if (activeSlotKey.startsWith("unassigned:")) {
+      const docId = activeSlotKey.split(":")[1];
+      const doc = unassignedDocs[docId];
+      if (!doc || !currentClient.id || currentClient.id === "unknown") return undefined;
+      return {
+        clientId: currentClient.id,
+        slotId: doc.slotId,
+        periodKey,
+      };
+    }
+    if (activeSlotKey.startsWith("deleted:")) {
+      const docId = activeSlotKey.split(":")[1];
+      const doc = deletedDocs[docId];
+      if (!doc || !currentClient.id || currentClient.id === "unknown") return undefined;
+      return {
+        clientId: currentClient.id,
+        slotId: doc.slotId,
+        periodKey,
+      };
+    }
     const parts = activeSlotKey.split(":");
     if (parts.length < 3) return undefined;
     return {
@@ -2274,7 +2294,20 @@ export default function DocuGridPage() {
       slotId: parts[parts.length - 1],
       periodKey: parts.slice(1, -1).join(":"),
     };
-  }, [activeSlotKey]);
+  }, [activeSlotKey, currentClient.id, deletedDocs, periodKey, unassignedDocs]);
+
+  const activeClassifyMeta = useMemo(() => {
+    if (!activeSlotKey) return null;
+    if (activeSlotKey.startsWith("unassigned:")) {
+      const docId = activeSlotKey.split(":")[1];
+      return unassignedDocs[docId]?.classifyMeta ?? null;
+    }
+    if (activeSlotKey.startsWith("deleted:")) {
+      const docId = activeSlotKey.split(":")[1];
+      return deletedDocs[docId]?.classifyMeta ?? null;
+    }
+    return slotDocs[activeSlotKey]?.classifyMeta ?? null;
+  }, [activeSlotKey, deletedDocs, slotDocs, unassignedDocs]);
 
   const activeSlotLabel = useMemo(() => {
     if (!activeSlotKey) return undefined;
@@ -2747,6 +2780,9 @@ export default function DocuGridPage() {
             : undefined
         }
         historyRevision={statusNonce}
+        classifyMeta={activeClassifyMeta}
+        clientProfile={currentOrgClient?.profile}
+        clientProfileMeta={currentOrgClient?.profileMeta}
       />
     ) : null}
     </>

@@ -61,7 +61,7 @@ export function ClassifyQueueWidget({ maxItems = 8 }: Props) {
       <p className="text-sm text-slate-500">
         OCR 要確認の資料はありません。{" "}
         <Link href="/catalog" className="font-bold text-indigo-600 hover:underline">
-          書類カタログ
+          提出状況ボード
         </Link>
       </p>
     );

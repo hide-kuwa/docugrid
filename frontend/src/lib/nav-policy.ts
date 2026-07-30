@@ -55,7 +55,7 @@ export const canShowTasksNav = (user: DocugridUser | null): boolean => {
   return FIRM_PERSONA_IDS.includes(personaId);
 };
 
-/** 書類カタログは開発コンソール配下 */
+/** 提出状況ボードは開発コンソール配下 */
 export const canShowCatalogNav = (user: DocugridUser | null): boolean =>
   canAccessDevConsole(user);
 

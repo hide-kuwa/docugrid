@@ -45,6 +45,11 @@ import { ConfigMatrixCard } from "@/features/config/components/ConfigMatrixCard"
 import { KeyboardShortcutsPanel } from "@/features/config/components/KeyboardShortcutsPanel";
 import { DocuGridAppearancePanel } from "@/features/config/components/DocuGridAppearancePanel";
 import { DocumentCategoryMatrix } from "@/features/config/components/DocumentCategoryMatrix";
+import {
+  fetchDocumentTypes,
+  toDocumentCategoryConfig,
+  type DocumentCategoryConfig,
+} from "@/lib/document-types-api";
 import { RolePermissionMatrix } from "@/features/config/components/RolePermissionMatrix";
 import { StakeholderScopeMatrix } from "@/features/config/components/StakeholderScopeMatrix";
 import { formatConfigCellAddress } from "@/features/config/lib/cell-address";
@@ -62,6 +67,7 @@ import {
   type SettingsConsole,
 } from "@/lib/app-surface";
 import { DevSurfaceStrip } from "@/components/dev/DevSurfaceStrip";
+import { AiPromptEditorPanel } from "@/features/dev/components/AiPromptEditorPanel";
 import { getPostLoginPath } from "@/lib/persona";
 import { FirmMembersPanel } from "@/features/org/FirmMembersPanel";
 import { AuthoringTemplatesPanel } from "@/features/authoring/components/AuthoringTemplatesPanel";
@@ -90,7 +96,7 @@ const CATEGORIES: ConfigCategory[] = [
   { id: "clientProfile", label: "顧客詳細", subLabel: "PROFILE" },
   { id: "stakeholders", label: "担当マスタ", subLabel: "STAKEHOLDERS" },
   { id: "roles", label: "権限ロール", subLabel: "ROLES" },
-  { id: "documents", label: "書類カテゴリ", subLabel: "DOCS" },
+  { id: "documents", label: "書類種別", subLabel: "DOCS" },
   { id: "templates", label: "文書ひな形", subLabel: "TEMPLATES" },
   { id: "reviewChecklist", label: "監査チェックリスト", subLabel: "CHECKLIST" },
   { id: "shortcuts", label: "ショートカット", subLabel: "KEYS" },
@@ -129,13 +135,24 @@ export default function SettingsPage() {
   const [isUploadingDriveCredentials, setIsUploadingDriveCredentials] = useState(false);
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(true);
   const [ocrAutoExtractEnabled, setOcrAutoExtractEnabled] = useState(true);
+  const [documentCategories, setDocumentCategories] = useState<DocumentCategoryConfig[]>(
+    DOCUMENT_CATEGORIES.map((d) => ({
+      id: d.id,
+      label: d.label,
+      ocrTarget: d.ocrTarget,
+      dashboardTarget: d.dashboardTarget,
+      alertTarget: d.alertTarget,
+    })),
+  );
   const [aiOpenaiEnabled, setAiOpenaiEnabled] = useState(false);
   const [aiOpenaiModel, setAiOpenaiModel] = useState("gpt-4o-mini");
   const [aiOpenaiKeyConfigured, setAiOpenaiKeyConfigured] = useState(false);
+  const [aiOpenaiKeyLast4, setAiOpenaiKeyLast4] = useState<string | null>(null);
   const [aiOpenaiApiKey, setAiOpenaiApiKey] = useState("");
   const [aiGeminiEnabled, setAiGeminiEnabled] = useState(false);
   const [aiGeminiModel, setAiGeminiModel] = useState("gemini-2.5-flash");
   const [aiGeminiKeyConfigured, setAiGeminiKeyConfigured] = useState(false);
+  const [aiGeminiKeyLast4, setAiGeminiKeyLast4] = useState<string | null>(null);
   const [aiGeminiApiKey, setAiGeminiApiKey] = useState("");
   const [alertConsumptionTaxMonthsBeforeDue, setAlertConsumptionTaxMonthsBeforeDue] = useState(2);
   const [alertCorporateTaxMonthsBeforeDue, setAlertCorporateTaxMonthsBeforeDue] = useState(2);
@@ -241,6 +258,19 @@ export default function SettingsPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const payload = await fetchDocumentTypes();
+        if (payload.types.length > 0) {
+          setDocumentCategories(payload.types.map(toDocumentCategoryConfig));
+        }
+      } catch {
+        /* fallback: organization.ts DOCUMENT_CATEGORIES */
+      }
+    })();
+  }, []);
+
   type AuditEventRow = {
     id: number;
     created_at: string;
@@ -294,7 +324,7 @@ export default function SettingsPage() {
     "slot.upload": "スロット保存",
     "ssot.normalize": "SSOT 正規化",
     "document.classify": "書類分類",
-    "document.catalog": "書類カタログ",
+    "document.catalog": "提出状況ボード",
     "ocr.job": "OCR ジョブ",
     "client_master.put": "顧客マスタ更新",
     "client_master.get": "顧客マスタ参照",
@@ -310,7 +340,7 @@ export default function SettingsPage() {
       groups: CLIENT_FAMILY_GROUPS.length,
       stakeholders: STAKEHOLDER_MASTER.length,
       roles: APP_ROLES.length,
-      documents: DOCUMENT_CATEGORIES.length,
+      documents: documentCategories.length,
     }),
     []
   );
@@ -333,9 +363,11 @@ export default function SettingsPage() {
           ai_openai_enabled?: boolean;
           ai_openai_model?: string;
           ai_openai_key_configured?: boolean;
+          ai_openai_key_last4?: string | null;
           ai_gemini_enabled?: boolean;
           ai_gemini_model?: string;
           ai_gemini_key_configured?: boolean;
+          ai_gemini_key_last4?: string | null;
           drive_root_folder_id?: string | null;
           drive_credentials_configured?: boolean;
           drive_mode?: string;
@@ -355,9 +387,11 @@ export default function SettingsPage() {
           setAiOpenaiEnabled(!!data.ai_openai_enabled);
           setAiOpenaiModel(data.ai_openai_model ?? "gpt-4o-mini");
           setAiOpenaiKeyConfigured(!!data.ai_openai_key_configured);
+          setAiOpenaiKeyLast4(data.ai_openai_key_last4 ?? null);
           setAiGeminiEnabled(!!data.ai_gemini_enabled);
           setAiGeminiModel(data.ai_gemini_model ?? "gemini-2.5-flash");
           setAiGeminiKeyConfigured(!!data.ai_gemini_key_configured);
+          setAiGeminiKeyLast4(data.ai_gemini_key_last4 ?? null);
         }
       } catch {
         if (active) {
@@ -569,10 +603,14 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error("config-save-failed");
       const saved = (await res.json()) as {
         ai_openai_key_configured?: boolean;
+        ai_openai_key_last4?: string | null;
         ai_gemini_key_configured?: boolean;
+        ai_gemini_key_last4?: string | null;
       };
       setAiOpenaiKeyConfigured(!!saved.ai_openai_key_configured);
+      setAiOpenaiKeyLast4(saved.ai_openai_key_last4 ?? null);
       setAiGeminiKeyConfigured(!!saved.ai_gemini_key_configured);
+      setAiGeminiKeyLast4(saved.ai_gemini_key_last4 ?? null);
       setAiOpenaiApiKey("");
       setAiGeminiApiKey("");
       setConfigMessage("保存しました。");
@@ -1237,11 +1275,11 @@ export default function SettingsPage() {
               <ConfigSheetIntro
                 sheetId="documents"
                 sheetLabel="DOCS"
-                title="書類カテゴリ"
-                description="メインページの資料枠の定義元。列 = OCR / Dashboard / Alert。"
+                title="書類種別マスタ"
+                description="大分類（定款・法人税申告書…）の定義。編集は開発コンソールの書類定義マスタ。"
               />
               <DocumentCategoryMatrix
-                categories={DOCUMENT_CATEGORIES}
+                categories={documentCategories}
                 ocrAutoExtractEnabled={ocrAutoExtractEnabled}
                 onOcrAutoExtractChange={setOcrAutoExtractEnabled}
               />
@@ -1671,7 +1709,7 @@ export default function SettingsPage() {
                   <div>
                     <div className="text-sm font-bold text-slate-800">AI / OCR 分類（システム管理者）</div>
                     <p className="mt-1 text-xs text-slate-500">
-                      API キーはサーバーにのみ保存され、画面には表示されません。Gemini のみ、または OpenAI → Gemini の順で補助分類・Vision 分類に使います。
+                      API キーはサーバーで暗号化保存され、画面には表示されません。Gemini のみ、または OpenAI → Gemini の順で補助分類・Vision 分類に使います。
                     </p>
                   </div>
                   <button
@@ -1716,6 +1754,11 @@ export default function SettingsPage() {
                     </label>
                     <label className="mt-2 block text-xs text-slate-600">
                       API キー
+                      {aiOpenaiKeyConfigured && (
+                        <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-700">
+                          saved ****{aiOpenaiKeyLast4 ?? "????"}
+                        </span>
+                      )}
                       <input
                         type="password"
                         autoComplete="off"
@@ -1748,6 +1791,11 @@ export default function SettingsPage() {
                     </label>
                     <label className="mt-2 block text-xs text-slate-600">
                       API キー
+                      {aiGeminiKeyConfigured && (
+                        <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-700">
+                          saved ****{aiGeminiKeyLast4 ?? "????"}
+                        </span>
+                      )}
                       <input
                         type="password"
                         autoComplete="off"
@@ -1762,6 +1810,10 @@ export default function SettingsPage() {
                 {configMessage && (
                   <p className="mt-3 text-xs text-slate-500">{configMessage}</p>
                 )}
+              </article>
+
+              <article className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <AiPromptEditorPanel scope="firm" />
               </article>
               </div>
 

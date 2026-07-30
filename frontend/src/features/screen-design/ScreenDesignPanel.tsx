@@ -155,7 +155,7 @@ export function ScreenDesignPanel() {
                 disabled={!layerEditable}
                 type="color"
                 className="mt-1 h-10 w-20 cursor-pointer disabled:opacity-50"
-                value={draft.accentColor || "#2563eb"}
+                value={draft.accentColor || "#1fa98c"}
                 onChange={(e) => setDraft((d) => ({ ...d, accentColor: e.target.value }))}
               />
             </div>
@@ -176,7 +176,7 @@ export function ScreenDesignPanel() {
             <p className="mt-1 text-xs text-slate-500">下の層が上の層を上書きした結果です。</p>
             <div
               className="mt-4 rounded-xl border border-slate-200 bg-white p-4"
-              style={{ borderTopWidth: 4, borderTopColor: mergedPreview.accentColor || "#2563eb" }}
+              style={{ borderTopWidth: 4, borderTopColor: mergedPreview.accentColor || "#1fa98c" }}
             >
               <div className="text-lg font-black text-slate-800">
                 {mergedPreview.pageTitle || "（タイトル未設定）"}

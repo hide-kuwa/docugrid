@@ -175,7 +175,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "ログイン方法は？",
-    a: "ローカル開発では admin@tax.co.jp / password（プラットフォーム管理者）。本番は事務所の Google アカウント等を想定しています。",
+    a: "ローカル開発では admin@taxx.jp / password（プラットフォーム管理者）。本番は事務所の Google アカウント等を想定しています。",
   },
   {
     q: "データのセキュリティは？",

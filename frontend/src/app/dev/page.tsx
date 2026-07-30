@@ -15,6 +15,7 @@ import {
   Shield,
   Table2,
   GitBranch,
+  Sparkles,
 } from "lucide-react";
 import { DevConsoleChrome } from "@/components/dev/DevConsoleChrome";
 import { checkSession, loadCurrentUser } from "@/lib/auth";
@@ -32,6 +33,7 @@ type DevLink = {
   label: string;
   description: string;
   icon: typeof Table2;
+  group?: "definition" | "report" | "platform";
 };
 
 type Gate = "loading" | "ready" | "denied" | "offline";
@@ -133,10 +135,11 @@ export default function DevConsolePage() {
   }
   if (devTabs.has("documents")) {
     links.push({
-      href: settingsHref("dev", "documents"),
-      label: "書類カテゴリ定義",
-      description: "スロット・OCR フラグ（コード SSOT の参照）",
+      href: canAccessPlatformSettings(user) ? "/dev/form-catalog" : settingsHref("dev", "documents"),
+      label: "書類種別マスタ",
+      description: "定款・法人税申告書など大分類 · OCR/Dashboard/Alert フラグ",
       icon: Database,
+      group: "definition",
     });
   }
   if (devTabs.has("screens")) {
@@ -170,9 +173,16 @@ export default function DevConsolePage() {
     });
     links.push({
       href: "/dev/form-catalog",
-      label: "書類の覚え方（AI分類）",
-      description: "別表・表紙のアンカー定義 · ページスキャン",
+      label: "様式・AI分類ルール",
+      description: "受信通知・別表など様式の検出ルール · キーワード · 必須/任意",
       icon: FileStack,
+      group: "definition",
+    });
+    links.push({
+      href: "/dev/ai-prompts",
+      label: "AI 分類プロンプト",
+      description: "テキスト / Vision プロンプト編集 · サンプル PDF テスト",
+      icon: Sparkles,
     });
     links.push({
       href: "/dev/integration-ports",
@@ -196,9 +206,10 @@ export default function DevConsolePage() {
 
   links.push({
     href: "/catalog",
-    label: "書類カタログ",
-    description: "顧問先横断の提出状況・OCR 要確認",
+    label: "提出状況ボード",
+    description: "書類種別ごとの顧問先横断提出実績 · OCR 要確認",
     icon: Table2,
+    group: "report",
   });
 
   const firmPersonas = inScopePersonas().filter((p) => p.audience === "firm");
@@ -294,27 +305,95 @@ export default function DevConsolePage() {
 
         <section>
           <h2 className="text-sm font-bold text-amber-300/90">{audienceLabel("platform")}</h2>
-          <p className="mt-1 text-xs text-slate-500">ロール設計・画面設計・カタログなど。</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {links.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-xl border border-slate-700 bg-slate-900 p-4 transition-colors hover:border-amber-500/40 hover:bg-slate-800"
-                >
-                  <div className="flex items-start gap-3">
-                    <Icon className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
-                    <div>
-                      <p className="text-sm font-bold text-white">{item.label}</p>
-                      <p className="mt-1 text-xs text-slate-400">{item.description}</p>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          <p className="mt-1 text-xs text-slate-500">ロール設計・画面設計・書類定義など。</p>
+
+          {links.some((l) => l.group === "definition") ? (
+            <div className="mt-4">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-indigo-300/80">書類定義</h3>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                大分類（書類種別）と様式（別表・受信通知）の2段構成。定義を変えても提出実績は別画面。
+              </p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {links
+                  .filter((l) => l.group === "definition")
+                  .map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="rounded-xl border border-indigo-800/40 bg-slate-900 p-4 transition-colors hover:border-indigo-500/50 hover:bg-slate-800"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
+                          <div>
+                            <p className="text-sm font-bold text-white">{item.label}</p>
+                            <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
+          {links.some((l) => l.group === "report") ? (
+            <div className="mt-4">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-300/80">業務レポート</h3>
+              <p className="mt-0.5 text-[10px] text-slate-500">定義ではなく、実際の提出データを横断表示します。</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {links
+                  .filter((l) => l.group === "report")
+                  .map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="rounded-xl border border-emerald-800/40 bg-slate-900 p-4 transition-colors hover:border-emerald-500/50 hover:bg-slate-800"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+                          <div>
+                            <p className="text-sm font-bold text-white">{item.label}</p>
+                            <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
+          {links.some((l) => !l.group || l.group === "platform") ? (
+            <div className="mt-4">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-amber-300/80">プラットフォーム設定</h3>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {links
+                  .filter((l) => !l.group || l.group === "platform")
+                  .map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="rounded-xl border border-slate-700 bg-slate-900 p-4 transition-colors hover:border-amber-500/40 hover:bg-slate-800"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+                          <div>
+                            <p className="text-sm font-bold text-white">{item.label}</p>
+                            <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
         </section>
       </main>
     </>

@@ -177,6 +177,7 @@ export const PERSONAS: PersonaDefinition[] = [
 /** 開発用 stakeholder_id → persona（サーバーと同期） */
 export const STAKEHOLDER_PERSONA_BY_ID: Record<string, PersonaId> = {
   "actor-admin": "platform_admin",
+  "super-admin": "platform_admin",
   "actor-s1": "firm_staff_main",
   "actor-s2": "firm_staff_support",
   "actor-s3": "firm_director",

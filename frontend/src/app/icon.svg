@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="DocuGrid">
+  <rect width="32" height="32" rx="8" fill="#1FA98C"/>
+  <rect x="5.5" y="5.5" width="10" height="10" rx="2.2" fill="#FFFFFF"/>
+  <rect x="16.5" y="5.5" width="10" height="10" rx="2.2" fill="#D2F1E8"/>
+  <rect x="5.5" y="16.5" width="10" height="10" rx="2.2" fill="#EBF8F4"/>
+  <rect x="16.5" y="16.5" width="10" height="10" rx="2.2" fill="#FFFFFF"/>
+</svg>

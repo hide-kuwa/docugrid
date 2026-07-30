@@ -428,7 +428,7 @@ export default function MatrixGrid({
                   cx="20"
                   cy="20"
                   r="16"
-                  stroke="#3b82f6"
+                  stroke="#1fa98c"
                   strokeWidth="3.5"
                   fill="transparent"
                   strokeDasharray="100"

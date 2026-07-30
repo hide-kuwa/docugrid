@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { Search as SearchIcon, Folder, Link as LinkIcon, Settings, ListTodo, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { DocuGridLogo } from "@/components/brand";
 import { loadCurrentUser } from "@/lib/auth";
 import {
   formatClientSubtitle,
@@ -163,7 +164,7 @@ export default function NavBar({
       onDoubleClick={onViewModeToggle}
       title={isDocMode ? "ダブルクリックで通常表示に戻る" : "ダブルクリックで書類別表示"}
     >
-      <div className="absolute bottom-0 left-1/2 z-0 h-full w-[200px] -translate-x-1/2 border-x border-white/10 bg-white/5 pointer-events-none" />
+      <div className="absolute bottom-0 left-1/2 z-0 h-full w-[220px] -translate-x-1/2 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent pointer-events-none" />
 
       {!isDocMode && (
         <div
@@ -249,9 +250,7 @@ export default function NavBar({
         className="absolute left-6 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-2"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <div className="text-xl font-black italic tracking-tighter text-white">
-          <span className="text-brand-500">Docu</span>Grid
-        </div>
+        <DocuGridLogo size="sm" surface="dark" showSubtitle={false} />
         {canToggleScope && !isDocMode && (
           <div
             className="flex rounded-full border border-white/10 bg-slate-800 p-0.5 text-[9px] font-bold shadow-lg"

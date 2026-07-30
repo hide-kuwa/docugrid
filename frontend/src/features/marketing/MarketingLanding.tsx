@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Grid3X3, ScanLine, ShieldCheck, Sparkles } from "lucide-react";
+import { DocuGridLogo } from "@/components/brand";
 import { DemoMatrix } from "./DemoMatrix";
 
 const FEATURES = [
@@ -24,28 +25,20 @@ const FEATURES = [
 
 export function MarketingLanding() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-100">
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md">
+    <div className="min-h-screen bg-gradient-to-b from-neutral-50 via-white to-neutral-50">
+      <header className="border-b border-border/60 bg-surface/70 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 md:px-6">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-black text-white shadow-md">
-              DG
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-900">DocuGrid</p>
-              <p className="text-[10px] font-medium text-slate-500">TAXX 資料整理</p>
-            </div>
-          </div>
+          <DocuGridLogo size="sm" />
           <div className="flex items-center gap-2">
             <Link
               href="/login"
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-muted hover:bg-neutral-100"
             >
               ログイン
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-500"
+              className="taxx-btn-primary inline-flex gap-1.5 shadow-sm"
             >
               無料で試す
               <ArrowRight className="h-4 w-4" aria-hidden />

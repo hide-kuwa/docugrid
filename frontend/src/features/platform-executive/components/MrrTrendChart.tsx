@@ -68,8 +68,8 @@ export function MrrTrendChart({
       <svg viewBox={`0 0 ${width} ${height}`} className="mt-3 h-44 w-full">
         <defs>
           <linearGradient id="mrrArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+            <stop offset="0%" stopColor="#1fa98c" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#1fa98c" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 0.5, 1].map((t) => {
@@ -79,9 +79,9 @@ export function MrrTrendChart({
           );
         })}
         <path d={areaPath} fill="url(#mrrArea)" />
-        <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinejoin="round" />
+        <path d={linePath} fill="none" stroke="#3dbf9f" strokeWidth="2.5" strokeLinejoin="round" />
         {coords.length > 0 && (
-          <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="4" fill="#38bdf8" />
+          <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="4" fill="#1fa98c" />
         )}
       </svg>
     </section>

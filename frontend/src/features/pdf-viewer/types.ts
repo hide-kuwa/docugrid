@@ -1,3 +1,6 @@
+import type { ClassifyPersistMetadata } from "@/features/docugrid/lib/classify";
+import type { ProfileFieldMeta } from "@/config/client-profile-fields";
+
 export type UploadStatus = "idle" | "uploading" | "success" | "error";
 
 /** preview = 閲覧のみ（注釈ツール非表示）、edit = フル編集 */
@@ -115,6 +118,11 @@ export interface ViewerModalProps {
   onUnshareWithClient?: () => void;
   /** 親画面の操作（共有解除など）後に版履歴を再取得する */
   historyRevision?: number;
+  /** スロット資料の OCR / 分類メタデータ */
+  classifyMeta?: ClassifyPersistMetadata | null;
+  /** 顧客マスタ（手動入力の優先表示用） */
+  clientProfile?: Record<string, string>;
+  clientProfileMeta?: Record<string, ProfileFieldMeta>;
 }
 
 export function isPersistedDocumentVersionId(versionId: string | undefined): boolean {

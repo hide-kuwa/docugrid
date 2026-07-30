@@ -1,4 +1,9 @@
-import { loadAccessToken, loadCurrentUser } from "./auth";
+import {
+  clearAccessToken,
+  clearCurrentUser,
+  loadAccessToken,
+  loadCurrentUser,
+} from "./auth";
 
 const CLIENT_SCOPE_KEY = "docugrid.currentClientId";
 const CSRF_COOKIE_NAME = "docugrid_csrf";
@@ -74,6 +79,26 @@ export function mergeAuthInit(init?: RequestInit): RequestInit {
   return { ...init, credentials: "include", headers };
 }
 
-export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, mergeAuthInit(init));
+/**
+ * 認証付き fetch。401（未認証）時は以下で自動回復を試みる:
+ * 1. 期限切れ Bearer トークンが有効な Cookie セッションを覆っている場合があるため、
+ *    トークンを破棄して Cookie のみで 1 回だけ再試行する（401 は処理前拒否なので副作用なし）。
+ * 2. それでも 401 なら本当にセッション切れ。保存情報を消して /login?reason=session へ誘導。
+ */
+export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  let res = await fetch(input, mergeAuthInit(init));
+  if (res.status !== 401 || typeof window === "undefined") return res;
+
+  if (loadAccessToken()) {
+    clearAccessToken();
+    res = await fetch(input, mergeAuthInit(init));
+    if (res.status !== 401) return res;
+  }
+
+  const onLoginPage = window.location.pathname.startsWith("/login");
+  if (!onLoginPage && loadCurrentUser()) {
+    clearCurrentUser();
+    window.location.assign("/login?reason=session");
+  }
+  return res;
 }

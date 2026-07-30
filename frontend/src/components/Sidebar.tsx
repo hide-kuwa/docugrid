@@ -157,7 +157,7 @@ export default function Sidebar({
         isDocMode ? "w-32" : "w-24"
       }`}
     >
-      <div className="pointer-events-none absolute left-0 top-1/2 z-0 h-20 w-full -translate-y-1/2 border-y border-white/10 bg-white/5" />
+      <div className="pointer-events-none absolute left-0 top-1/2 z-0 h-24 w-full -translate-y-1/2 bg-gradient-to-b from-transparent via-white/[0.07] to-transparent" />
 
       <div className="absolute left-1/2 top-4 z-50 -translate-x-1/2 opacity-100 transition-all duration-300">
         <span className={`text-[9px] font-black tracking-widest ${headerClass}`}>

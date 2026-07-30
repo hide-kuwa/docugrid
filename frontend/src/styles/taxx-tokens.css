@@ -1,0 +1,128 @@
+/**
+ * TAXX brand design tokens
+ * oklch is authoritative; HEX is an approximate fallback for older browsers.
+ */
+
+:root {
+  /* Primary — corporate green (hue 172) */
+  --taxx-green-50: #ebf8f4;
+  --taxx-green-50: oklch(0.97 0.02 172);
+  --taxx-green-100: #d2f1e8;
+  --taxx-green-100: oklch(0.93 0.04 172);
+  --taxx-green-200: #a9e4d3;
+  --taxx-green-200: oklch(0.87 0.07 172);
+  --taxx-green-300: #6fd1b9;
+  --taxx-green-300: oklch(0.79 0.1 172);
+  --taxx-green-400: #3dbf9f;
+  --taxx-green-400: oklch(0.71 0.12 172);
+  --taxx-green-500: #1fa98c;
+  --taxx-green-500: oklch(0.64 0.12 172);
+  --taxx-green-600: #1a8e76;
+  --taxx-green-600: oklch(0.56 0.11 172);
+  --taxx-green-700: #157460;
+  --taxx-green-700: oklch(0.47 0.09 172);
+  --taxx-green-800: #115b4b;
+  --taxx-green-800: oklch(0.38 0.07 172);
+  --taxx-green-900: #0d473b;
+  --taxx-green-900: oklch(0.3 0.05 172);
+  --taxx-green-950: #08312a;
+  --taxx-green-950: oklch(0.24 0.04 172);
+
+  /* Neutral — cool tint (hue 255) */
+  --taxx-white: #ffffff;
+  --taxx-neutral-50: #f4f5f6;
+  --taxx-neutral-50: oklch(0.968 0.004 255);
+  --taxx-neutral-100: #eaebee;
+  --taxx-neutral-100: oklch(0.94 0.005 255);
+  --taxx-neutral-200: #e1e3e7;
+  --taxx-neutral-200: oklch(0.91 0.004 255);
+  --taxx-neutral-300: #c7cacf;
+  --taxx-neutral-300: oklch(0.82 0.006 255);
+  --taxx-neutral-400: #a1a6ad;
+  --taxx-neutral-400: oklch(0.68 0.008 255);
+  --taxx-neutral-500: #7a828c;
+  --taxx-neutral-500: oklch(0.55 0.01 255);
+  --taxx-neutral-600: #666e78;
+  --taxx-neutral-600: oklch(0.475 0.011 255);
+  --taxx-neutral-700: #525a64;
+  --taxx-neutral-700: oklch(0.4 0.012 255);
+  --taxx-neutral-800: #39404a;
+  --taxx-neutral-800: oklch(0.32 0.014 255);
+  --taxx-neutral-900: #20262e;
+  --taxx-neutral-900: oklch(0.24 0.015 255);
+  --taxx-neutral-950: #141920;
+  --taxx-neutral-950: oklch(0.19 0.015 255);
+
+  /* Accent — brand-harmonized violet (hue 285, chroma matched to green so it
+     sits beside the corporate teal instead of vibrating against it). Used for
+     the secondary/AI-normalization accent that was previously bright violet. */
+  --taxx-accent-50: #f4f2fb;
+  --taxx-accent-50: oklch(0.97 0.02 285);
+  --taxx-accent-100: #e6e2f6;
+  --taxx-accent-100: oklch(0.93 0.035 285);
+  --taxx-accent-200: #cfc7ee;
+  --taxx-accent-200: oklch(0.87 0.06 285);
+  --taxx-accent-300: #ada0e0;
+  --taxx-accent-300: oklch(0.79 0.09 285);
+  --taxx-accent-400: #8f7dd1;
+  --taxx-accent-400: oklch(0.71 0.11 285);
+  --taxx-accent-500: #7663c0;
+  --taxx-accent-500: oklch(0.64 0.12 285);
+  --taxx-accent-600: #6350a6;
+  --taxx-accent-600: oklch(0.56 0.115 285);
+  --taxx-accent-700: #4e3f84;
+  --taxx-accent-700: oklch(0.47 0.1 285);
+  --taxx-accent-800: #3b3064;
+  --taxx-accent-800: oklch(0.38 0.08 285);
+  --taxx-accent-900: #2b2449;
+  --taxx-accent-900: oklch(0.3 0.06 285);
+  --taxx-accent-950: #1f1a37;
+  --taxx-accent-950: oklch(0.24 0.05 285);
+
+  /* Semantic */
+  --taxx-success: #1ba96e;
+  --taxx-success: oklch(0.64 0.13 155);
+  --taxx-info: #3b82d9;
+  --taxx-info: oklch(0.62 0.12 250);
+  --taxx-warning: #e0a82e;
+  --taxx-warning: oklch(0.78 0.13 80);
+  --taxx-error: #e0503a;
+  --taxx-error: oklch(0.62 0.16 25);
+
+  /* Web role aliases (light) */
+  --taxx-bg: var(--taxx-neutral-50);
+  --taxx-surface: var(--taxx-white);
+  --taxx-text: var(--taxx-neutral-900);
+  --taxx-text-muted: var(--taxx-neutral-500);
+  --taxx-border: var(--taxx-neutral-200);
+  --taxx-primary: var(--taxx-green-500);
+  --taxx-primary-hover: var(--taxx-green-600);
+  --taxx-primary-fg: var(--taxx-white);
+  --taxx-link: var(--taxx-green-600);
+  --taxx-link-hover: var(--taxx-green-700);
+  --taxx-focus-ring: var(--taxx-green-500);
+
+  /* Logo role aliases (light surfaces) */
+  --taxx-logo-ink: var(--taxx-neutral-900);
+  --taxx-logo-accent: var(--taxx-green-500);
+  --taxx-logo-mark-accent: var(--taxx-green-500);
+  --taxx-logo-tile: var(--taxx-neutral-900);
+  --taxx-logo-cell-muted: var(--taxx-neutral-200);
+  --taxx-logo-cell-dark: var(--taxx-neutral-700);
+  --taxx-logo-subtitle: var(--taxx-neutral-500);
+}
+
+/* Dark surfaces: brighten green one step for contrast */
+.dark,
+[data-theme="dark"],
+[data-surface="dark"] {
+  --taxx-primary: var(--taxx-green-400);
+  --taxx-primary-hover: var(--taxx-green-300);
+  --taxx-link: var(--taxx-green-400);
+  --taxx-link-hover: var(--taxx-green-300);
+  --taxx-focus-ring: var(--taxx-green-400);
+  --taxx-logo-ink: var(--taxx-white);
+  --taxx-logo-accent: var(--taxx-green-400);
+  --taxx-logo-mark-accent: var(--taxx-green-500);
+  --taxx-logo-tile: var(--taxx-white);
+}

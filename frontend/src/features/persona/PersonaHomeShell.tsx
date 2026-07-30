@@ -31,7 +31,7 @@ function PersonaPlaceholderHome({
   design: ScreenDesignPersona | null;
   demoMode?: boolean;
 }) {
-  const accent = design?.accentColor || "#2563eb";
+  const accent = design?.accentColor || "#1fa98c";
   const widgets =
     design?.widgets?.filter((w) => w.enabled) ||
     persona.plannedFeatures.map((label, i) => ({

@@ -14,6 +14,8 @@ import { ClientSlotDocsRail } from "./components/ClientSlotDocsRail";
 import { AuditWorkflowGuide } from "./components/AuditWorkflowGuide";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { MainCanvas } from "./components/MainCanvas";
+import { ViewerOcrFieldsPanel } from "./components/ViewerOcrFieldsPanel";
+import { DocumentIndexRail } from "./components/DocumentIndexRail";
 import { VersionCompareView } from "./components/VersionCompareView";
 import { ViewerHeader } from "./components/ViewerHeader";
 import { useAuditWorkflow, type WorkflowEventInput } from "./hooks/useAuditWorkflow";
@@ -228,6 +230,9 @@ export default function ViewerModal({
   onShareWithClient,
   onUnshareWithClient,
   historyRevision = 0,
+  classifyMeta = null,
+  clientProfile,
+  clientProfileMeta,
 }: ViewerModalProps) {
   const [currentUser, setCurrentUser] = useState("demo-user");
   const [persistedHistory, setPersistedHistory] = useState<EnhancedDocVersion[] | null>(null);
@@ -471,6 +476,7 @@ export default function ViewerModal({
     goNextPage,
     goFirstPage,
     goLastPage,
+    goToPage,
     selectAllSlots,
     thumbnails,
     thumbnailsReady,
@@ -1114,6 +1120,15 @@ export default function ViewerModal({
         )}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
+        {!isSplitView && !isReordering ? (
+          <DocumentIndexRail
+            file={activeFile}
+            enabled={isOpen}
+            currentPage={currentPage}
+            documentLabel={classifyMeta?.best?.label ?? slotLabel}
+            onJumpToPage={goToPage}
+          />
+        ) : null}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100">
           {isSplitView ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1263,6 +1278,18 @@ export default function ViewerModal({
             />
           )}
         </div>
+
+      {!isSplitView && slotIdentity ? (
+        <ViewerOcrFieldsPanel
+          classifyMeta={classifyMeta}
+          slotId={slotIdentity.slotId}
+          slotLabel={slotLabel}
+          clientId={slotIdentity.clientId}
+          periodKey={slotIdentity.periodKey}
+          clientProfile={clientProfile}
+          clientProfileMeta={clientProfileMeta}
+        />
+      ) : null}
 
       {!isSplitView ? (
         <HistoryPanel

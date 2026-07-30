@@ -100,7 +100,7 @@ export type StakeholderAccessPolicy = {
   allowedActions: AccessAction[];
 };
 
-// OCR/ダッシュボードを将来接続するための入力書類カテゴリ定義
+// 書類種別（大分類）— SSOT は backend/config/document_types.yaml。以下はフォールバック。
 export type DocumentCategory =
   | "articles_of_incorporation"
   | "corporate_registry"
