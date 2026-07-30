@@ -62,7 +62,7 @@
 
 | メール | ペルソナ |
 |--------|----------|
-| `admin@tax.co.jp` | platform_admin |
+| `admin@taxx.jp` | platform_admin |
 | `yamamoto@tax.co.jp` | firm_director（所長） |
 | `tanaka@tax.co.jp` | firm_staff_main |
 | `sato@tax.co.jp` | firm_staff_support |

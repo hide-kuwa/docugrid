@@ -18,6 +18,9 @@ Start: `docs/dev-quickstart.md`
 | Topic | Doc | Code |
 |-------|-----|------|
 | **Status + gaps (briefing)** | `docs/security-status.md` | — |
+| **Common bug/leak causes (read before PR)** | `docs/common-pitfalls.md` | — |
+| **Document taxonomy (種別/様式/レポート)** | `docs/document-taxonomy.md` | `backend/config/document_types.yaml`, `form_catalog.yaml` |
+| **Platform vision (packs / 正規化 API・MCP)** | `docs/platform-packs-vision.md` | `backend/config/*.yaml`, `mcp-server/src/tools.ts` |
 | File upload / AV policy | `docs/file-upload-security.md` | `upload_limits.py`, `tenancy.py` |
 | Google Drive per firm | `docs/google-drive-storage-strategy.md` | `slot_drive_sync.py`, `drive.py` |
 | Threat model + gaps | `docs/security-checklist.md` | — |

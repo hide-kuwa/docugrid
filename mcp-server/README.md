@@ -125,7 +125,7 @@ MCP に加え、FastAPI 側でも以下を実施済み:
       ],
       "env": {
         "DOCUGRID_API_BASE": "http://localhost:8000/api",
-        "DOCUGRID_EMAIL": "admin@tax.co.jp",
+        "DOCUGRID_EMAIL": "admin@taxx.jp",
         "DOCUGRID_PASSWORD": "password"
       }
     }
@@ -143,7 +143,7 @@ MCP に加え、FastAPI 側でも以下を実施済み:
       "args": ["tsx", "C:/Users/yasuh/OneDrive/デスクトップ/TAXX/mcp-server/src/index.ts"],
       "env": {
         "DOCUGRID_API_BASE": "http://localhost:8000/api",
-        "DOCUGRID_EMAIL": "admin@tax.co.jp",
+        "DOCUGRID_EMAIL": "admin@taxx.jp",
         "DOCUGRID_PASSWORD": "password"
       }
     }
@@ -171,7 +171,7 @@ MCP に加え、FastAPI 側でも以下を実施済み:
       "args": ["C:/Users/yasuh/OneDrive/デスクトップ/TAXX/mcp-server/dist/index.js"],
       "env": {
         "DOCUGRID_API_BASE": "http://localhost:8000/api",
-        "DOCUGRID_EMAIL": "admin@tax.co.jp",
+        "DOCUGRID_EMAIL": "admin@taxx.jp",
         "DOCUGRID_PASSWORD": "password"
       }
     }

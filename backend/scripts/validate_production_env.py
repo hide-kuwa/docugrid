@@ -56,6 +56,7 @@ def validate(*, check_stripe: bool) -> int:
         validate_auth_config,
     )
     from services.member_directory import MEMBER_DIRECTORY_PATH, member_directory_count
+    from services.firm_settings import secret_encryption_key_configured
     from services.stripe_client import is_stripe_configured, stripe_webhook_secret
 
     errors: list[str] = []
@@ -170,7 +171,12 @@ def validate(*, check_stripe: bool) -> int:
         if jwt_secret_is_placeholder():
             errors.append("DOCUGRID_JWT_SECRET is still a placeholder")
             _fail("DOCUGRID_JWT_SECRET placeholder")
-        dev_emails = {"admin@tax.co.jp", "tanaka@tax.co.jp", "c1@client.example"}
+        if secret_encryption_key_configured():
+            _ok("DOCUGRID_SECRET_ENCRYPTION_KEY set")
+        else:
+            errors.append("DOCUGRID_SECRET_ENCRYPTION_KEY must be set in production")
+            _fail("DOCUGRID_SECRET_ENCRYPTION_KEY missing")
+        dev_emails = {"admin@taxx.jp", "tanaka@tax.co.jp", "c1@client.example"}
         if MEMBER_DIRECTORY_PATH.is_file():
             try:
                 raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8"))

@@ -180,6 +180,7 @@ ingest_* → normalize_* → SSOT upsert
 | [`roadmap.md`](roadmap.md) | フェーズガード |
 | [`ecosystem-accounting-ui-integration.md`](ecosystem-accounting-ui-integration.md) | プロダクト間 handoff |
 | [`auth-tenancy-design.md`](auth-tenancy-design.md) | テナント・認証拡張 |
+| [`platform-packs-vision.md`](platform-packs-vision.md) | 定義パック・正規化カスタマイズ・API/MCP 公開 |
 
 ---
 

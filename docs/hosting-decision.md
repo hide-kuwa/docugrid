@@ -34,6 +34,8 @@ DNS:      app → Vercel / api → VPS の A レコード（または CNAME）
 
 API を Vercel だけに載せられないのは、`backend/storage/` が永続ボリューム必須だからです（[`production-deployment.md`](production-deployment.md) §1）。
 
+Vercel をブラウザ入口の中継層として使う場合の注意点は [`vercel-render-proxy-pattern.md`](vercel-render-proxy-pattern.md) にまとめています。
+
 ---
 
 ## DNS の向け方（イメージ）

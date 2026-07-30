@@ -44,7 +44,7 @@ function runStep(label, command, args, options) {
 async function main() {
   console.log("[staging] DocuGrid local production-mode stack");
   console.log("[staging] Google OAuth not required (DOCUGRID_STAGING_LOCAL)");
-  console.log("[staging] Login: admin@tax.co.jp / password staging\n");
+  console.log("[staging] Login: admin@taxx.jp / password staging\n");
 
   await runStep("bootstrap .env.production", "python", ["scripts/bootstrap_production.py", "--staging-local"], {
     cwd: backendDir,

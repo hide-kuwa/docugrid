@@ -74,6 +74,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 本番ではセッション Cookie が `Secure` になるため **HTTPS 必須** です（`docugrid_auth.session_cookie_secure()`）。
 
+Vercel をブラウザ入口のプロキシとして使う構成にする場合は、[`vercel-render-proxy-pattern.md`](vercel-render-proxy-pattern.md) を先に確認してください。
+
 ### 出口条件
 
 - [ ] フロント・API それぞれに HTTPS URL がある（または決まっている）

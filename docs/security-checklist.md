@@ -4,7 +4,7 @@
 
 マルチテナント P1.5 途中・開発認証モデル時点で、押さえておくべき情報漏洩リスクとシステム対策を整理した文書です。
 
-関連: [`security-status.md`](security-status.md)、[`file-upload-security.md`](file-upload-security.md)、[`google-drive-storage-strategy.md`](google-drive-storage-strategy.md)、[`auth-tenancy-design.md`](auth-tenancy-design.md)、[`smoke-checklist.md`](smoke-checklist.md)、[`roadmap.md`](roadmap.md)
+関連: [`security-status.md`](security-status.md)、[`common-pitfalls.md`](common-pitfalls.md)、[`file-upload-security.md`](file-upload-security.md)、[`google-drive-storage-strategy.md`](google-drive-storage-strategy.md)、[`auth-tenancy-design.md`](auth-tenancy-design.md)、[`smoke-checklist.md`](smoke-checklist.md)、[`roadmap.md`](roadmap.md)
 
 ---
 
@@ -140,7 +140,7 @@ MCP は AI 経由で API を叩くため、**ブラウザ UI より漏洩リス�
 | **ログイン時の `stakeholder_id` 選択** | ✅ `member_directory.py` で email → stakeholder 固定。本番は pick 不可 | dev のみ `DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK=true` で従来動作 | 本番は pick 禁止（`validate_auth_config` で検証） |
 | **JWT 秘密鍵** | デフォルト `dev-insecure-change-me`（22 バイト） | トークン偽造 | `DOCUGRID_JWT_SECRET` 32 文字以上のランダム値 |
 | **ヘッダ認証** | `DOCUGRID_ALLOW_HEADER_AUTH`（dev では有効） | `X-Docugrid-Role` / `X-Docugrid-Firm` を任意設定 | 本番は **必ず false**（`validate_auth_config` で起動失敗） |
-| **一時 admin メール** | `admin@tax.co.jp` は常に `actor-admin` | そのメールアドレスを知ると admin | 本番では削除 or 環境変数で無効化 |
+| **一時 admin メール** | `admin@taxx.jp` は super-admin（開発のみ） | そのメールアドレスを知ると admin | 本番では `DOCUGRID_SUPER_ADMIN_EMAIL` を実運用メールに限定 |
 | **JWT の localStorage 保存** | ✅ Cookie モード時は保存しない（`DOCUGRID_SESSION_COOKIE`） | XSS 残リスクは CSRF・CSP | 本番は Cookie のみ運用推奨 |
 | **CSRF（Cookie 認証）** | ✅ `docugrid_csrf` + `X-CSRF-Token`（POST/PUT/PATCH/DELETE） | — | Bearer / ヘッダ認証テスト時はスキップ |
 | **ログイン rate limit** | ✅ IP 単位（`DOCUGRID_LOGIN_RATE_LIMIT`、デフォルト 20/分） | — | 本番は WAF も併用推奨 |

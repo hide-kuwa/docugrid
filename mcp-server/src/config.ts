@@ -11,7 +11,7 @@ export type DocugridConfig = {
   isProduction: boolean;
 };
 
-const DEV_ADMIN_EMAIL = "admin@tax.co.jp";
+const DEV_ADMIN_EMAIL = "admin@taxx.jp";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export function isProductionDeployment(apiBase: string): boolean {

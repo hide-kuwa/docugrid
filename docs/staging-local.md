@@ -10,7 +10,7 @@ npm run staging:local
 
 | 項目 | 値 |
 |------|-----|
-| メール | `admin@tax.co.jp` |
+| メール | `admin@taxx.jp` |
 | パスワード | `staging` |
 
 `DOCUGRID_ENV=production` のまま（JWT 厳格・httpOnly Cookie・CSRF）動きます。  

@@ -102,7 +102,7 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 | **P0** | `DOCUGRID_CORS_ORIGINS`・HTTPS・Cookie Secure |
 | **P0** | `GOOGLE_OAUTH_CLIENT_ID` 実値 |
 | **P0** | `member_directory` から dev メール除去 |
-| **P0** | `admin@tax.co.jp` 恒久 admin の本番無効化 |
+| **P0** | `admin@taxx.jp` 恒久 super-admin の本番無効化 |
 | **P0** | MCP 公開前チェック §D-2（`security-checklist.md`） |
 
 ### 5.3 インフラ・データ保管

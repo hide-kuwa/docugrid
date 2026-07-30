@@ -102,6 +102,7 @@ def main() -> int:
 
     dev = _load_env_map(DEV_ENV)
     jwt = secrets.token_urlsafe(48)
+    secret_encryption_key = secrets.token_urlsafe(48)
 
     if args.staging_local:
         front = "http://localhost:3000"
@@ -120,6 +121,7 @@ def main() -> int:
     overrides: dict[str, str] = {
         "DOCUGRID_ENV": "production",
         "DOCUGRID_JWT_SECRET": jwt,
+        "DOCUGRID_SECRET_ENCRYPTION_KEY": secret_encryption_key,
         "DOCUGRID_CORS_ORIGINS": front,
         "DOCUGRID_FRONTEND_URL": front,
         "DOCUGRID_ALLOW_HEADER_AUTH": "false",

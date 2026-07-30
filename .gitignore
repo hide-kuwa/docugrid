@@ -36,3 +36,20 @@ frontend/public/pdfjs/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Local run logs / scratch
+*-dev.*.log
+*-next.*.log
+*-wait.*.log
+*.bak
+*.bak2
+backend/Untitled
+
+# Local experiments / one-off (not product)
+kaikei_all.pdf
+receipt-scanner/
+sim-officer-comp/
+sim-taxx/
+backend/scripts/refactor_main.py
+backend/scripts/refactor_main_extract.py
+backend/scripts/add_api_all.py

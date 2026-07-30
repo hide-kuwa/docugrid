@@ -20,7 +20,7 @@ npm run dev
 
 1. http://localhost:3000/login を開く
 2. 「開発用パスワードログイン」を展開
-3. 例: `admin@tax.co.jp` / `password`
+3. 例: `admin@taxx.jp` / `password`（Google SSO でも同メール）
 
 ### ペルソナ別の試し方（パスワードはすべて `password`）
 
