@@ -2,12 +2,14 @@ import type { CSSProperties } from "react";
 import { AlertCircle, ChevronLeft, ChevronRight, FileUp, Grip, Plus } from "lucide-react";
 import { DropzoneInputProps, DropzoneRootProps } from "react-dropzone";
 import { NormPoint, NormRect, ToolType } from "../types";
+import { smoothMarkerPath } from "../lib/annotation-geometry";
 import { PdfJsPagePreview } from "./PdfJsPagePreview";
 
 type Rect = NormRect | null;
 
-function pathToSvgD(points: NormPoint[]): string {
-  return points
+function pathToSvgD(points: NormPoint[], smooth: boolean): string {
+  const path = smooth ? smoothMarkerPath(points) : points;
+  return path
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 }
@@ -20,7 +22,7 @@ function FreehandStrokePreview({
   variant: "marker" | "eraser";
 }) {
   if (points.length < 1) return null;
-  const d = pathToSvgD(points);
+  const d = pathToSvgD(points, variant === "marker");
   const stroke =
     variant === "marker" ? "rgb(253, 224, 71)" : "rgb(148, 163, 184)";
   return (
@@ -33,11 +35,11 @@ function FreehandStrokePreview({
         d={d}
         fill="none"
         stroke={stroke}
-        strokeWidth={variant === "marker" ? 0.014 : 0.018}
+        strokeWidth={variant === "marker" ? 0.018 : 0.018}
         strokeLinecap="round"
         strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-        opacity={variant === "marker" ? 0.85 : 0.9}
+        opacity={variant === "marker" ? 0.22 : 0.9}
+        style={variant === "marker" ? { mixBlendMode: "multiply" } : undefined}
         strokeDasharray={variant === "eraser" ? "0.02 0.012" : undefined}
       />
     </svg>
@@ -172,8 +174,8 @@ type MainCanvasProps = {
   keepOnlySelectedSlots: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  undoPageOrder: () => void;
-  redoPageOrder: () => void;
+  undo: () => void;
+  redo: () => void;
   currentPage: number;
   pageCountSafe: number;
   canGoPrev: boolean;
@@ -218,8 +220,8 @@ export const MainCanvas = ({
   keepOnlySelectedSlots,
   canUndo,
   canRedo,
-  undoPageOrder,
-  redoPageOrder,
+  undo,
+  redo,
   currentPage,
   pageCountSafe,
   canGoPrev,
@@ -288,14 +290,14 @@ export const MainCanvas = ({
                   選択解除
                 </button>
                 <button
-                  onClick={undoPageOrder}
+                  onClick={undo}
                   disabled={!canUndo || isLoading}
                   className="rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
                 >
                   Undo
                 </button>
                 <button
-                  onClick={redoPageOrder}
+                  onClick={redo}
                   disabled={!canRedo || isLoading}
                   className="rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
                 >
@@ -449,7 +451,11 @@ export const MainCanvas = ({
                   )}
                 </div>
                 <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full bg-black/75 px-3 py-1.5 text-center text-[11px] font-bold text-white">
-                  {activeTool === "eraser" ? "消しゴム" : activeTool.toUpperCase()} · P.
+                  {activeTool === "eraser"
+                    ? "消しゴム"
+                    : activeTool === "marker"
+                      ? "蛍光ペン（Shift: 水平・垂直）"
+                      : activeTool.toUpperCase()} · P.
                   {currentPage + 1}
                 </div>
               </div>

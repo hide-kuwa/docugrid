@@ -11,12 +11,14 @@ import {
   Minus,
   PauseCircle,
   PlayCircle,
+  Redo2,
   Save,
   Send,
   Share2,
   Square,
   Stamp,
   Trash2,
+  Undo2,
   Unlink,
 } from "lucide-react";
 import { EnhancedDocVersion, ToolType, ViewerMode, WorkflowStatus } from "../types";
@@ -37,6 +39,10 @@ type ViewerHeaderProps = {
   onToggleSplitView: () => void;
   setActiveTool: (tool: ToolType) => void;
   setIsReordering: (next: boolean) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   handleWorkSave: () => void;
   handleRequestReview: () => void;
   handleStartAudit: () => void;
@@ -78,6 +84,10 @@ export const ViewerHeader = ({
   onToggleSplitView,
   setActiveTool,
   setIsReordering,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   handleWorkSave,
   handleRequestReview,
   handleStartAudit,
@@ -272,12 +282,32 @@ export const ViewerHeader = ({
               >
                 <Eraser className="h-4 w-4" />
               </button>
+              <div className="mx-1 h-6 w-px bg-slate-700" />
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={isLoading || !canAnnotate || !canUndo || !onUndo}
+                title="元に戻す (Ctrl+Z)"
+                className="rounded p-1.5 text-slate-300 transition-colors hover:bg-slate-700 disabled:opacity-40"
+              >
+                <Undo2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={isLoading || !canAnnotate || !canRedo || !onRedo}
+                title="やり直す (Ctrl+Y)"
+                className="rounded p-1.5 text-slate-300 transition-colors hover:bg-slate-700 disabled:opacity-40"
+              >
+                <Redo2 className="h-4 w-4" />
+              </button>
             </>
           )}
           <div className="w-px h-6 bg-slate-700 mx-1"></div>
           <button
             onClick={() => setIsReordering(!isReordering)}
             disabled={isLoading}
+            title={isSplitView ? "2画面を閉じてページを並べ替える" : "ページを並べ替える"}
             className={`p-1.5 rounded transition-colors flex items-center gap-1 ${
               isReordering ? "bg-blue-600 text-white" : "text-blue-400 hover:bg-slate-700"
             }`}

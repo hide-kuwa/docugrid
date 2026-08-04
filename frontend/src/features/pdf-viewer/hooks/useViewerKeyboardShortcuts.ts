@@ -15,8 +15,8 @@ type Args = {
   setIsSplitView: (open: boolean) => void;
   canUndo: boolean;
   canRedo: boolean;
-  undoPageOrder: () => void;
-  redoPageOrder: () => void;
+  undo: () => void;
+  redo: () => void;
   canGoPrev: boolean;
   canGoNext: boolean;
   goPrevPage: () => void;
@@ -45,8 +45,8 @@ export function useViewerKeyboardShortcuts({
   setIsSplitView,
   canUndo,
   canRedo,
-  undoPageOrder,
-  redoPageOrder,
+  undo,
+  redo,
   canGoPrev,
   canGoNext,
   goPrevPage,
@@ -96,23 +96,23 @@ export function useViewerKeyboardShortcuts({
         id: "undo",
         key: "z",
         mod: true,
-        when: () => isReordering && canUndo,
-        handler: undoPageOrder,
+        when: () => canEdit && canUndo,
+        handler: undo,
       },
       {
         id: "redo",
         key: "z",
         mod: true,
         shift: true,
-        when: () => isReordering && canRedo,
-        handler: redoPageOrder,
+        when: () => canEdit && canRedo,
+        handler: redo,
       },
       {
         id: "redo-alt",
         key: "y",
         mod: true,
-        when: () => isReordering && canRedo,
-        handler: redoPageOrder,
+        when: () => canEdit && canRedo,
+        handler: redo,
       },
       {
         id: "prev-page",
@@ -252,8 +252,8 @@ export function useViewerKeyboardShortcuts({
     setIsSplitView,
     canUndo,
     canRedo,
-    undoPageOrder,
-    redoPageOrder,
+    undo,
+    redo,
     canGoPrev,
     canGoNext,
     goPrevPage,

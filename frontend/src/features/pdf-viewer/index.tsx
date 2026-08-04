@@ -208,6 +208,7 @@ export default function ViewerModal({
   onMerge,
   onGetThumbnails,
   onRenderPage,
+  onReplaceFile,
   canAnnotate = true,
   canApprove = true,
   syncWithDocugrid = false,
@@ -397,6 +398,7 @@ export default function ViewerModal({
     isHistoryOpen,
     setIsHistoryOpen,
     recordAction,
+    popLastAction,
     handleWorkSave,
     handleRequestReview,
     handleStartAudit,
@@ -466,8 +468,8 @@ export default function ViewerModal({
     keepOnlySelectedSlots,
     canUndo,
     canRedo,
-    undoPageOrder,
-    redoPageOrder,
+    undo,
+    redo,
     currentPage,
     pageCountSafe,
     canGoPrev,
@@ -513,8 +515,21 @@ export default function ViewerModal({
     onGetThumbnails,
     onRenderPage,
     recordAction,
+    popLastAction,
+    onReplaceFile,
     syncWithDocugrid,
   });
+
+  const handleSetReordering = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setIsSplitView(false);
+        setActiveTool("none");
+      }
+      setIsReordering(open);
+    },
+    [setActiveTool, setIsReordering],
+  );
 
   useViewerKeyboardShortcuts({
     enabled: isOpen,
@@ -524,13 +539,13 @@ export default function ViewerModal({
     isHistoryOpen,
     setIsHistoryOpen,
     isReordering,
-    setIsReordering,
+    setIsReordering: handleSetReordering,
     isSplitView,
     setIsSplitView,
     canUndo,
     canRedo,
-    undoPageOrder,
-    redoPageOrder,
+    undo,
+    redo,
     canGoPrev,
     canGoNext,
     goPrevPage,
@@ -629,6 +644,7 @@ export default function ViewerModal({
     setIsSplitView((prev) => {
       const next = !prev;
       if (next) {
+        setIsReordering(false);
         setActiveTool("check");
         setLeftFile((f) => f ?? file);
         setLeftSlotDocId((id) => id ?? persistedDocId ?? null);
@@ -636,7 +652,7 @@ export default function ViewerModal({
       }
       return next;
     });
-  }, [file, persistedDocId, setActiveTool]);
+  }, [file, persistedDocId, setActiveTool, setIsReordering]);
 
   const activeVersionId = history[activeVerIdx]?.versionId;
   const activeVersionLabel = history[activeVerIdx]?.ver;
@@ -1080,7 +1096,11 @@ export default function ViewerModal({
           onToggleSplitView={handleToggleSplitView}
           splitViewHint={isSplitView ? "2画面照合 ON" : "2画面照合"}
           setActiveTool={setActiveTool}
-          setIsReordering={setIsReordering}
+          setIsReordering={handleSetReordering}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={undo}
+          onRedo={redo}
           handleWorkSave={handleWorkSave}
           handleRequestReview={handleRequestReview}
           handleStartAudit={() => {
@@ -1245,8 +1265,8 @@ export default function ViewerModal({
               keepOnlySelectedSlots={keepOnlySelectedSlots}
               canUndo={canUndo}
               canRedo={canRedo}
-              undoPageOrder={undoPageOrder}
-              redoPageOrder={redoPageOrder}
+              undo={undo}
+              redo={redo}
               currentPage={currentPage}
               pageCountSafe={pageCountSafe}
               canGoPrev={canGoPrev}

@@ -67,38 +67,26 @@ async def highlight_pdf(
             stroke_path = parse_norm_path_json(path_json)
 
             if type == "box":
-                p.draw_rect(rect, color=(1, 0, 0), width=3)
+                add_box_annotation(p, rect)
             elif type == "marker":
                 if stroke_path:
                     draw_freehand_marker(p, stroke_path)
                 else:
                     annot = p.add_highlight_annot(rect)
                     annot.set_colors(stroke=(1, 1, 0))
-                    annot.update()
+                    tag_docugrid_annotation(annot, "marker")
+                    annot.update(blend_mode="Multiply", opacity=0.2)
             elif type == "line":
-                # 左上から右下へ線を引く
-                p.draw_line((abs_x, abs_y), (abs_x + abs_w, abs_y + abs_h), color=(0, 0, 1), width=3)
+                add_line_annotation(
+                    p,
+                    fitz.Point(abs_x, abs_y),
+                    fitz.Point(abs_x + abs_w, abs_y + abs_h),
+                )
             elif type == "check":
-                # チェックマークを描画 (2本の線で構成)
-                p.draw_line(
-                    (abs_x, abs_y + abs_h * 0.6),
-                    (abs_x + abs_w * 0.4, abs_y + abs_h),
-                    color=(0, 0.8, 0),
-                    width=4,
-                )
-                p.draw_line(
-                    (abs_x + abs_w * 0.4, abs_y + abs_h),
-                    (abs_x + abs_w, abs_y),
-                    color=(0, 0.8, 0),
-                    width=4,
-                )
+                add_check_annotation(p, rect)
             elif type == "eraser":
                 erase_rect = path_bbox_rect(p, stroke_path) if stroke_path else rect
-                delete_annots_intersecting(p, erase_rect)
-                if stroke_path:
-                    draw_freehand_eraser(p, stroke_path)
-                else:
-                    erase_region(p, rect)
+                delete_one_docugrid_annotation(p, erase_rect)
 
         output_buffer = io.BytesIO()
         doc.save(output_buffer)

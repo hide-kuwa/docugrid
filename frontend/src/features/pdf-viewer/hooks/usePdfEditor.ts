@@ -9,7 +9,9 @@ import { useDocugridStore } from "@/features/docugrid/state/docugrid-store";
 import {
   appendPathPoint,
   boundsFromPath,
+  constrainPointToAxis,
   isMeaningfulPath,
+  smoothMarkerPath,
 } from "../lib/annotation-geometry";
 import { NormPoint, NormRect, ToolType } from "../types";
 
@@ -30,11 +32,22 @@ interface UsePdfEditorProps {
   ) => Promise<File | { file: File; previewDataUrl: string } | void>;
   onReorder: (order: number[]) => Promise<File | void>;
   onMerge: (files: File[]) => Promise<File | void>;
-  onGetThumbnails: () => Promise<string[]>;
+  onGetThumbnails: (fileOverride?: File) => Promise<string[]>;
   recordAction: (newFile: File, action: string) => void;
+  popLastAction?: () => void;
+  /** 親の file state を差し替え（Undo/Redo 用） */
+  onReplaceFile?: (file: File) => void;
   /** Docugrid ストアの pageOrder とビューアを直結（ローカル pageOrder を使わない） */
   syncWithDocugrid?: boolean;
 }
+
+type EditSnapshot = {
+  before: File;
+  after: File;
+  action: string;
+};
+
+const EDIT_UNDO_LIMIT = 30;
 
 export const usePdfEditor = ({
   file,
@@ -48,6 +61,8 @@ export const usePdfEditor = ({
   onMerge,
   onGetThumbnails,
   recordAction,
+  popLastAction,
+  onReplaceFile,
   syncWithDocugrid = false,
 }: UsePdfEditorProps) => {
 
@@ -60,7 +75,9 @@ export const usePdfEditor = ({
     onReorder,
     onMerge,
     onGetThumbnails,
-    recordAction
+    recordAction,
+    popLastAction,
+    onReplaceFile,
   });
 
   // 常に最新のハンドラをRefに維持（レンダリングの影響を受けない）
@@ -71,7 +88,9 @@ export const usePdfEditor = ({
       onReorder,
       onMerge,
       onGetThumbnails,
-      recordAction
+      recordAction,
+      popLastAction,
+      onReplaceFile,
     };
   });
 
@@ -102,6 +121,16 @@ export const usePdfEditor = ({
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
   const [undoStack, setUndoStack] = useState<number[][]>([]);
   const [redoStack, setRedoStack] = useState<number[][]>([]);
+  const [editUndoStack, setEditUndoStack] = useState<EditSnapshot[]>([]);
+  const [editRedoStack, setEditRedoStack] = useState<EditSnapshot[]>([]);
+  const editUndoStackRef = useRef(editUndoStack);
+  const editRedoStackRef = useRef(editRedoStack);
+  useEffect(() => {
+    editUndoStackRef.current = editUndoStack;
+  }, [editUndoStack]);
+  useEffect(() => {
+    editRedoStackRef.current = editRedoStack;
+  }, [editRedoStack]);
 
   const docugridBridge = useDocugridPageOrderBridge(syncWithDocugrid);
   const { reorderSlots: reorderDocugridSlots } = docugridBridge;
@@ -201,7 +230,45 @@ export const usePdfEditor = ({
   // 新規アップロード時のみページを先頭へ（注釈で pdfUrl だけ変わる場合は増やさない viewerSession）
   useLayoutEffect(() => {
     setCurrentPage(0);
-  }, [viewerSession]);
+    setEditUndoStack([]);
+    setEditRedoStack([]);
+  }, [viewerSession, editorKey]);
+
+  const resolveRenderPage = useCallback(() => {
+    const slot = currentPageRef.current;
+    const order = bridgeOrderRef.current;
+    return syncWithDocugridRef.current && order.length > 0 ? order[slot] ?? slot : slot;
+  }, []);
+
+  const refreshViewForFile = useCallback(async (target: File) => {
+    fileRef.current = target;
+    const page = resolveRenderPage();
+    const img = await handlersRef.current.onRenderPage(page, target);
+    if (img) {
+      setEditPageImage((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return img;
+      });
+    }
+    void handlersRef.current.onGetThumbnails(target).then((imgs) => {
+      setThumbnails(imgs);
+      setThumbnailsReady(true);
+      if (imgs.length > 0 && !syncWithDocugridRef.current) {
+        setLocalPageOrder((prev) => {
+          if (prev.length === imgs.length) return prev;
+          return Array.from({ length: imgs.length }, (_, i) => i);
+        });
+      }
+    });
+  }, [resolveRenderPage]);
+
+  const pushEditSnapshot = useCallback((before: File, after: File, action: string) => {
+    setEditUndoStack((prev) => {
+      const next = [...prev, { before, after, action }];
+      return next.length > EDIT_UNDO_LIMIT ? next.slice(-EDIT_UNDO_LIMIT) : next;
+    });
+    setEditRedoStack([]);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -290,6 +357,7 @@ export const usePdfEditor = ({
       }[type] || "編集";
 
       handlersRef.current.recordAction(newFile, actionName);
+      pushEditSnapshot(currentFile, newFile, actionName);
 
       if (previewDataUrl) {
         setEditPageImage((prev) => {
@@ -318,26 +386,30 @@ export const usePdfEditor = ({
   const isFreehandTool = (tool: ToolType) => tool === "marker" || tool === "eraser";
 
   const handleSaveReorder = useCallback(async () => {
-    if (!fileRef.current) return;
+    const currentFile = fileRef.current;
+    if (!currentFile) return;
     const order = syncWithDocugrid ? docugridBridge.orderedOriginalIndices : localPageOrder;
     const newFile = await handlersRef.current.onReorder(order);
     if (newFile) {
       handlersRef.current.recordAction(newFile as File, "ページ並べ替え");
+      pushEditSnapshot(currentFile, newFile as File, "ページ並べ替え");
       setIsReordering(false);
       setSelectedSlots([]);
       setUndoStack([]);
       setRedoStack([]);
     }
-  }, [syncWithDocugrid, docugridBridge.orderedOriginalIndices, localPageOrder]);
+  }, [syncWithDocugrid, docugridBridge.orderedOriginalIndices, localPageOrder, pushEditSnapshot]);
 
   const onDropAppend = useCallback(async (acceptedFiles: File[]) => {
     const currentFile = fileRef.current;
     if (!currentFile || acceptedFiles.length === 0) return;
     const newFile = await handlersRef.current.onMerge([currentFile, ...acceptedFiles]);
     if (newFile) {
-      handlersRef.current.recordAction(newFile as File, `PDF結合 (+${acceptedFiles.length}ファイル)`);
+      const actionName = `PDF結合 (+${acceptedFiles.length}ファイル)`;
+      handlersRef.current.recordAction(newFile as File, actionName);
+      pushEditSnapshot(currentFile, newFile as File, actionName);
     }
-  }, []);
+  }, [pushEditSnapshot]);
 
   // Dropzone設定
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -364,7 +436,7 @@ export const usePdfEditor = ({
   }, [isSplitView, referenceFile]);
 
   // Drawing Logic（Pointer + capture でドラッグが途切れにくい）
-  const getNormalizedPos = (e: React.MouseEvent | React.PointerEvent) => {
+  const getNormalizedPos = (e: { clientX: number; clientY: number }) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     const w = rect.width || 1;
@@ -401,7 +473,21 @@ export const usePdfEditor = ({
       e.preventDefault();
       const pos = getNormalizedPos(e);
       if (isFreehandTool(activeTool)) {
-        setCurrentStrokePath((prev) => appendPathPoint(prev ?? [], pos));
+        if (activeTool === "marker" && e.shiftKey && startPos) {
+          setCurrentStrokePath([startPos, constrainPointToAxis(startPos, pos)]);
+          return;
+        }
+        const nativeEvent = e.nativeEvent;
+        const samples =
+          typeof nativeEvent.getCoalescedEvents === "function"
+            ? nativeEvent.getCoalescedEvents()
+            : [nativeEvent];
+        setCurrentStrokePath((prev) =>
+          samples.reduce(
+            (path, sample) => appendPathPoint(path, getNormalizedPos(sample)),
+            prev ?? [],
+          ),
+        );
         return;
       }
       if (!startPos) return;
@@ -446,16 +532,24 @@ export const usePdfEditor = ({
         return;
       }
 
-      const committedPath = strokePathDraftRef.current;
+      let committedPath = strokePathDraftRef.current;
       const committedRect = rectDraftRef.current;
+      if (activeTool === "marker" && e.shiftKey && startPos) {
+        committedPath = [
+          startPos,
+          constrainPointToAxis(startPos, getNormalizedPos(e)),
+        ];
+      }
       setIsDrawing(false);
       setStartPos(null);
       setCurrentRect(null);
       setCurrentStrokePath(null);
 
       if (isFreehandTool(activeTool) && committedPath && isMeaningfulPath(committedPath)) {
-        const rect = boundsFromPath(committedPath);
-        await applyAnnotation(activeTool, rect, committedPath);
+        const finalPath =
+          activeTool === "marker" ? smoothMarkerPath(committedPath) : committedPath;
+        const rect = boundsFromPath(finalPath);
+        await applyAnnotation(activeTool, rect, finalPath);
         return;
       }
 
@@ -463,7 +557,7 @@ export const usePdfEditor = ({
         await applyAnnotation(activeTool, committedRect);
       }
     },
-    [activeTool, isDrawing, applyAnnotation],
+    [activeTool, isDrawing, startPos, applyAnnotation],
   );
 
   const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -572,8 +666,14 @@ export const usePdfEditor = ({
     setSelectedSlots([]);
   }, [syncWithDocugrid, selectedSlots, applyPageOrderChange]);
 
-  const canUndo = !syncWithDocugrid && undoStack.length > 0;
-  const canRedo = !syncWithDocugrid && redoStack.length > 0;
+  const canUndoPageOrder = !syncWithDocugrid && undoStack.length > 0;
+  const canRedoPageOrder = !syncWithDocugrid && redoStack.length > 0;
+  const canUndoEdit = editUndoStack.length > 0;
+  const canRedoEdit = editRedoStack.length > 0;
+  /** 並べ替えモード中はページ順 Undo、通常は PDF 編集 Undo */
+  const canUndo = isReordering ? canUndoPageOrder || canUndoEdit : canUndoEdit;
+  const canRedo = isReordering ? canRedoPageOrder || canRedoEdit : canRedoEdit;
+
   const undoPageOrder = useCallback(() => {
     if (syncWithDocugrid) return;
     setUndoStack((prev) => {
@@ -598,6 +698,48 @@ export const usePdfEditor = ({
       return nextPrev;
     });
   }, [syncWithDocugrid, localPageOrder]);
+
+  const undoEdit = useCallback(async () => {
+    const stack = editUndoStackRef.current;
+    if (stack.length === 0) return;
+    const entry = stack[stack.length - 1]!;
+    setEditUndoStack((prev) => prev.slice(0, -1));
+    setEditRedoStack((prev) => [...prev, entry]);
+    handlersRef.current.popLastAction?.();
+    handlersRef.current.onReplaceFile?.(entry.before);
+    await refreshViewForFile(entry.before);
+  }, [refreshViewForFile]);
+
+  const redoEdit = useCallback(async () => {
+    const stack = editRedoStackRef.current;
+    if (stack.length === 0) return;
+    const entry = stack[stack.length - 1]!;
+    setEditRedoStack((prev) => prev.slice(0, -1));
+    setEditUndoStack((prev) => [...prev, entry]);
+    handlersRef.current.recordAction(entry.after, entry.action);
+    handlersRef.current.onReplaceFile?.(entry.after);
+    await refreshViewForFile(entry.after);
+  }, [refreshViewForFile]);
+
+  const undo = useCallback(() => {
+    if (isReordering && canUndoPageOrder) {
+      undoPageOrder();
+      return;
+    }
+    if (canUndoEdit) {
+      void undoEdit();
+    }
+  }, [isReordering, canUndoPageOrder, canUndoEdit, undoPageOrder, undoEdit]);
+
+  const redo = useCallback(() => {
+    if (isReordering && canRedoPageOrder) {
+      redoPageOrder();
+      return;
+    }
+    if (canRedoEdit) {
+      void redoEdit();
+    }
+  }, [isReordering, canRedoPageOrder, canRedoEdit, redoPageOrder, redoEdit]);
 
   const pageCountSafe = Math.max(
     pageCount ?? 0,
@@ -653,6 +795,10 @@ export const usePdfEditor = ({
     keepOnlySelectedSlots,
     canUndo,
     canRedo,
+    canUndoEdit,
+    canRedoEdit,
+    undo,
+    redo,
     undoPageOrder,
     redoPageOrder,
     setPageOrder: setLocalPageOrder,

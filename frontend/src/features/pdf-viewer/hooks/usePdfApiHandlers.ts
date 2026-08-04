@@ -31,11 +31,12 @@ export function usePdfApiHandlers(file: File | null, clientId?: string) {
     [file, headers],
   );
 
-  const handleGetThumbnails = useCallback(async () => {
-    if (!file) return [];
+  const handleGetThumbnails = useCallback(async (fileOverride?: File) => {
+    const target = fileOverride ?? file;
+    if (!target) return [];
     try {
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", target);
       const res = await authFetch(API_ENDPOINTS.THUMBNAILS, {
         method: "POST",
         body: form,

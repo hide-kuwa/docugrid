@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import math
+import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import fitz
+
+DOCUGRID_ANNOT_SUBJECT_PREFIX = "DocuGrid:"
 
 
 def parse_norm_path_json(path_json: Optional[str]) -> Optional[List[dict[str, float]]]:
@@ -29,7 +33,7 @@ def parse_norm_path_json(path_json: Optional[str]) -> Optional[List[dict[str, fl
 
 
 def marker_stroke_width(page: fitz.Page) -> float:
-    return max(page.rect.width, page.rect.height) * 0.012
+    return max(page.rect.width, page.rect.height) * 0.016
 
 
 def path_to_fitz_points(page: fitz.Page, path: List[dict[str, float]]) -> List[fitz.Point]:
@@ -37,22 +41,90 @@ def path_to_fitz_points(page: fitz.Page, path: List[dict[str, float]]) -> List[f
     return [fitz.Point(p["x"] * pw, p["y"] * ph) for p in path]
 
 
-def draw_freehand_marker(page: fitz.Page, path: List[dict[str, float]]) -> None:
-    """蛍光ペン風の半透明ストローク（矩形ハイライト注釈ではなく線のみ）。"""
+def tag_docugrid_annotation(annot: fitz.Annot, kind: str) -> fitz.Annot:
+    """注釈自身に識別データを保持し、保存後も要素単位で削除可能にする。"""
+    metadata = {
+        "schema": "docugrid.annotation.v1",
+        "id": uuid.uuid4().hex,
+        "kind": kind,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+    }
+    annot.set_info(
+        title="DocuGrid",
+        subject=f"{DOCUGRID_ANNOT_SUBJECT_PREFIX}{kind}",
+        content=json.dumps(metadata, ensure_ascii=False, separators=(",", ":")),
+    )
+    return annot
+
+
+def draw_freehand_marker(page: fitz.Page, path: List[dict[str, float]]) -> fitz.Annot:
+    """削除可能な1要素として保存する、半透明の蛍光ペンストローク。"""
     w = marker_stroke_width(page)
     pts = path_to_fitz_points(page, path)
     if len(pts) == 1:
-        page.draw_circle(pts[0], w * 0.45, color=(1, 1, 0), fill=(1, 1, 0), fill_opacity=0.4)
-        return
-    page.draw_polyline(
-        pts,
-        color=(1, 1, 0),
-        fill=(1, 1, 0),
-        width=w,
-        fill_opacity=0.4,
-        closePath=False,
-        lineCap=1,
+        pts.append(fitz.Point(pts[0].x + 0.01, pts[0].y + 0.01))
+    ink_path = [[p.x, p.y] for p in pts]
+    annot = tag_docugrid_annotation(page.add_ink_annot([ink_path]), "marker")
+    annot.set_colors(stroke=(1, 0.88, 0.15))
+    annot.set_border(width=w)
+    annot.update(blend_mode="Multiply", opacity=0.2)
+    return annot
+
+
+def add_box_annotation(page: fitz.Page, rect: fitz.Rect) -> fitz.Annot:
+    annot = tag_docugrid_annotation(page.add_rect_annot(rect), "box")
+    annot.set_colors(stroke=(1, 0, 0))
+    annot.set_border(width=3)
+    annot.update()
+    return annot
+
+
+def add_line_annotation(
+    page: fitz.Page, start: fitz.Point, end: fitz.Point
+) -> fitz.Annot:
+    annot = tag_docugrid_annotation(page.add_line_annot(start, end), "line")
+    annot.set_colors(stroke=(0, 0, 1))
+    annot.set_border(width=3)
+    annot.update()
+    return annot
+
+
+def add_check_annotation(page: fitz.Page, rect: fitz.Rect) -> fitz.Annot:
+    p1 = fitz.Point(rect.x0, rect.y0 + rect.height * 0.6)
+    p2 = fitz.Point(rect.x0 + rect.width * 0.4, rect.y1)
+    p3 = fitz.Point(rect.x1, rect.y0)
+    ink_path = [[p1.x, p1.y], [p2.x, p2.y], [p3.x, p3.y]]
+    annot = tag_docugrid_annotation(page.add_ink_annot([ink_path]), "check")
+    annot.set_colors(stroke=(0, 0.8, 0))
+    annot.set_border(width=4)
+    annot.update()
+    return annot
+
+
+def delete_one_docugrid_annotation(page: fitz.Page, hit_rect: fitz.Rect) -> bool:
+    """消しゴムに触れたDocuGrid注釈を、近いものから1要素だけ削除する。"""
+    center = fitz.Point(
+        (hit_rect.x0 + hit_rect.x1) / 2,
+        (hit_rect.y0 + hit_rect.y1) / 2,
     )
+    candidates: list[tuple[float, fitz.Annot]] = []
+    for annot in list(page.annots() or []):
+        subject = str((annot.info or {}).get("subject") or "")
+        if not subject.startswith(DOCUGRID_ANNOT_SUBJECT_PREFIX):
+            continue
+        if not annot.rect.intersects(hit_rect):
+            continue
+        annot_center = fitz.Point(
+            (annot.rect.x0 + annot.rect.x1) / 2,
+            (annot.rect.y0 + annot.rect.y1) / 2,
+        )
+        distance = math.hypot(annot_center.x - center.x, annot_center.y - center.y)
+        candidates.append((distance, annot))
+    if not candidates:
+        return False
+    _, target = min(candidates, key=lambda item: item[0])
+    page.delete_annot(target)
+    return True
 
 
 def _segment_rect(p1: fitz.Point, p2: fitz.Point, half_w: float) -> fitz.Rect:

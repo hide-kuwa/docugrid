@@ -76,8 +76,10 @@ export interface ViewerModalProps {
   ) => Promise<File | { file: File; previewDataUrl: string } | void>;
   onReorder: (newOrder: number[]) => Promise<File | void>;
   onMerge: (files: File[]) => Promise<File | void>;
-  onGetThumbnails: () => Promise<string[]>;
+  onGetThumbnails: (fileOverride?: File) => Promise<string[]>;
   onRenderPage: (page: number, fileOverride?: File) => Promise<string | null>;
+  /** Undo/Redo で親の file を差し替える */
+  onReplaceFile?: (file: File) => void;
   canAnnotate?: boolean;
   canApprove?: boolean;
   /** Docugrid グリッドとビューアの pageOrder を共有 */

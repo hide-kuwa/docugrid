@@ -254,13 +254,14 @@ export const AuditSplitPane = ({
       />
 
       {file ? (
-        <div className="pointer-events-none absolute right-1.5 top-1.5 z-20 flex gap-0.5 opacity-0 transition-opacity group-hover/pane:pointer-events-auto group-hover/pane:opacity-100 group-focus-within/pane:pointer-events-auto group-focus-within/pane:opacity-100">
+        <div className="pointer-events-auto absolute right-1.5 top-1.5 z-20 flex gap-0.5 rounded-md border border-slate-300 bg-white/95 p-0.5 opacity-100 shadow-md">
           <button
             type="button"
             onClick={() => workingFile && onFileChange(workingFile)}
             disabled={!workingFile}
             title="作業中の PDF に戻す"
-            className="pointer-events-auto rounded-md bg-slate-900/75 p-1 text-white shadow hover:bg-slate-800 disabled:opacity-40"
+            aria-label="作業中の PDF に戻す"
+            className="rounded p-1 text-slate-700 hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:text-slate-300"
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </button>
@@ -268,8 +269,9 @@ export const AuditSplitPane = ({
             type="button"
             onClick={() => setIsPickerOpen((v) => !v)}
             title="保存済 PDF から選択"
-            className={`pointer-events-auto rounded-md p-1 shadow ${
-              isPickerOpen ? "bg-blue-600 text-white" : "bg-slate-900/75 text-white hover:bg-slate-800"
+            aria-label="保存済 PDF から選択"
+            className={`rounded p-1 ${
+              isPickerOpen ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
             }`}
           >
             <Database className="h-3.5 w-3.5" />
@@ -278,7 +280,8 @@ export const AuditSplitPane = ({
             type="button"
             onClick={pickLocalFile}
             title="PC から PDF を開く"
-            className="pointer-events-auto rounded-md bg-slate-900/75 p-1 text-white shadow hover:bg-slate-800"
+            aria-label="PC から PDF を開く"
+            className="rounded p-1 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
           >
             <FolderOpen className="h-3.5 w-3.5" />
           </button>
@@ -286,7 +289,8 @@ export const AuditSplitPane = ({
             type="button"
             onClick={() => onFileChange(null)}
             title="クリア"
-            className="pointer-events-auto rounded-md bg-slate-900/75 p-1 text-white shadow hover:bg-red-700"
+            aria-label="PDF をクリア"
+            className="rounded p-1 text-slate-700 hover:bg-red-50 hover:text-red-700"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -294,8 +298,11 @@ export const AuditSplitPane = ({
       ) : null}
 
       {isPickerOpen && file ? (
-        <div className="absolute inset-x-0 top-0 z-30 max-h-[45%] overflow-hidden border-b border-slate-300 bg-white shadow-lg">
+        <div className="absolute right-2 top-9 z-30 max-h-[min(20rem,45%)] w-[min(22rem,calc(100%-1rem))] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-xl">
           <ServerFilePanel
+            className="max-h-[min(20rem,45vh)] border-r-0"
+            description="照合する他帳票・PDF を選んでください"
+            onClose={() => setIsPickerOpen(false)}
             onFileSelect={(picked) => {
               onFileChange(picked);
               setIsPickerOpen(false);

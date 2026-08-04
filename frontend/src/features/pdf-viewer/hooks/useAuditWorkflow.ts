@@ -70,10 +70,11 @@ export const useAuditWorkflow = ({
 
   const wasOpenRef = useRef(false);
 
-  // ビューアを開いた瞬間だけ付属 UI をリセット（版選択は ViewerModal 側で最新版へ）
+  // ビューアを開いた瞬間だけ付属 UI / 操作ログをリセット（版選択は ViewerModal 側で最新版へ）
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       setExpandedHistoryIdx(null);
+      setActionsLog([]);
     }
     wasOpenRef.current = isOpen;
   }, [isOpen]);
@@ -90,6 +91,7 @@ export const useAuditWorkflow = ({
     );
   }, [isOpen, history, slotWorkflowStatus]);
 
+  // 最新ファイルを history[0] に同期（操作ログは消さない — 注釈のたびに file が変わるため）
   useEffect(() => {
     if (isOpen && file) {
       setHistory((prev) => {
@@ -97,11 +99,8 @@ export const useAuditWorkflow = ({
         if (newHistory.length > 0) newHistory[0] = { ...newHistory[0], file: file };
         return newHistory;
       });
-      if (activeVerIdx === 0 && actionsLog.length > 0) {
-        setActionsLog([]);
-      }
     }
-  }, [isOpen, file, pdfUrl, activeVerIdx, actionsLog]);
+  }, [isOpen, file, pdfUrl]);
 
   const recordAction = (newFile: File | void, actionName: string, target: AuditTarget = "primary") => {
     if (!newFile) return;
@@ -113,6 +112,10 @@ export const useAuditWorkflow = ({
         return newHistory;
       });
     }
+  };
+
+  const popLastAction = () => {
+    setActionsLog((prev) => (prev.length > 0 ? prev.slice(1) : prev));
   };
 
   const createNewVersion = ({ type, eventType, actionTitle, status, reason }: CreateNewVersionParams) => {
@@ -253,6 +256,7 @@ export const useAuditWorkflow = ({
     isHistoryOpen,
     setIsHistoryOpen,
     recordAction,
+    popLastAction,
     handleWorkSave,
     handleRequestReview,
     handleStartAudit,

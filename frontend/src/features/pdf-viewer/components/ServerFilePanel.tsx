@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, Loader2, RefreshCcw, XCircle } from "lucide-react";
+import { FileText, Loader2, RefreshCcw, X, XCircle } from "lucide-react";
 import { API_BASE } from "@/config/api";
 import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 
@@ -16,12 +16,14 @@ type ServerFilePanelProps = {
   onFileSelect: (file: File) => void;
   className?: string;
   description?: string;
+  onClose?: () => void;
 };
 
 export const ServerFilePanel = ({
   onFileSelect,
   className,
   description = "表示する PDF を選択してください",
+  onClose,
 }: ServerFilePanelProps) => {
   const [legacyFilesEnabled, setLegacyFilesEnabled] = useState<boolean | null>(null);
   const [files, setFiles] = useState<ServerFileInfo[]>([]);
@@ -101,7 +103,18 @@ export const ServerFilePanel = ({
 
   if (legacyFilesEnabled === false) {
     return (
-      <div className={`w-full border-r border-slate-300 bg-slate-50 flex flex-col ${className ?? ""}`}>
+      <div className={`relative w-full border-r border-slate-300 bg-slate-50 flex flex-col ${className ?? ""}`}>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="閉じる"
+            title="閉じる"
+            className="absolute right-2 top-2 z-10 rounded border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center text-slate-500">
           <FileText className="h-8 w-8" />
           <p className="text-sm font-medium text-slate-600">サーバー PDF 一覧は無効です</p>
@@ -120,14 +133,27 @@ export const ServerFilePanel = ({
           <p className="text-sm font-semibold text-slate-700">サーバーPDF一覧</p>
           <p className="text-xs text-slate-500">{description}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadFiles()}
-          className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:border-slate-300 hover:text-slate-800"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          更新
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => void loadFiles()}
+            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:border-slate-300 hover:text-slate-800"
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+            更新
+          </button>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="閉じる"
+              title="閉じる"
+              className="rounded border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {isLoading ? (
