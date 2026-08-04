@@ -52,6 +52,27 @@ def is_billing_enforced() -> bool:
     return bool(price_id_for_plan(PRIMARY_PLAN_ID))
 
 
+# 課金免除ドメイン（無料登録・利用可）。env で上書き可能（カンマ区切り）。
+DEFAULT_BILLING_EXEMPT_EMAIL_DOMAINS = ("lext-tax.com",)
+
+
+def billing_exempt_email_domains() -> frozenset[str]:
+    raw = os.environ.get("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS")
+    if raw is None:
+        return frozenset(DEFAULT_BILLING_EXEMPT_EMAIL_DOMAINS)
+    return frozenset(
+        d.strip().lower().lstrip("@") for d in raw.split(",") if d.strip()
+    )
+
+
+def is_billing_exempt_email(email: str | None) -> bool:
+    """Emails on exempt domains (e.g. lext-tax.com) use the product without a subscription."""
+    normalized = (email or "").strip().lower()
+    if "@" not in normalized:
+        return False
+    return normalized.rsplit("@", 1)[1] in billing_exempt_email_domains()
+
+
 def list_plans() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for plan_id, meta in PLAN_CATALOG.items():

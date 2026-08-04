@@ -62,9 +62,10 @@ async def get_billing_me_endpoint(request: Request):
 
     configured = _stripe.is_stripe_configured()
     billing_enforced = is_billing_enforced()
+    from services.stripe_billing_service import is_billing_exempt_email
     from services.super_admin import is_super_admin_email
 
-    billing_exempt = is_super_admin_email(ctx.email)
+    billing_exempt = is_super_admin_email(ctx.email) or is_billing_exempt_email(ctx.email)
     active = billing_exempt or (not billing_enforced) or status in BILLING_ACTIVE_STATUSES
 
     return {

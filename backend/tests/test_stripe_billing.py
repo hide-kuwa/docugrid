@@ -107,6 +107,38 @@ def test_super_admin_bypasses_billing_gate_when_unpaid(
     assert body["canManageBilling"] is True
 
 
+def test_exempt_domain_bypasses_billing_gate_when_unpaid(
+    firm_billing_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """lext-tax.com のアカウントは未課金でも製品ルートを利用できる。"""
+    monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
+    monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
+    save_billing_record("firm_default", {"status": "none", "planId": "firm"})
+    headers = {**_admin_headers(), "X-Docugrid-User": "staff@lext-tax.com"}
+    r = client.get("/api/document-catalog/fields", headers=headers)
+    assert r.status_code == 200, r.text
+    me = client.get("/api/billing/me", headers=headers)
+    assert me.status_code == 200, me.text
+    body = me.json()
+    assert body["active"] is True
+    assert body["requiresAttention"] is False
+
+
+def test_exempt_domain_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from services.stripe_billing_service import is_billing_exempt_email
+
+    assert is_billing_exempt_email("a@lext-tax.com") is True
+    assert is_billing_exempt_email("A@LEXT-TAX.COM") is True
+    assert is_billing_exempt_email("a@evil-lext-tax.com") is False
+    assert is_billing_exempt_email("a@example.com") is False
+    assert is_billing_exempt_email(None) is False
+    monkeypatch.setenv("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS", "other.example")
+    assert is_billing_exempt_email("a@lext-tax.com") is False
+    assert is_billing_exempt_email("a@other.example") is True
+    monkeypatch.setenv("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS", "")
+    assert is_billing_exempt_email("a@lext-tax.com") is False
+
+
 def test_billing_gate_allows_document_view_when_active(
     firm_billing_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
