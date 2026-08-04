@@ -128,6 +128,10 @@ def _enforce_billing_active_for_permission(
 
     if is_super_admin_email(email):
         return
+    from services.stripe_billing_service import is_billing_exempt_email
+
+    if is_billing_exempt_email(email):
+        return
     if required_permission not in BILLING_BLOCKED_PERMISSIONS:
         return
     # Stripe key or catalog prices missing => keep app usable for local dev.
@@ -178,6 +182,16 @@ def _require_any_permission(request: Request, *required_permissions: str) -> tup
         names = ", ".join(required_permissions)
         raise HTTPException(status_code=403, detail=f"Permission denied: need one of {names}")
     return identity.role, permissions
+
+
+def _require_feature_writes(request: Request, feature_id: str) -> None:
+    """Block mutating APIs when the feature surface is not `live`."""
+    from services.feature_surfaces import surface_gate_payload, writes_allowed
+
+    ctx = _auth_context(request)
+    if writes_allowed(feature_id, ctx.firm_id):
+        return
+    raise HTTPException(status_code=403, detail=surface_gate_payload(feature_id, ctx.firm_id))
 
 
 def _require_platform_settings(request: Request) -> str:
@@ -450,6 +464,7 @@ __all__ = [
     "_require_client_access",
     "_require_client_permission",
     "_require_client_scope",
+    "_require_feature_writes",
     "_require_moneytree_client",
     "_require_permission",
     "_require_platform",

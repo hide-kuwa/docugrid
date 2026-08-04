@@ -211,6 +211,86 @@ async def delete_client_record(request: Request, client_id: str, item_id: str):
     return {"ok": True}
 
 
+@router.get("/api/clients/{client_id}/karte")
+async def get_client_karte(
+    request: Request,
+    client_id: str,
+    horizon: str | None = Query(None),
+    period_key: str | None = Query(None),
+    status: str | None = Query(None),
+    include_archived: bool = Query(False),
+):
+    _require_client_permission(request, "client.view", client_id)
+    ctx = _auth_context(request)
+    from services.client_karte_service import list_karte_entries
+
+    try:
+        items = list_karte_entries(
+            ctx.firm_id,
+            client_id,
+            horizon=horizon,
+            period_key=period_key,
+            status=status,
+            include_archived=include_archived,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"items": items}
+
+
+@router.get("/api/clients/{client_id}/karte/rag-chunks")
+async def get_client_karte_rag_chunks(
+    request: Request,
+    client_id: str,
+    horizon: str | None = Query(None),
+):
+    """RAG ingest 用の平坦チャンク（firm/client メタ付き）。"""
+    _require_client_permission(request, "client.view", client_id)
+    ctx = _auth_context(request)
+    from services.client_karte_service import list_karte_for_rag_export
+
+    horizons = [horizon] if horizon else None
+    try:
+        chunks = list_karte_for_rag_export(ctx.firm_id, client_id, horizons=horizons)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"chunks": chunks}
+
+
+@router.put("/api/clients/{client_id}/karte")
+async def upsert_client_karte(request: Request, client_id: str, body: ClientKarteEntryBody):
+    _require_client_permission(request, "settings.manage", client_id)
+    ctx = _auth_context(request)
+    from services.client_karte_service import upsert_karte_entry
+
+    try:
+        item = upsert_karte_entry(
+            ctx.firm_id,
+            client_id,
+            body.model_dump(),
+            actor=ctx.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_audit_event(request, "karte.upsert", "success", f"id={item['id']} horizon={item['horizon']}")
+    return item
+
+
+@router.delete("/api/clients/{client_id}/karte/{entry_id}")
+async def delete_client_karte(request: Request, client_id: str, entry_id: str):
+    _require_client_permission(request, "settings.manage", client_id)
+    ctx = _auth_context(request)
+    from services.client_karte_service import delete_karte_entry, get_karte_entry
+
+    existing = get_karte_entry(ctx.firm_id, entry_id)
+    if not existing or existing["client_id"] != client_id:
+        raise HTTPException(status_code=404, detail="Karte entry not found")
+    if not delete_karte_entry(ctx.firm_id, entry_id):
+        raise HTTPException(status_code=404, detail="Karte entry not found")
+    _log_audit_event(request, "karte.delete", "success", f"id={entry_id}")
+    return {"ok": True}
+
+
 @router.get("/api/clients/{client_id}/calendar/events")
 async def get_client_calendar_events(request: Request, client_id: str):
     role = _require_client_permission(request, "client.view", client_id)
@@ -325,45 +405,6 @@ async def get_document_catalog(
         f"category={category_id} period={pk} sort={sort}",
     )
     return payload
-
-
-@router.post("/api/ocr/jobs")
-async def post_ocr_job(
-    request: Request,
-    body: OcrJobCreateBody,
-    background_tasks: BackgroundTasks,
-):
-    """資料版に対する非同期 OCR / 分類ジョブを起動する。"""
-    role = _require_client_permission(request, "document.upload", body.client_id)
-    ctx = _auth_context(request)
-    version = get_version(body.document_version_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="Document version not found")
-    job = create_ocr_job(
-        firm_id=ctx.firm_id,
-        client_id=body.client_id,
-        document_version_id=body.document_version_id,
-        period_key=body.period_key,
-        slot_id=body.slot_id,
-        slot_label=body.slot_label,
-    )
-    background_tasks.add_task(run_ocr_job, job["id"])
-    _log_audit_event(
-        request,
-        "ocr.job",
-        "queued",
-        f"job={job['id']} ver={body.document_version_id}",
-    )
-    return job
-
-
-@router.get("/api/ocr/jobs/{job_id}")
-async def get_ocr_job_status(request: Request, job_id: str, client_id: str = Query(...)):
-    role = _require_client_permission(request, "document.view", client_id)
-    job = get_ocr_job(job_id)
-    if not job or job["client_id"] != client_id:
-        raise HTTPException(status_code=404, detail="OCR job not found")
-    return job
 
 
 @router.get("/api/document-status")

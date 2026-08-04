@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from services.doc_classifier import classify_pdf, extract_text_from_pdf
 from services.document_version_service import get_version, version_file_path
 from services.extracted_document_meta import enrich_classify_metadata
 from services.profile_extractors import profile_fields_from_text
+
+logger = logging.getLogger(__name__)
 
 STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage"
 OCR_JOBS_DB_PATH = STORAGE_DIR / "ocr_jobs.db"
@@ -41,6 +44,45 @@ def init_ocr_jobs_db() -> None:
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE ocr_jobs ADD COLUMN content_sha256 TEXT")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_index_state (
+                document_version_id TEXT PRIMARY KEY,
+                firm_id TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL,
+                ocr_status TEXT NOT NULL,
+                indexed_at TEXT,
+                last_job_id TEXT,
+                text_excerpt TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_doc_index_firm_status
+                ON document_index_state (firm_id, client_id, ocr_status)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_doc_index_sha
+                ON document_index_state (firm_id, content_sha256)
+            """
+        )
+        for col_sql in (
+            "ALTER TABLE document_index_state ADD COLUMN rag_status TEXT",
+            "ALTER TABLE document_index_state ADD COLUMN rag_error TEXT",
+        ):
+            try:
+                conn.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass
 
 
 def _now() -> str:
@@ -54,6 +96,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
             result = json.loads(row["result_json"])
         except Exception:
             result = None
+    keys = row.keys()
     return {
         "id": row["id"],
         "firm_id": row["firm_id"],
@@ -67,7 +110,203 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
         "error_message": row["error_message"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "content_sha256": row["content_sha256"] if "content_sha256" in keys else None,
+        "reused": False,
     }
+
+
+def _index_row_to_dict(row: sqlite3.Row) -> dict:
+    keys = row.keys()
+    return {
+        "document_version_id": row["document_version_id"],
+        "firm_id": row["firm_id"],
+        "client_id": row["client_id"],
+        "content_sha256": row["content_sha256"],
+        "ocr_status": row["ocr_status"],
+        "indexed_at": row["indexed_at"],
+        "last_job_id": row["last_job_id"],
+        "text_excerpt": row["text_excerpt"],
+        "updated_at": row["updated_at"],
+        "rag_status": row["rag_status"] if "rag_status" in keys else None,
+        "rag_error": row["rag_error"] if "rag_error" in keys else None,
+    }
+
+
+def get_index_state(document_version_id: str) -> Optional[dict]:
+    init_ocr_jobs_db()
+    with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM document_index_state WHERE document_version_id=?",
+            (document_version_id,),
+        ).fetchone()
+    return _index_row_to_dict(row) if row else None
+
+
+def upsert_index_state(
+    *,
+    document_version_id: str,
+    firm_id: str,
+    client_id: str,
+    content_sha256: str,
+    ocr_status: str,
+    last_job_id: Optional[str] = None,
+    text_excerpt: Optional[str] = None,
+    indexed_at: Optional[str] = None,
+) -> dict:
+    init_ocr_jobs_db()
+    now = _now()
+    with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO document_index_state (
+                document_version_id, firm_id, client_id, content_sha256,
+                ocr_status, indexed_at, last_job_id, text_excerpt, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(document_version_id) DO UPDATE SET
+                firm_id=excluded.firm_id,
+                client_id=excluded.client_id,
+                content_sha256=excluded.content_sha256,
+                ocr_status=excluded.ocr_status,
+                indexed_at=COALESCE(excluded.indexed_at, document_index_state.indexed_at),
+                last_job_id=COALESCE(excluded.last_job_id, document_index_state.last_job_id),
+                text_excerpt=COALESCE(excluded.text_excerpt, document_index_state.text_excerpt),
+                updated_at=excluded.updated_at
+            """,
+            (
+                document_version_id,
+                firm_id,
+                client_id,
+                content_sha256,
+                ocr_status,
+                indexed_at,
+                last_job_id,
+                (text_excerpt or "")[:2000] if text_excerpt is not None else None,
+                now,
+            ),
+        )
+    return get_index_state(document_version_id)  # type: ignore[return-value]
+
+
+def update_rag_index_status(
+    document_version_id: str,
+    *,
+    rag_status: str,
+    rag_error: Optional[str] = None,
+) -> None:
+    """Persist RAG ingest outcome without changing OCR status."""
+    init_ocr_jobs_db()
+    with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
+        conn.execute(
+            """
+            UPDATE document_index_state
+            SET rag_status=?, rag_error=?, updated_at=?
+            WHERE document_version_id=?
+            """,
+            (
+                rag_status,
+                (rag_error or "")[:500] if rag_error else None,
+                _now(),
+                document_version_id,
+            ),
+        )
+
+
+def list_index_states(
+    firm_id: str,
+    *,
+    client_id: Optional[str] = None,
+    ocr_status: Optional[str] = None,
+    limit: int = 100,
+) -> list[dict]:
+    init_ocr_jobs_db()
+    sql = "SELECT * FROM document_index_state WHERE firm_id=?"
+    params: list[Any] = [firm_id]
+    if client_id:
+        sql += " AND client_id=?"
+        params.append(client_id)
+    if ocr_status:
+        sql += " AND ocr_status=?"
+        params.append(ocr_status)
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 500)))
+    with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
+    return [_index_row_to_dict(r) for r in rows]
+
+
+def get_document_ocr_payload(document_version_id: str) -> Optional[dict]:
+    """Version meta + OCR text excerpt for MCP get_document."""
+    version = get_version(document_version_id)
+    if not version:
+        return None
+    state = get_index_state(document_version_id)
+    meta: Dict[str, Any] = {}
+    if version.metadata_json:
+        try:
+            meta = json.loads(version.metadata_json)
+        except Exception:
+            meta = {}
+    excerpt = (state or {}).get("text_excerpt") or meta.get("text_excerpt") or ""
+    full = meta.get("ocr_full_text") or ""
+    return {
+        "document_version_id": version.id,
+        "logical_document_id": version.logical_document_id,
+        "firm_id": (state or {}).get("firm_id"),
+        "client_id": (state or {}).get("client_id"),
+        "original_name": version.original_name,
+        "content_sha256": version.content_sha256,
+        "page_count": version.page_count,
+        "ocr_status": (state or {}).get("ocr_status") or meta.get("status") or "pending",
+        "indexed_at": (state or {}).get("indexed_at"),
+        "text_excerpt": (excerpt or full)[:2000],
+        "has_full_text": bool(full),
+        "classify": {
+            "confidence": meta.get("confidence"),
+            "engine": meta.get("engine"),
+            "best": meta.get("best"),
+            "category_id": meta.get("category_id"),
+        },
+    }
+
+
+def search_index_excerpts(
+    firm_id: str,
+    *,
+    keyword: str,
+    client_id: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Keyword search over OCR excerpts (I1 — no vectors). Firm scoped first."""
+    init_ocr_jobs_db()
+    kw = (keyword or "").strip().lower()
+    if not kw:
+        return []
+    sql = """
+        SELECT * FROM document_index_state
+        WHERE firm_id=? AND ocr_status='ready'
+          AND text_excerpt IS NOT NULL AND text_excerpt != ''
+    """
+    params: list[Any] = [firm_id]
+    if client_id:
+        sql += " AND client_id=?"
+        params.append(client_id)
+    sql += " ORDER BY indexed_at DESC LIMIT ?"
+    params.append(max(1, min(limit * 5, 500)))
+    with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
+    hits: list[dict] = []
+    for row in rows:
+        item = _index_row_to_dict(row)
+        hay = (item.get("text_excerpt") or "").lower()
+        if kw not in hay:
+            continue
+        hits.append(item)
+        if len(hits) >= limit:
+            break
+    return hits
 
 
 def create_ocr_job(
@@ -78,8 +317,38 @@ def create_ocr_job(
     period_key: Optional[str] = None,
     slot_id: Optional[str] = None,
     slot_label: Optional[str] = None,
+    force: bool = False,
 ) -> dict:
+    """Enqueue OCR. Same content_sha256 already ready => reuse (no re-run) unless force."""
     init_ocr_jobs_db()
+    version = get_version(document_version_id)
+    sha = (version.content_sha256 if version else "") or ""
+
+    if not force and version and sha:
+        state = get_index_state(document_version_id)
+        if (
+            state
+            and state.get("ocr_status") == "ready"
+            and state.get("content_sha256") == sha
+        ):
+            reused = {
+                "id": state.get("last_job_id") or f"reused-{document_version_id}",
+                "firm_id": firm_id,
+                "client_id": client_id,
+                "document_version_id": document_version_id,
+                "period_key": period_key,
+                "slot_id": slot_id,
+                "slot_label": slot_label,
+                "status": "done",
+                "result": {"reused": True, "ocr_status": "ready"},
+                "error_message": None,
+                "created_at": state.get("updated_at"),
+                "updated_at": state.get("updated_at"),
+                "content_sha256": sha,
+                "reused": True,
+            }
+            return reused
+
     job_id = uuid.uuid4().hex
     now = _now()
     with sqlite3.connect(OCR_JOBS_DB_PATH) as conn:
@@ -87,8 +356,8 @@ def create_ocr_job(
             """
             INSERT INTO ocr_jobs
                 (id, firm_id, client_id, document_version_id, period_key, slot_id, slot_label,
-                 status, result_json, error_message, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', NULL, NULL, ?, ?)
+                 status, result_json, error_message, created_at, updated_at, content_sha256)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', NULL, NULL, ?, ?, ?)
             """,
             (
                 job_id,
@@ -100,8 +369,17 @@ def create_ocr_job(
                 slot_label,
                 now,
                 now,
+                sha or None,
             ),
         )
+    upsert_index_state(
+        document_version_id=document_version_id,
+        firm_id=firm_id,
+        client_id=client_id,
+        content_sha256=sha or f"unknown:{document_version_id}",
+        ocr_status="processing",
+        last_job_id=job_id,
+    )
     return get_ocr_job(job_id)  # type: ignore[return-value]
 
 
@@ -153,11 +431,27 @@ def run_ocr_job(job_id: str) -> dict:
     version = get_version(job["document_version_id"])
     if not version:
         _update_job(job_id, status="failed", error="document version not found")
+        upsert_index_state(
+            document_version_id=job["document_version_id"],
+            firm_id=job["firm_id"],
+            client_id=job["client_id"],
+            content_sha256=job.get("content_sha256") or f"unknown:{job['document_version_id']}",
+            ocr_status="failed",
+            last_job_id=job_id,
+        )
         return get_ocr_job(job_id)  # type: ignore[return-value]
 
     path = version_file_path(version)
     if not path.exists():
         _update_job(job_id, status="failed", error="pdf file missing")
+        upsert_index_state(
+            document_version_id=job["document_version_id"],
+            firm_id=job["firm_id"],
+            client_id=job["client_id"],
+            content_sha256=version.content_sha256 or f"unknown:{job['document_version_id']}",
+            ocr_status="failed",
+            last_job_id=job_id,
+        )
         return get_ocr_job(job_id)  # type: ignore[return-value]
 
     content = path.read_bytes()
@@ -188,6 +482,23 @@ def run_ocr_job(job_id: str) -> dict:
             for i in range(page_count):
                 if i < len(ocr_page_texts):
                     ocr_page_texts[i]["text"] = full_text[i * chunk_size : (i + 1) * chunk_size]
+
+        try:
+            from services.ocr_quality_service import apply_ocr_quality_boost
+
+            result = apply_ocr_quality_boost(
+                firm_id=job["firm_id"],
+                client_id=job["client_id"],
+                content=content,
+                filename=version.original_name or "document.pdf",
+                candidates=candidates,
+                classify_result=result,
+                full_text=full_text or "",
+                text_engine=text_engine or "none",
+            )
+        except Exception:
+            logger.exception("ocr quality boost failed job=%s", job_id)
+
         if slot_id and full_text and len(full_text.strip()) >= 8:
             from services.document_extraction_schema import extract_from_schema, has_extraction_schema
 
@@ -217,6 +528,8 @@ def run_ocr_job(job_id: str) -> dict:
             "ocr_full_text": (full_text or "")[:50000],
             "ocr_text_engine": text_engine,
             "ocr_page_texts": ocr_page_texts,
+            "vision_escalated": bool(result.get("vision_escalated")),
+            "vision_type": result.get("vision_type"),
         }
         enriched = enrich_classify_metadata(
             classify_meta,
@@ -250,12 +563,63 @@ def run_ocr_job(job_id: str) -> dict:
 
         job_result = {**enriched, "normalize_result": normalize_payload}
         _update_job(job_id, status="done", result=job_result)
+        upsert_index_state(
+            document_version_id=job["document_version_id"],
+            firm_id=job["firm_id"],
+            client_id=job["client_id"],
+            content_sha256=version.content_sha256,
+            ocr_status="ready",
+            last_job_id=job_id,
+            text_excerpt=str(enriched.get("text_excerpt") or full_text or "")[:2000],
+            indexed_at=_now(),
+        )
+        try:
+            from services.rag_index_service import ingest_ocr_document
+
+            rag_text = str(full_text or enriched.get("text_excerpt") or "")
+            rag_result = ingest_ocr_document(
+                firm_id=job["firm_id"],
+                client_id=job["client_id"],
+                document_version_id=job["document_version_id"],
+                content_sha256=version.content_sha256 or "",
+                text=rag_text,
+                logical_document_id=version.logical_document_id,
+            )
+            update_rag_index_status(
+                job["document_version_id"],
+                rag_status="ready",
+                rag_error=None,
+            )
+            logger.info(
+                "rag ingest ok ver=%s chunks=%s reused=%s",
+                job["document_version_id"],
+                rag_result.get("chunk_count"),
+                rag_result.get("reused"),
+            )
+        except Exception as rag_exc:
+            logger.exception(
+                "rag ingest failed ver=%s job=%s",
+                job["document_version_id"],
+                job_id,
+            )
+            try:
+                update_rag_index_status(
+                    job["document_version_id"],
+                    rag_status="failed",
+                    rag_error=str(rag_exc)[:500],
+                )
+            except Exception:
+                logger.exception(
+                    "rag_status update failed ver=%s", job["document_version_id"]
+                )
         try:
             from services.auto_vouching import process_auto_vouch_queue_for_version
 
             process_auto_vouch_queue_for_version(job["document_version_id"])
         except Exception:
-            pass
+            logger.exception(
+                "auto_vouch after OCR failed ver=%s", job["document_version_id"]
+            )
     except Exception as exc:
         _update_job(job_id, status="failed", error=str(exc)[:500])
         processing_meta = enrich_classify_metadata(
@@ -266,5 +630,13 @@ def run_ocr_job(job_id: str) -> dict:
         )
         processing_meta["status"] = "failed"
         update_version_metadata(job["document_version_id"], processing_meta)
+        upsert_index_state(
+            document_version_id=job["document_version_id"],
+            firm_id=job["firm_id"],
+            client_id=job["client_id"],
+            content_sha256=version.content_sha256 if version else f"unknown:{job['document_version_id']}",
+            ocr_status="failed",
+            last_job_id=job_id,
+        )
 
     return get_ocr_job(job_id)  # type: ignore[return-value]

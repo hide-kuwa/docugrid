@@ -72,7 +72,9 @@ import { getPostLoginPath } from "@/lib/persona";
 import { FirmMembersPanel } from "@/features/org/FirmMembersPanel";
 import { AuthoringTemplatesPanel } from "@/features/authoring/components/AuthoringTemplatesPanel";
 import { ScreenDesignPanel } from "@/features/screen-design/ScreenDesignPanel";
+import { FeatureSurfacesPanel } from "@/features/feature-surfaces/FeatureSurfacesPanel";
 import { McpConnectPanel } from "@/features/mcp/McpConnectPanel";
+import { OcrIndexLabPanel } from "@/features/mcp/OcrIndexLabPanel";
 import { ReviewChecklistSettingsPanel } from "@/features/review-checklist/ReviewChecklistSettingsPanel";
 import { BillingSettingsPanel } from "@/features/billing/BillingSettingsPanel";
 import { MoneytreeFirmOverview } from "@/features/integrations/MoneytreeFirmOverview";
@@ -101,6 +103,7 @@ const CATEGORIES: ConfigCategory[] = [
   { id: "reviewChecklist", label: "監査チェックリスト", subLabel: "CHECKLIST" },
   { id: "shortcuts", label: "ショートカット", subLabel: "KEYS" },
   { id: "appearance", label: "見た目", subLabel: "UI" },
+  { id: "featureSurfaces", label: "機能の公開", subLabel: "GATES" },
   { id: "billing", label: "プラン・決済", subLabel: "BILLING" },
   { id: "screens", label: "画面設計", subLabel: "SCREENS" },
   { id: "integrations", label: "外部連携", subLabel: "INTEGRATIONS" },
@@ -1319,6 +1322,7 @@ export default function SettingsPage() {
           )}
 
           {activeCategory === "screens" && <ScreenDesignPanel />}
+          {activeCategory === "featureSurfaces" && <FeatureSurfacesPanel />}
 
           {activeCategory === "audit" && (
             <section className="fade-in-up space-y-4">
@@ -1594,8 +1598,9 @@ export default function SettingsPage() {
           )}
 
           {activeCategory === "mcp" && (
-            <section className="fade-in-up">
+            <section className="fade-in-up space-y-8">
               <McpConnectPanel user={currentUser} embedded />
+              <OcrIndexLabPanel />
             </section>
           )}
 

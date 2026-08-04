@@ -23,12 +23,14 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, Field
 
 from services.pdf_annotations import (
-    delete_annots_intersecting,
-    draw_freehand_eraser,
+    add_box_annotation,
+    add_check_annotation,
+    add_line_annotation,
+    delete_one_docugrid_annotation,
     draw_freehand_marker,
-    erase_region,
     parse_norm_path_json,
     path_bbox_rect,
+    tag_docugrid_annotation,
 )
 
 from docugrid_auth import (

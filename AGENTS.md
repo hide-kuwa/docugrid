@@ -21,6 +21,7 @@ Start: `docs/dev-quickstart.md`
 | **Common bug/leak causes (read before PR)** | `docs/common-pitfalls.md` | — |
 | **Document taxonomy (種別/様式/レポート)** | `docs/document-taxonomy.md` | `backend/config/document_types.yaml`, `form_catalog.yaml` |
 | **Platform vision (packs / 正規化 API・MCP)** | `docs/platform-packs-vision.md` | `backend/config/*.yaml`, `mcp-server/src/tools.ts` |
+| **OCR → RAG → MCP / 本番ホスト次章** | `docs/future-plan-ocr-rag-mcp.md` | `mcp-server/`（ingest 未実装） |
 | File upload / AV policy | `docs/file-upload-security.md` | `upload_limits.py`, `tenancy.py` |
 | Google Drive per firm | `docs/google-drive-storage-strategy.md` | `slot_drive_sync.py`, `drive.py` |
 | Threat model + gaps | `docs/security-checklist.md` | — |
@@ -50,6 +51,7 @@ cd backend && python -m pytest tests/test_security.py -q
 | New/changed API | `backend/main.py` + `docs/api-contract.md` |
 | Tenancy bug | `tenancy.py` → caller in `main.py` → `test_security.py` |
 | MCP tool auth | `mcp-server/src/guards.ts`, `tools.ts` |
+| OCR/RAG/MCP next chapter | `docs/future-plan-ocr-rag-mcp.md` |
 | Frontend auth UX | `frontend/src/` + `/api/auth/me` contract |
 
 ## Token discipline (Fable5 sessions)

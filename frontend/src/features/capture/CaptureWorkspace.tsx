@@ -18,7 +18,7 @@ import type { OrgClient } from "@/config/organization";
 import { checkSession, loadCurrentUser } from "@/lib/auth";
 import { setClientScope } from "@/lib/api-auth";
 import { resolvePersona } from "@/lib/persona";
-import { WipSection } from "@/components/work-in-progress";
+import { FeatureSurfaceSection } from "@/features/feature-surfaces/FeatureSurfaceGate";
 
 const CATEGORY_OPTIONS: { id: CaptureCategory; label: string }[] = [
   { id: "general", label: "一般" },
@@ -194,11 +194,10 @@ export function CaptureWorkspace() {
         {error ? (
           <div className="rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</div>
         ) : null}
-        <WipSection
-          kind="mock"
-          title="インボイス登録番号の確認"
-          message="国税庁API連携前のローカル検証です。サンプル: T8326405515335"
+        <FeatureSurfaceSection
+          featureId="capture.invoice_verify"
           bodyClassName="p-4"
+          fallbackMessage="国税庁API連携前のローカル検証です。サンプル: T8326405515335"
         >
           <div className="flex flex-wrap items-end gap-2">
             <input
@@ -254,7 +253,7 @@ export function CaptureWorkspace() {
               ))}
             </div>
           ) : null}
-        </WipSection>
+        </FeatureSurfaceSection>
         <CaptureZone category={category} uploading={uploading} onFiles={(f) => void handleUpload(f)} />
         {loading ? (
           <p className="text-center text-sm text-slate-500">読み込み中…</p>

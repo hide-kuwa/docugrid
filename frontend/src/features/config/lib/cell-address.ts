@@ -7,6 +7,7 @@ export type ConfigSheetId =
   | "roles"
   | "documents"
   | "screens"
+  | "featureSurfaces"
   | "integrations"
   | "audit";
 

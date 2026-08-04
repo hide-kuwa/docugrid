@@ -260,6 +260,66 @@ export class DocugridApiClient {
     const q = new URLSearchParams({ client_id: clientId, period_key: periodKey });
     return this.request<unknown[]>(`/classify/pending?${q}`, { scopeClientId: clientId });
   }
+
+  createOcrJob(params: {
+    clientId: string;
+    documentVersionId: string;
+    periodKey?: string;
+    slotId?: string;
+    slotLabel?: string;
+    force?: boolean;
+  }) {
+    return this.request<Record<string, unknown>>("/ocr/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      scopeClientId: params.clientId,
+      body: JSON.stringify({
+        client_id: params.clientId,
+        document_version_id: params.documentVersionId,
+        period_key: params.periodKey,
+        slot_id: params.slotId,
+        slot_label: params.slotLabel,
+        force: params.force ?? false,
+      }),
+    });
+  }
+
+  listOcrStatus(clientId: string, ocrStatus?: string, limit = 100) {
+    const q = new URLSearchParams({ client_id: clientId, limit: String(limit) });
+    if (ocrStatus) q.set("ocr_status", ocrStatus);
+    return this.request<{ items: Array<Record<string, unknown>>; count: number }>(
+      `/ocr/status?${q}`,
+      { scopeClientId: clientId },
+    );
+  }
+
+  getOcrDocument(clientId: string, documentVersionId: string) {
+    const q = new URLSearchParams({ client_id: clientId });
+    return this.request<Record<string, unknown>>(
+      `/ocr/documents/${encodeURIComponent(documentVersionId)}?${q}`,
+      { scopeClientId: clientId },
+    );
+  }
+
+  searchInternalDocs(
+    clientId: string,
+    query: string,
+    limit = 50,
+    mode: "keyword" | "semantic" | "hybrid" = "hybrid",
+  ) {
+    const q = new URLSearchParams({
+      client_id: clientId,
+      q: query,
+      limit: String(limit),
+      mode,
+    });
+    return this.request<{
+      query: string;
+      mode?: string;
+      items: Array<Record<string, unknown>>;
+      count: number;
+    }>(`/ocr/search?${q}`, { scopeClientId: clientId });
+  }
 }
 
 function extractErrorMessage(body: unknown): string | undefined {

@@ -56,8 +56,10 @@ def startup_init_db() -> None:
     init_client_records_db()
     init_client_calendar_db()
     from services.client_simulation_service import init_client_simulation_db
+    from services.client_karte_service import init_client_karte_db
 
     init_client_simulation_db()
+    init_client_karte_db()
     init_ocr_jobs_db()
     ensure_demo_calendar_seed()
     ensure_invoice_cache_seed()

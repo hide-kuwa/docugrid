@@ -312,4 +312,116 @@ export function registerTools(server: McpServer, api: DocugridApiClient) {
       return jsonText(result);
     },
   );
+
+  server.registerTool(
+    "get_document",
+    {
+      description:
+        "資料版の OCR メタ・テキスト抜粋を取得します（document.view / 担当顧問先のみ）。",
+      inputSchema: {
+        client_id: z.string().min(1).describe("顧問先 ID"),
+        document_version_id: z.string().min(1).describe("document_version_id"),
+      },
+    },
+    async ({ client_id, document_version_id }) => {
+      const result = await withUserScope(session, async (profile) => {
+        session.assertPermission(profile, "document.view");
+        session.assertClientAccess(profile, client_id);
+        const doc = await api.getOcrDocument(client_id, document_version_id);
+        return { ...scopedClientSummary(profile), client_id, ...doc };
+      });
+      if ("isError" in result && result.isError) return result;
+      return jsonText(result);
+    },
+  );
+
+  server.registerTool(
+    "list_ocr_status",
+    {
+      description: "顧問先の OCR / インデックス状態一覧（未完了・失敗の確認用）。",
+      inputSchema: {
+        client_id: z.string().min(1).describe("顧問先 ID"),
+        ocr_status: z
+          .enum(["pending", "processing", "ready", "failed"])
+          .optional()
+          .describe("状態フィルタ"),
+        limit: z.number().int().min(1).max(500).optional().describe("件数上限"),
+      },
+    },
+    async ({ client_id, ocr_status, limit }) => {
+      const result = await withUserScope(session, async (profile) => {
+        session.assertPermission(profile, "document.view");
+        session.assertClientAccess(profile, client_id);
+        const payload = await api.listOcrStatus(client_id, ocr_status, limit ?? 100);
+        return { ...scopedClientSummary(profile), client_id, ...payload };
+      });
+      if ("isError" in result && result.isError) return result;
+      return jsonText(result);
+    },
+  );
+
+  server.registerTool(
+    "trigger_ocr",
+    {
+      description:
+        "資料版を OCR キューに投入します。同一 sha が ready なら再利用（force で再実行）。",
+      inputSchema: {
+        client_id: z.string().min(1).describe("顧問先 ID"),
+        document_version_id: z.string().min(1).describe("document_version_id"),
+        period_key: z.string().optional(),
+        slot_id: z.string().optional(),
+        slot_label: z.string().optional(),
+        force: z.boolean().optional().describe("true なら ready でも再実行"),
+      },
+    },
+    async ({ client_id, document_version_id, period_key, slot_id, slot_label, force }) => {
+      const result = await withUserScope(session, async (profile) => {
+        session.assertPermission(profile, "document.upload");
+        session.assertClientAccess(profile, client_id);
+        const job = await api.createOcrJob({
+          clientId: client_id,
+          documentVersionId: document_version_id,
+          periodKey: period_key,
+          slotId: slot_id,
+          slotLabel: slot_label,
+          force,
+        });
+        return { ...scopedClientSummary(profile), client_id, job };
+      });
+      if ("isError" in result && result.isError) return result;
+      return jsonText(result);
+    },
+  );
+
+  server.registerTool(
+    "search_internal_docs",
+    {
+      description:
+        "顧問先スコープの社内検索（キーワード + 最小 RAG）。firm/client で先に絞り、抜粋とメタを返します。",
+      inputSchema: {
+        client_id: z.string().min(1).describe("顧問先 ID"),
+        keyword: z.string().min(1).describe("検索クエリ（キーワード / セマンティック）"),
+        limit: z.number().int().min(1).max(100).optional(),
+        mode: z
+          .enum(["keyword", "semantic", "hybrid"])
+          .optional()
+          .describe("既定 hybrid。semantic は埋め込み類似度"),
+      },
+    },
+    async ({ client_id, keyword, limit, mode }) => {
+      const result = await withUserScope(session, async (profile) => {
+        session.assertPermission(profile, "document.view");
+        session.assertClientAccess(profile, client_id);
+        const payload = await api.searchInternalDocs(
+          client_id,
+          keyword,
+          limit ?? 50,
+          mode ?? "hybrid",
+        );
+        return { ...scopedClientSummary(profile), client_id, ...payload };
+      });
+      if ("isError" in result && result.isError) return result;
+      return jsonText(result);
+    },
+  );
 }

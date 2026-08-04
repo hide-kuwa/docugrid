@@ -86,3 +86,9 @@ Moneytree 本番連携時は追加:
 - Stripe Webhook（公開 API URL ができてから）
 - Moneytree 本番 client_id（契約後）
 - フロントを Vercel 以外に載せるか（最初は Vercel 推奨で十分）
+
+---
+
+## AI 検索・MCP（次章）
+
+ホストが固まったあとの OCR → RAG → MCP の実装順は [`future-plan-ocr-rag-mcp.md`](future-plan-ocr-rag-mcp.md) を正本とする。

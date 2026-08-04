@@ -1360,7 +1360,7 @@ def test_highlight_eraser_removes_freehand_marker() -> None:
     assert eraser_r.status_code == 200, eraser_r.text
     erased_pdf = eraser_r.content
     after_erase = _sample_page_pixel(erased_pdf, 0, 0.5, 0.5)
-    assert after_erase[0] >= 240 and after_erase[1] >= 240 and after_erase[2] >= 240
+    assert all(abs(actual - original) <= 1 for actual, original in zip(after_erase, baseline))
     assert after_erase != before_erase
 
 

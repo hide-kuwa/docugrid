@@ -490,6 +490,18 @@ class ClientRecordItemBody(BaseModel):
     sort_order: int = 0
 
 
+class ClientKarteEntryBody(BaseModel):
+    id: str | None = None
+    horizon: str
+    period_key: str | None = None
+    title: str = ""
+    body: str = ""
+    status: str = "open"
+    due_date: str | None = None
+    meeting_at: str | None = None
+    tags: list[str] = []
+    sort_order: int = 0
+
 
 class ClientCalendarEventBody(BaseModel):
     id: str | None = None
@@ -1414,6 +1426,7 @@ class OcrJobCreateBody(BaseModel):
     period_key: Optional[str] = None
     slot_id: Optional[str] = None
     slot_label: Optional[str] = None
+    force: bool = False
 
 __all__ = [
     "AuditEventItem",
@@ -1444,6 +1457,7 @@ __all__ = [
     "CaptureReauditBody",
     "CaptureRouteBody",
     "ClientCalendarEventBody",
+    "ClientKarteEntryBody",
     "ClientCommThreadBody",
     "ClientMasterClient",
     "ClientMasterGroup",

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
   BarChart3,
+  BookOpen,
   Calculator,
   ClipboardList,
   Database,
@@ -18,7 +19,8 @@ export type DataWorkspaceTabId =
   | "stockValuation"
   | "communications"
   | "investigations"
-  | "special";
+  | "special"
+  | "karte";
 
 export type DataWorkspaceTab = {
   id: DataWorkspaceTabId;
@@ -35,6 +37,13 @@ export const DATA_WORKSPACE_TABS: DataWorkspaceTab[] = [
     subLabel: "MASTER",
     description: "顧客マスタ・正規化データ",
     icon: Database,
+  },
+  {
+    id: "karte",
+    label: "カルテ",
+    subLabel: "KARTE",
+    description: "打合せ宿題・期末メモ・永続注意点",
+    icon: BookOpen,
   },
   {
     id: "charts",

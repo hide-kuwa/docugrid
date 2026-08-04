@@ -8,6 +8,7 @@ from api.routers.metric_mappings import router as metric_mappings_router
 from api.routers.integrations import router as integrations_router
 from api.routers.auth import router as auth_router
 from api.routers.firm import router as firm_router
+from api.routers.feature_surfaces import router as feature_surfaces_router
 from api.routers.audit import router as audit_router
 from api.routers.slots import router as slots_router
 from api.routers.review_events import router as review_events_router
@@ -15,8 +16,10 @@ from api.routers.documents import router as documents_router
 from api.routers.payroll import router as payroll_router
 from api.routers.capture import router as capture_router
 from api.routers.client_data import router as client_data_router
+from api.routers.ocr import router as ocr_router
 from api.routers.billing import router as billing_router
 from api.routers.pdf import router as pdf_router
+from api.routers.accuracy_lab import router as accuracy_lab_router
 
 
 def register_routers(app: FastAPI) -> None:
@@ -29,6 +32,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(integrations_router)
     app.include_router(auth_router)
     app.include_router(firm_router)
+    app.include_router(feature_surfaces_router)
     app.include_router(audit_router)
     app.include_router(slots_router)
     app.include_router(review_events_router)
@@ -36,5 +40,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(payroll_router)
     app.include_router(capture_router)
     app.include_router(client_data_router)
+    app.include_router(ocr_router)
     app.include_router(billing_router)
     app.include_router(pdf_router)
+    app.include_router(accuracy_lab_router)

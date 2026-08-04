@@ -1,0 +1,77 @@
+# DocuGrid 機能サーフェス（工事中 / 見本 / 本番）
+# ノーコードでモード切替。コードに機能 ID を足すときだけこの YAML を更新する。
+# 上書きは platform / firm の JSON（settings UI）→ resolve でマージ。
+#
+# mode:
+#   live     — 本番利用可（書き込み可）
+#   preview  — 見本・デモのみ（UI は見せるが書き込みブロック）
+#   planned  — 工事中（バナー表示、書き込みブロック）
+
+version: 1
+
+surfaces:
+  - id: capture.gallery
+    label: 撮影ギャラリー
+    description: キャプチャワークスペースのギャラリー／未振り分け枠
+    default_mode: preview
+    group: capture
+
+  - id: capture.invoice_verify
+    label: インボイス番号確認
+    description: 国税庁API連携前のローカル検証 UI
+    default_mode: preview
+    group: capture
+
+  - id: persona.home
+    label: ペルソナ専用ホーム
+    description: ペルソナ別ホームのウィジェット枠
+    default_mode: planned
+    group: persona
+
+  - id: client_data.tax_alerts
+    label: 税務アラート（届出リマインド）
+    description: 法人税・消費税の自動リマインド
+    default_mode: planned
+    group: client_data
+
+  - id: client_data.stock_valuation
+    label: 棚卸・在庫評価
+    description: 顧客データの棚卸パネル
+    default_mode: preview
+    group: client_data
+
+  - id: client_data.communications
+    label: 顧客コミュニケーション
+    description: 連絡・共有履歴パネル
+    default_mode: preview
+    group: client_data
+
+  - id: client_data.tax_calendar
+    label: 納付カレンダー
+    description: 税納付スケジュール表示
+    default_mode: partial
+    group: client_data
+
+  - id: client_data.progress
+    label: 顧客進捗パネル
+    description: 資料進捗・不足サマリ
+    default_mode: preview
+    group: client_data
+
+  - id: client_data.karte
+    label: 顧客カルテ
+    description: 打合せ宿題・期メモ・永続注意点
+    default_mode: live
+    group: client_data
+
+  - id: config.document_categories
+    label: 書類カテゴリマトリクス
+    description: 設定画面の書類種別マトリクス拡張
+    default_mode: preview
+    group: config
+
+  - id: rag.mcp_search
+    label: RAG / MCP 社内検索ラボ
+    description: OCR状態・ハイブリッド検索（キーワード+埋め込み）・再OCRを設定画面で実験
+    default_mode: preview
+    group: ai

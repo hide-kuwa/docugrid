@@ -572,6 +572,13 @@ export default function DocuGridPage() {
 
   const periodKey = periodKeyFromIndex(activePeriodIdx, activeMode, matrixPeriods);
 
+  const [karteDefaultPeriodKey, setKarteDefaultPeriodKey] = useState("year:1");
+  useEffect(() => {
+    if (periodKey.startsWith("year:") || periodKey.startsWith("month:")) {
+      setKarteDefaultPeriodKey(periodKey);
+    }
+  }, [periodKey]);
+
   useEffect(() => {
     const lastPeriodIdx = 1 + matrixPeriods.year.length;
     if (activePeriodIdx > lastPeriodIdx) {
@@ -2220,11 +2227,12 @@ export default function DocuGridPage() {
     }
   }, [assignPreviewFromFile, scopedAuthHeaders]);
 
-  const handleGetThumbnails = useCallback(async () => {
-    if (!file) return [];
+  const handleGetThumbnails = useCallback(async (fileOverride?: File) => {
+    const targetFile = fileOverride ?? file;
+    if (!targetFile) return [];
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", targetFile);
       const response = await authFetch(API_ENDPOINTS.THUMBNAILS, {
         method: "POST",
         body: formData,
@@ -2240,6 +2248,18 @@ export default function DocuGridPage() {
       return [];
     }
   }, [file, scopedAuthHeaders]);
+
+  const handleReplaceFile = useCallback((next: File) => {
+    setFile(next);
+    assignPreviewFromFile(next);
+    if (activeSlotKey) {
+      setSlotDocs((prev) => {
+        const cur = prev[activeSlotKey];
+        if (!cur) return prev;
+        return { ...prev, [activeSlotKey]: { ...cur, file: next } };
+      });
+    }
+  }, [assignPreviewFromFile, activeSlotKey]);
 
   // ★修正: 第2引数で fileOverride を受け取れるように変更
   // これにより、State更新を待たずに「今できたファイル」で即時レンダリングできる
@@ -2572,6 +2592,7 @@ export default function DocuGridPage() {
                 onOpenMetricVouch={onOpenMetricVouch}
                 docStatus={docStatus}
                 docStatusLoading={!docStatus && canViewDocument}
+                defaultPeriodKey={karteDefaultPeriodKey}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-12 text-sm text-slate-500">
@@ -2713,6 +2734,7 @@ export default function DocuGridPage() {
         onMerge={handleMerge}
         onGetThumbnails={handleGetThumbnails}
         onRenderPage={handleRenderPage}
+        onReplaceFile={handleReplaceFile}
         canAnnotate={canAnnotateDocument}
         canApprove={canApproveAudit}
         syncWithDocugrid={docugridPageCount > 0}

@@ -16,6 +16,7 @@ export type SettingsCategoryId =
   | "templates"
   | "reviewChecklist"
   | "screens"
+  | "featureSurfaces"
   | "integrations"
   | "billing"
   | "audit"
@@ -41,6 +42,7 @@ export const FIRM_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "mcp",
   "shortcuts",
   "appearance",
+  "featureSurfaces",
 ];
 
 /** 開発・プラットフォーム設定（ロール設計・画面設計など） */
@@ -48,6 +50,7 @@ export const DEV_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "roles",
   "documents",
   "screens",
+  "featureSurfaces",
   "integrations",
 ];
 

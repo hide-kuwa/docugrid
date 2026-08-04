@@ -47,6 +47,12 @@ SSOT_DOMAINS: list[SsotDomain] = [
         "service": "client_records_service",
     },
     {
+        "id": "karte",
+        "label": "顧客カルテ（期・永続・宿題）",
+        "storage": "storage/client_karte.db",
+        "service": "client_karte_service",
+    },
+    {
         "id": "calendar",
         "label": "経費突合カレンダー",
         "storage": "storage/client_calendar.db",

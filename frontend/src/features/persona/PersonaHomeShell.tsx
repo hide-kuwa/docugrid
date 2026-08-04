@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import type { PersonaDefinition, PersonaId } from "@/config/personas";
 import type { ScreenDesignPersona } from "@/config/screen-design-types";
-import { WipBadge, WipBanner } from "@/components/work-in-progress";
+import { WipBadge } from "@/components/work-in-progress";
+import { FeatureSurfaceBanner } from "@/features/feature-surfaces/FeatureSurfaceGate";
 import { resolvePersonaHome } from "@/features/persona/homes";
 import { PersonaWorkspaceLayout } from "@/features/persona/PersonaWorkspaceLayout";
 import { fetchResolvedScreenDesign } from "@/features/screen-design/screen-design-api";
@@ -43,11 +44,10 @@ function PersonaPlaceholderHome({
 
   return (
     <PersonaWorkspaceLayout persona={persona} user={user} design={design} demoMode={demoMode}>
-      <WipBanner
-        kind="planned"
-        title={`${persona.label} ワークスペース`}
-        message="このペルソナ専用ホームは工事中です。下のリストは予定ウィジェットの枠です。"
+      <FeatureSurfaceBanner
+        featureId="persona.home"
         className="mb-4"
+        fallbackMessage="このペルソナ専用ホームは工事中です。下のリストは予定ウィジェットの枠です。"
       />
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-800">

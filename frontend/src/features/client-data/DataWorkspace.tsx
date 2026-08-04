@@ -11,6 +11,7 @@ import { ClientInvestigationsPanel } from "@/features/client-data/ClientInvestig
 import type { DocumentStatusSummary } from "@/features/docugrid/lib/document-status";
 import { ClientStockValuationPanel } from "@/features/client-data/ClientStockValuationPanel";
 import { ClientSpecialNotesPanel } from "@/features/client-data/ClientSpecialNotesPanel";
+import { ClientKartePanel } from "@/features/client-data/ClientKartePanel";
 import { ClientPayrollPanel } from "@/features/payroll/ClientPayrollPanel";
 import { DataContextGrid } from "@/features/client-data/DataContextGrid";
 import type { DataWorkspaceTabId } from "@/features/client-data/data-workspace-tabs";
@@ -30,6 +31,8 @@ type Props = {
   onOpenMetricVouch?: (metricKey: string, valueYen: number) => void;
   docStatus?: DocumentStatusSummary | null;
   docStatusLoading?: boolean;
+  /** マトリクスの期キー（カルテの期フィールド既定） */
+  defaultPeriodKey?: string;
 };
 
 export function DataWorkspace({
@@ -41,6 +44,7 @@ export function DataWorkspace({
   onOpenMetricVouch,
   docStatus,
   docStatusLoading,
+  defaultPeriodKey,
 }: Props) {
   const [activeTab, setActiveTab] = useState<DataWorkspaceTabId>("master");
   const [client, setClient] = useState(clientFromOrg);
@@ -102,6 +106,13 @@ export function DataWorkspace({
         ) : null}
         {activeTab === "special" ? (
           <ClientSpecialNotesPanel client={client} canEdit={canEdit} />
+        ) : null}
+        {activeTab === "karte" ? (
+          <ClientKartePanel
+            client={client}
+            canEdit={canEdit}
+            defaultPeriodKey={defaultPeriodKey}
+          />
         ) : null}
       </div>
     </div>

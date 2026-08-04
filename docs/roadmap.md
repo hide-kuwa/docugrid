@@ -500,6 +500,7 @@ CREATE TABLE matrix_slot_assignments (
 | `docs/payroll-withholding-year-end-vision.md` | まるふ・源泉徴収簿・社保源泉・年末調整ビジョン |
 | `docs/capture-gallery-ux-vision.md` | ログイン即カメラ・Pinterest 風ギャラリー UX |
 | `docs/expense-reimbursement-vision.md` | 営業経費精算（インボイス・カレンダー RAG）ビジョン |
+| `docs/future-plan-ocr-rag-mcp.md` | 本番ホスト（Vercel+VPS）と OCR→RAG→MCP の次章プラン |
 | `docs/tomorrow-tasks.md` | P1 由来タスクのメモ（本 roadmap と重複する場合は本書を優先） |
 
 ---
@@ -517,5 +518,6 @@ CREATE TABLE matrix_slot_assignments (
 | 2026-06-19 | `temporal-master-pattern.md` 追加（法定マスタ履歴管理） |
 | 2026-06-19 | `product-naming.md` — DocuGrid / 税務会計システム / TAXX に呼び名整理 |
 | 2026-06-19 | `extensibility-principles.md` — 拡張性横断原則 |
+| 2026-08-03 | `future-plan-ocr-rag-mcp.md` — Host + OCR/RAG/MCP 次章へのリンク |
 | 2026-06-19 | `new-product-onboarding.md` — 新リポ引き継ぎガイド |
 | 2026-06-19 | `no-code-config-vision.md` — ノーコード優先・dev コンフィグ |
