@@ -249,6 +249,10 @@ export default function ViewerModal({
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [leftPageJump, setLeftPageJump] = useState<number | undefined>(undefined);
   const [rightPageJump, setRightPageJump] = useState<number | undefined>(undefined);
+  const [leftPageJumpToken, setLeftPageJumpToken] = useState(0);
+  const [rightPageJumpToken, setRightPageJumpToken] = useState(0);
+  const [leftFileHash, setLeftFileHash] = useState<string | null>(null);
+  const [rightFileHash, setRightFileHash] = useState<string | null>(null);
   const [linkSaveStatus, setLinkSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isSavingLinks, setIsSavingLinks] = useState(false);
   const [isLoadingLinks, setIsLoadingLinks] = useState(false);
@@ -864,6 +868,38 @@ export default function ViewerModal({
       .join("");
   };
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const h = await hashFile(leftFile);
+      if (active) setLeftFileHash(h ?? null);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [leftFile]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const h = await hashFile(rightFile);
+      if (active) setRightFileHash(h ?? null);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [rightFile]);
+
+  const jumpPaneToPage = useCallback((side: AuditSide, page: number) => {
+    if (side === "left") {
+      setLeftPageJump(page);
+      setLeftPageJumpToken((n) => n + 1);
+    } else {
+      setRightPageJump(page);
+      setRightPageJumpToken((n) => n + 1);
+    }
+  }, []);
+
   const activeVersion = history[activeVerIdx] || fallbackActiveVersion;
 
   const persistedVersionId = isPersistedDocumentVersionId(activeVersion.versionId)
@@ -924,6 +960,7 @@ export default function ViewerModal({
     const nextPoint: AuditCheckPoint = {
       side,
       ...point,
+      fileName: point.fileName || sideFile?.name,
       fileHash: await hashFile(sideFile),
     };
     if (!pendingCheckPoint || pendingCheckPoint.side === side) {
@@ -947,8 +984,8 @@ export default function ViewerModal({
     setLinksRailOpen(true);
     setPendingCheckPoint(null);
     setSelectedLinkId(link.id);
-    setLeftPageJump(left.page);
-    setRightPageJump(right.page);
+    jumpPaneToPage("left", left.page);
+    jumpPaneToPage("right", right.page);
   };
 
   const handleAutoVouchMatch = useCallback(
@@ -989,8 +1026,10 @@ export default function ViewerModal({
       setLinksRailOpen(true);
       setPendingCheckPoint(null);
       setSelectedLinkId(link.id);
+      jumpPaneToPage("left", left.page);
+      jumpPaneToPage("right", right.page);
     },
-    [leftFile, rightFile, pendingCheckPoint, currentUser, persistAuditLinks],
+    [leftFile, rightFile, pendingCheckPoint, currentUser, persistAuditLinks, jumpPaneToPage],
   );
 
   const orderedAuditLinks = useMemo(
@@ -1020,11 +1059,43 @@ export default function ViewerModal({
     });
   }, [persistAuditLinks]);
 
-  const focusAuditLink = (link: AuditCheckLink) => {
-    setSelectedLinkId(link.id);
-    setLeftPageJump(link.left.page);
-    setRightPageJump(link.right.page);
-  };
+  const focusAuditLink = useCallback(
+    (link: AuditCheckLink, side?: AuditSide) => {
+      setSelectedLinkId(link.id);
+      setLinksRailOpen(true);
+
+      const leftHash = link.left.fileHash;
+      const rightHash = link.right.fileHash;
+      const leftOnLeft = !leftHash || leftHash === leftFileHash;
+      const rightOnRight = !rightHash || rightHash === rightFileHash;
+      const leftOnRight = Boolean(leftHash) && leftHash === rightFileHash;
+      const rightOnLeft = Boolean(rightHash) && rightHash === leftFileHash;
+      const shouldSwap =
+        (!leftOnLeft || !rightOnRight) && (leftOnRight || rightOnLeft);
+
+      if (shouldSwap) {
+        setLeftFile(rightFile);
+        setRightFile(leftFile);
+        setLeftSlotDocId(rightSlotDocId);
+        setRightSlotDocId(leftSlotDocId);
+        setLeftFileHash(rightFileHash);
+        setRightFileHash(leftFileHash);
+        setPendingCheckPoint(null);
+      }
+
+      if (!side || side === "left") jumpPaneToPage("left", link.left.page);
+      if (!side || side === "right") jumpPaneToPage("right", link.right.page);
+    },
+    [
+      leftFile,
+      rightFile,
+      leftFileHash,
+      rightFileHash,
+      leftSlotDocId,
+      rightSlotDocId,
+      jumpPaneToPage,
+    ],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1212,9 +1283,14 @@ export default function ViewerModal({
                   onCheckPoint={handleSplitCheckPoint}
                   activeTool={activeTool}
                   pageJump={leftPageJump}
+                  pageJumpToken={leftPageJumpToken}
                   selectedLinkId={selectedLinkId}
                   pendingOnThisSide={pendingCheckPoint?.side === "left"}
                   clientId={slotIdentity?.clientId}
+                  onSelectLink={(linkId) => {
+                    const link = orderedAuditLinks.find((l) => l.id === linkId);
+                    if (link) focusAuditLink(link);
+                  }}
                 />
                 <AuditSplitPane
                   side="right"
@@ -1230,10 +1306,15 @@ export default function ViewerModal({
                   onCheckPoint={handleSplitCheckPoint}
                   activeTool={activeTool}
                   pageJump={rightPageJump}
+                  pageJumpToken={rightPageJumpToken}
                   selectedLinkId={selectedLinkId}
                   pendingOnThisSide={pendingCheckPoint?.side === "right"}
                   emptyClickOpensSavedPicker
                   clientId={slotIdentity?.clientId}
+                  onSelectLink={(linkId) => {
+                    const link = orderedAuditLinks.find((l) => l.id === linkId);
+                    if (link) focusAuditLink(link);
+                  }}
                 />
                 {linksRailOpen ? (
                   <AuditLinksRail
@@ -1241,6 +1322,10 @@ export default function ViewerModal({
                     selectedLinkId={selectedLinkId}
                     isSavingLinks={isSavingLinks}
                     isLoadingLinks={isLoadingLinks}
+                    leftLoadedName={leftFile?.name}
+                    rightLoadedName={rightFile?.name}
+                    leftLoadedHash={leftFileHash}
+                    rightLoadedHash={rightFileHash}
                     onFocusLink={focusAuditLink}
                     onCommentChange={updateLinkComment}
                     onCommentBlur={flushAuditLinkComments}

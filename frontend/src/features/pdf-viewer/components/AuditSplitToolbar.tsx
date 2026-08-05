@@ -39,7 +39,13 @@ export const AuditSplitToolbar = ({
       {autoVouchSlot}
       <span className="min-w-0 truncate text-slate-300">
         {pendingCheckPoint
-          ? `待ち: ${pendingCheckPoint.side === "left" ? "右" : "左"} P${pendingCheckPoint.page + 1}`
+          ? `待ち: ${pendingCheckPoint.side === "left" ? "右" : "左"} — ${
+              pendingCheckPoint.fileName
+                ? pendingCheckPoint.fileName.length > 24
+                  ? `${pendingCheckPoint.fileName.slice(0, 23)}…`
+                  : pendingCheckPoint.fileName
+                : "PDF"
+            } の次に、反対側 P? をクリック`
           : "チェック(✓) → 左クリック → 右クリック"}
       </span>
       <button

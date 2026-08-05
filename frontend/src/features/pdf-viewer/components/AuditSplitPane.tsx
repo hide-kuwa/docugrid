@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Database, FolderOpen, RefreshCcw, Upload, X } from "lucide-react";
+import { Database, FileText, FolderOpen, RefreshCcw, Upload, X } from "lucide-react";
 import { API_ENDPOINTS } from "@/config/api";
 import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 import type { PaneMarker } from "../lib/audit-link-markers";
@@ -19,10 +19,13 @@ type AuditSplitPaneProps = {
   onCheckPoint: (side: AuditSide, point: { page: number; x: number; y: number; fileName?: string }) => void;
   activeTool: ToolType;
   pageJump?: number;
+  /** pageJump が同じページでも再スクロールさせるトークン */
+  pageJumpToken?: number;
   selectedLinkId?: string | null;
   pendingOnThisSide?: boolean;
   emptyClickOpensSavedPicker?: boolean;
   clientId?: string;
+  onSelectLink?: (linkId: string) => void;
 };
 
 function SplitScrollPage({
@@ -35,6 +38,7 @@ function SplitScrollPage({
   activeTool,
   onCheckPoint,
   registerPageEl,
+  onSelectLink,
 }: {
   pageIndex: number;
   file: File;
@@ -45,6 +49,7 @@ function SplitScrollPage({
   activeTool: ToolType;
   onCheckPoint: AuditSplitPaneProps["onCheckPoint"];
   registerPageEl: (pageIndex: number, el: HTMLDivElement | null) => void;
+  onSelectLink?: (linkId: string) => void;
 }) {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,7 +121,8 @@ function SplitScrollPage({
           const isPending = marker.kind === "pending";
           const isSelected = marker.linkId && marker.linkId === selectedLinkId;
           return (
-            <div
+            <button
+              type="button"
               key={`${side}-m-${pageIndex}-${idx}-${marker.linkId ?? "pending"}`}
               className={`absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-[9px] font-bold text-white shadow ${
                 isPending ? "animate-pulse border-amber-200" : "border-white"
@@ -126,9 +132,18 @@ function SplitScrollPage({
                 top: `${marker.y * 100}%`,
                 backgroundColor: marker.color,
               }}
+              title={
+                marker.linkId
+                  ? `#${marker.linkIndex} へジャンプ`
+                  : "照合待ち"
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                if (marker.linkId && onSelectLink) onSelectLink(marker.linkId);
+              }}
             >
               {isPending ? "?" : marker.linkIndex}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -147,10 +162,12 @@ export const AuditSplitPane = ({
   onCheckPoint,
   activeTool,
   pageJump,
+  pageJumpToken,
   selectedLinkId,
   pendingOnThisSide = false,
   emptyClickOpensSavedPicker = false,
   clientId,
+  onSelectLink,
 }: AuditSplitPaneProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -163,6 +180,8 @@ export const AuditSplitPane = ({
     side === "left"
       ? "ring-red-400/60"
       : "ring-emerald-400/60";
+  const sideLabel = side === "left" ? "左" : "右";
+  const sideLabelClass = side === "left" ? "text-red-700" : "text-emerald-700";
 
   useEffect(() => {
     pageRefs.current = [];
@@ -171,8 +190,11 @@ export const AuditSplitPane = ({
 
   useEffect(() => {
     if (pageJump == null || pageJump < 0) return;
-    pageRefs.current[pageJump]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [pageJump]);
+    const t = window.setTimeout(() => {
+      pageRefs.current[pageJump]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+    return () => window.clearTimeout(t);
+  }, [pageJump, pageJumpToken, file]);
 
   const registerPageEl = useCallback((index: number, el: HTMLDivElement | null) => {
     pageRefs.current[index] = el;
@@ -312,6 +334,20 @@ export const AuditSplitPane = ({
       ) : null}
 
       <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {file ? (
+          <div
+            className={`flex shrink-0 items-center gap-1.5 border-b px-2 py-1 text-[10px] ${
+              side === "left"
+                ? "border-red-100 bg-red-50/90 text-red-900"
+                : "border-emerald-100 bg-emerald-50/90 text-emerald-900"
+            }`}
+            title={file.name}
+          >
+            <span className={`font-bold ${sideLabelClass}`}>{sideLabel}</span>
+            <FileText className="h-3 w-3 shrink-0 opacity-70" />
+            <span className="min-w-0 truncate font-medium">{file.name}</span>
+          </div>
+        ) : null}
         {!file && isPickerOpen ? (
           <div className="flex min-h-0 flex-1 flex-col bg-white">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-2 py-1.5">
@@ -352,6 +388,7 @@ export const AuditSplitPane = ({
                 activeTool={activeTool}
                 onCheckPoint={onCheckPoint}
                 registerPageEl={registerPageEl}
+                onSelectLink={onSelectLink}
               />
             ))}
           </div>
