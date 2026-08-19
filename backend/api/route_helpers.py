@@ -56,7 +56,18 @@ def _row_to_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
         deleted_from_slot_label=row["deleted_from_slot_label"] if "deleted_from_slot_label" in row.keys() else None,
         client_shared_at=row["client_shared_at"] if "client_shared_at" in row.keys() else None,
         client_shared_by=row["client_shared_by"] if "client_shared_by" in row.keys() else None,
+        contains_individual_number=_row_flag_true(row, "contains_individual_number"),
+        spi_retention_until=row["spi_retention_until"] if "spi_retention_until" in row.keys() else None,
     )
+
+
+def _row_flag_true(row: sqlite3.Row, col: str) -> bool:
+    if col not in row.keys():
+        return False
+    val = row[col]
+    if val is None:
+        return False
+    return str(val).strip().lower() in ("1", "true", "yes")
 
 
 def _latest_workflow_status(client_id: str, period_key: str, slot_id: str) -> Optional[str]:

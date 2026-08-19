@@ -151,6 +151,8 @@ def _init_slot_documents_db() -> None:
             "deleted_from_slot_label",
             "client_shared_at",
             "client_shared_by",
+            "contains_individual_number",
+            "spi_retention_until",
         ):
             try:
                 conn.execute(f"ALTER TABLE slot_documents ADD COLUMN {col} TEXT")

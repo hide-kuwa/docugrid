@@ -160,10 +160,30 @@ class ClientMasterGroup(BaseModel):
     note: str | None = None
 
 
+class ClientMasterRelation(BaseModel):
+    id: str
+    kind: str
+    fromClientId: str
+    toClientId: str
+    percent: float | None = None
+    note: str | None = None
+    groupId: str | None = None
+
+
+class ClientMasterRelationLayout(BaseModel):
+    """関係図の手動配置（ノード絶対座標・ラベル/曲げオフセット）."""
+
+    nodes: dict[str, dict[str, float]] = Field(default_factory=dict)
+    labels: dict[str, dict[str, float]] = Field(default_factory=dict)
+    bends: dict[str, dict[str, float]] = Field(default_factory=dict)
+
 
 class ClientMasterPayload(BaseModel):
     clients: list[ClientMasterClient]
     groups: list[ClientMasterGroup]
+    relations: list[ClientMasterRelation] = Field(default_factory=list)
+    # key = "{focusClientId}__{viewMode}"
+    relationLayouts: dict[str, ClientMasterRelationLayout] = Field(default_factory=dict)
     updated_at: str | None = None
 
 
@@ -206,6 +226,7 @@ class GoogleLoginRequest(BaseModel):
 class FirmRegisterBody(BaseModel):
     credential: str
     firm_label: str = Field(..., min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, max_length=80)
 
 
 
@@ -335,6 +356,30 @@ class BillingPortalBody(BaseModel):
 class BillingAiTopupBody(BaseModel):
     packs: int = 1
 
+
+class MigrationPendingConfirmBody(BaseModel):
+    client_id: str
+    period_key: str
+    slot_id: str
+    slot_label: Optional[str] = None
+
+
+class MigrationPendingBatchConfirmBody(BaseModel):
+    item_ids: List[str]
+    client_id: str
+    period_key: str
+    slot_id: str
+    slot_label: Optional[str] = None
+
+
+class MigrationPendingReclassifyBody(BaseModel):
+    item_ids: List[str] = Field(default_factory=list)
+    source_path_prefix: Optional[str] = None
+    vision_mode: str = "on"
+
+
+class MigrationWalletGrantBody(BaseModel):
+    tokens: int = Field(ge=1, le=50_000_000)
 
 
 class BillingPartnerCreateBody(BaseModel):
@@ -1169,6 +1214,56 @@ class DriveStatusPayload(BaseModel):
     drive_credentials_configured: bool = False
     drive_mode: str = "unconfigured"
     service_account_email: Optional[str] = None
+    auth_method: str = "none"
+    connected_email: Optional[str] = None
+    oauth_available: bool = False
+    root_location: str = "none"
+    shared_drive_id: Optional[str] = None
+    shared_drive_name: Optional[str] = None
+    office_visible: bool = False
+    needs_office_share: bool = False
+    shared_member_emails: List[str] = Field(default_factory=list)
+    eligible_member_emails: List[str] = Field(default_factory=list)
+    eligible_member_count: int = 0
+    office_hints: List[str] = Field(default_factory=list)
+
+
+
+class DriveOAuthStartPayload(BaseModel):
+    authorize_url: str
+    redirect_uri: str
+
+
+
+class DriveSharedDriveItem(BaseModel):
+    id: str
+    name: str = ""
+
+
+
+class DriveSharedDrivesPayload(BaseModel):
+    drives: List[DriveSharedDriveItem] = Field(default_factory=list)
+    empty_hint: Optional[str] = None
+    connected_email: Optional[str] = None
+
+
+
+class DriveUseSharedDriveBody(BaseModel):
+    shared_drive_id: str
+
+
+
+class DriveShareFirmPayload(BaseModel):
+    ok: bool = True
+    mode: str = "member_emails"
+    shared: List[str] = Field(default_factory=list)
+    already: List[str] = Field(default_factory=list)
+    failed: List[dict] = Field(default_factory=list)
+    domain: Optional[str] = None
+    message: str = ""
+    root_folder_id: Optional[str] = None
+    eligible_member_emails: List[str] = Field(default_factory=list)
+    tip: Optional[str] = None
 
 
 
@@ -1243,6 +1338,8 @@ class SlotDocumentItem(BaseModel):
     deleted_from_slot_label: Optional[str] = None
     client_shared_at: Optional[str] = None
     client_shared_by: Optional[str] = None
+    contains_individual_number: bool = False
+    spi_retention_until: Optional[str] = None
 
 
 
@@ -1447,6 +1544,10 @@ __all__ = [
     "AutoLinkResponse",
     "AutoVouchStampItem",
     "BillingAiTopupBody",
+    "MigrationPendingConfirmBody",
+    "MigrationPendingBatchConfirmBody",
+    "MigrationPendingReclassifyBody",
+    "MigrationWalletGrantBody",
     "BillingCheckoutBody",
     "BillingPartnerAttachBody",
     "BillingPartnerCreateBody",
@@ -1461,6 +1562,7 @@ __all__ = [
     "ClientCommThreadBody",
     "ClientMasterClient",
     "ClientMasterGroup",
+    "ClientMasterRelation",
     "ClientMasterPayload",
     "ClientMetricUpsertBody",
     "ClientRecordItemBody",
@@ -1468,6 +1570,11 @@ __all__ = [
     "DocumentTemplateUpdateBody",
     "DocumentVersionItem",
     "DriveStatusPayload",
+    "DriveOAuthStartPayload",
+    "DriveSharedDriveItem",
+    "DriveSharedDrivesPayload",
+    "DriveUseSharedDriveBody",
+    "DriveShareFirmPayload",
     "ExtractionApplyBody",
     "FileInfo",
     "FirmClientTaskSummary",

@@ -133,7 +133,7 @@ export function MaGoalsPanel() {
           </div>
           <h1 className="mt-1 text-2xl font-black text-white">10億円 ARR ロードマップ</h1>
           <p className="mt-1 text-sm text-slate-400">
-            目標 ARR・チャーン・事務所数・月次獲得ペースを逆算します（料金: 基本 ¥1万 + 顧問先 ¥100/社/月）
+            目標 ARR・チャーン・事務所数・月次獲得ペースを逆算します（料金: 基本 ¥1万 + 顧問先 ¥300/社/月）
           </p>
         </div>
         <button

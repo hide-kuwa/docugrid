@@ -28,6 +28,8 @@ from api.schemas import (
     ClientMasterClient,
     ClientMasterGroup,
     ClientMasterPayload,
+    ClientMasterRelation,
+    ClientMasterRelationLayout,
     RolePermissionsPayload,
     StakeholderMasterPayload,
     SystemConfigPayload,
@@ -51,7 +53,13 @@ from services.client_profile_fields import (
     sanitize_client_profile_meta,
 )
 from services.drive_context import drive_credentials_configured, resolve_drive_mode
-from services.tenancy import AuthContext, get_client_firm_id, get_client_firm_map, invalidate_client_firm_cache
+from services.tenancy import (
+    DEFAULT_FIRM_ID,
+    AuthContext,
+    get_client_firm_id,
+    get_client_firm_map,
+    invalidate_client_firm_cache,
+)
 
 def _load_system_config(firm_id: str) -> SystemConfigPayload:
     data = load_system_config_raw(firm_id)
@@ -138,10 +146,6 @@ def _system_config_update_touches_platform(
         return True
     if (body.ai_gemini_model or "gemini-2.5-flash") != existing.ai_gemini_model:
         return True
-    if (body.drive_root_folder_id or "").strip() != (existing.drive_root_folder_id or "").strip():
-        return True
-    if body.google_drive_connected != existing.google_drive_connected:
-        return True
     return False
 
 
@@ -149,6 +153,7 @@ def _mask_system_config_for_role(payload: SystemConfigPayload, role: str) -> Sys
     perms = _get_role_permissions().get(role, set())
     if "settings.platform" in perms:
         return payload
+    # Firm admins (settings.manage) may configure Drive; AI keys stay platform-only.
     return payload.model_copy(
         update={
             "ocr_auto_extract_enabled": True,
@@ -158,11 +163,104 @@ def _mask_system_config_for_role(payload: SystemConfigPayload, role: str) -> Sys
             "ai_openai_key_last4": None,
             "ai_gemini_key_configured": False,
             "ai_gemini_key_last4": None,
-            "drive_credentials_configured": False,
-            "drive_mode": "unconfigured",
-            "drive_root_folder_id": None,
         }
     )
+
+
+_RELATION_KINDS = frozenset({"group_company", "relative", "shareholding", "referral"})
+
+
+def _default_client_relations() -> list[ClientMasterRelation]:
+    return [
+        ClientMasterRelation(
+            id="r1",
+            kind="group_company",
+            fromClientId="c1",
+            toClientId="c2",
+            groupId="g1",
+            note="鈴木グループ",
+        ),
+        ClientMasterRelation(
+            id="r1b",
+            kind="group_company",
+            fromClientId="c7",
+            toClientId="c1",
+            groupId="g1",
+            note="持株→事業会社",
+        ),
+        ClientMasterRelation(
+            id="r1c",
+            kind="group_company",
+            fromClientId="c1",
+            toClientId="c9",
+            groupId="g1",
+            note="食品子会社",
+        ),
+        ClientMasterRelation(
+            id="r2",
+            kind="relative",
+            fromClientId="c1",
+            toClientId="c4",
+            groupId="g2",
+            note="代表との親族関係",
+        ),
+        ClientMasterRelation(
+            id="r2b",
+            kind="relative",
+            fromClientId="c4",
+            toClientId="c6",
+            groupId="g2",
+            note="配偶者",
+        ),
+        ClientMasterRelation(
+            id="r3",
+            kind="shareholding",
+            fromClientId="c4",
+            toClientId="c1",
+            percent=60.0,
+            note="個人株主",
+        ),
+        ClientMasterRelation(
+            id="r3b",
+            kind="shareholding",
+            fromClientId="c6",
+            toClientId="c1",
+            percent=15.0,
+            note="親族株主",
+        ),
+        ClientMasterRelation(
+            id="r3c",
+            kind="shareholding",
+            fromClientId="c7",
+            toClientId="c2",
+            percent=100.0,
+            groupId="g1",
+            note="HD がテックを保有",
+        ),
+        ClientMasterRelation(
+            id="r4",
+            kind="shareholding",
+            fromClientId="c3",
+            toClientId="c5",
+            percent=25.0,
+            groupId="g3",
+            note="主要株主",
+        ),
+        ClientMasterRelation(
+            id="r5",
+            kind="referral",
+            fromClientId="c8",
+            toClientId="c1",
+            note="田村さんからの紹介で顧問開始",
+        ),
+        ClientMasterRelation(
+            id="r5b",
+            kind="referral",
+            fromClientId="c5",
+            toClientId="c9",
+            note="不動産経由でフーズを紹介",
+        ),
+    ]
 
 
 def _default_client_master() -> ClientMasterPayload:
@@ -173,12 +271,35 @@ def _default_client_master() -> ClientMasterPayload:
             ClientMasterClient(id="c3", name="佐藤商事", fiscalMonth=9, category="corporate", tags=["卸売"]),
             ClientMasterClient(id="c4", name="鈴木 太郎 (個人)", fiscalMonth=12, category="individual", tags=["個人事業"]),
             ClientMasterClient(id="c5", name="山田不動産", fiscalMonth=12, category="corporate", tags=["不動産"]),
+            ClientMasterClient(id="c6", name="鈴木 花子 (個人)", fiscalMonth=12, category="individual", tags=["個人"]),
+            ClientMasterClient(id="c7", name="鈴木HD", fiscalMonth=3, category="corporate", tags=["持株"]),
+            ClientMasterClient(id="c8", name="田村 一郎 (個人)", fiscalMonth=12, category="individual", tags=["紹介元"]),
+            ClientMasterClient(id="c9", name="鈴木フーズ", fiscalMonth=3, category="corporate", tags=["食品"]),
         ],
         groups=[
-            ClientMasterGroup(id="g1", name="鈴木グループ", relationType="group_company", clientIds=["c1", "c2"], note="グループ会社として連結管理"),
-            ClientMasterGroup(id="g2", name="鈴木家資産管理", relationType="relative_group", clientIds=["c1", "c4"], note="親族保有資産・個人事業を含む"),
-            ClientMasterGroup(id="g3", name="山田不動産 株主関係", relationType="shareholder", clientIds=["c5", "c3"], note="主要株主の関連先を監視"),
+            ClientMasterGroup(
+                id="g1",
+                name="鈴木グループ",
+                relationType="group_company",
+                clientIds=["c1", "c2", "c7", "c9"],
+                note="グループ会社として連結管理",
+            ),
+            ClientMasterGroup(
+                id="g2",
+                name="鈴木家資産管理",
+                relationType="relative_group",
+                clientIds=["c1", "c4", "c6"],
+                note="親族保有資産・個人事業を含む",
+            ),
+            ClientMasterGroup(
+                id="g3",
+                name="山田不動産 株主関係",
+                relationType="shareholder",
+                clientIds=["c5", "c3"],
+                note="主要株主の関連先を監視",
+            ),
         ],
+        relations=_default_client_relations(),
         updated_at=None,
     )
 
@@ -188,9 +309,66 @@ def _load_client_master() -> ClientMasterPayload:
         return _default_client_master()
     try:
         data = json.loads(CLIENT_MASTER_PATH.read_text(encoding="utf-8"))
-        return ClientMasterPayload(**data)
+        had_relations_key = "relations" in data
+        payload = ClientMasterPayload(**data)
     except Exception:
         return _default_client_master()
+    # 旧ファイル（relations キーなし）だけデモ辺を付与。空配列の明示保存は尊重する。
+    if not had_relations_key and not payload.relations:
+        id_set = {c.id for c in payload.clients}
+        seeded = [
+            r
+            for r in _default_client_relations()
+            if r.fromClientId in id_set and r.toClientId in id_set
+        ]
+        if seeded:
+            payload.relations = seeded
+    # デモ顧問先 c1 がある事務所だけ、不足しているデモ事例を足して永続化
+    if any(c.id == "c1" for c in payload.clients):
+        merged = _merge_missing_demo_seed(payload)
+        if _demo_seed_changed(payload, merged):
+            for c in merged.clients:
+                if not (c.firmId or "").strip():
+                    c.firmId = DEFAULT_FIRM_ID
+            return _save_client_master(merged)
+        payload = merged
+    return payload
+
+
+def _demo_seed_changed(before: ClientMasterPayload, after: ClientMasterPayload) -> bool:
+    if len(before.clients) != len(after.clients):
+        return True
+    if len(before.relations) != len(after.relations):
+        return True
+    before_groups = {g.id: tuple(g.clientIds) for g in before.groups}
+    after_groups = {g.id: tuple(g.clientIds) for g in after.groups}
+    return before_groups != after_groups
+
+
+def _merge_missing_demo_seed(payload: ClientMasterPayload) -> ClientMasterPayload:
+    demo = _default_client_master()
+    by_client = {c.id: c for c in payload.clients}
+    for c in demo.clients:
+        if c.id not in by_client:
+            by_client[c.id] = c.model_copy(update={"firmId": DEFAULT_FIRM_ID})
+    by_group = {g.id: g for g in payload.groups}
+    for g in demo.groups:
+        existing = by_group.get(g.id)
+        if existing is None:
+            by_group[g.id] = g
+        else:
+            merged_ids = list(dict.fromkeys([*existing.clientIds, *g.clientIds]))
+            by_group[g.id] = existing.model_copy(update={"clientIds": merged_ids})
+    by_rel = {r.id: r for r in payload.relations}
+    for r in demo.relations:
+        by_rel.setdefault(r.id, r)
+    return ClientMasterPayload(
+        clients=list(by_client.values()),
+        groups=list(by_group.values()),
+        relations=list(by_rel.values()),
+        relationLayouts=payload.relationLayouts,
+        updated_at=payload.updated_at,
+    )
 
 
 def _merge_client_master_for_firm(ctx: AuthContext, payload: ClientMasterPayload) -> ClientMasterPayload:
@@ -235,9 +413,32 @@ def _merge_client_master_for_firm(ctx: AuthContext, payload: ClientMasterPayload
         for g in payload.groups
         if all(cid in payload_client_ids for cid in g.clientIds)
     ]
+    kept_relations = [
+        r
+        for r in existing.relations
+        if r.fromClientId in other_client_ids and r.toClientId in other_client_ids
+    ]
+    merged_relations = kept_relations + [
+        r
+        for r in payload.relations
+        if r.fromClientId in payload_client_ids and r.toClientId in payload_client_ids
+    ]
+    # 配置キーは "{focusClientId}__{viewMode}"。他 firm のフォーカス分は残し、自 firm は payload で置換。
+    kept_layouts = {
+        k: v
+        for k, v in existing.relationLayouts.items()
+        if _relation_layout_focus_id(k) in other_client_ids
+    }
+    incoming_layouts = {
+        k: v
+        for k, v in payload.relationLayouts.items()
+        if _relation_layout_focus_id(k) in payload_client_ids
+    }
     return ClientMasterPayload(
         clients=merged_clients,
         groups=merged_groups,
+        relations=merged_relations,
+        relationLayouts={**kept_layouts, **incoming_layouts},
         updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     )
 
@@ -278,6 +479,118 @@ def _validate_client_master(payload: ClientMasterPayload) -> None:
                     status_code=400,
                     detail=f"Group {g.id!r} references unknown client {cid!r}",
                 )
+    rids = [r.id for r in payload.relations]
+    if len(rids) != len(set(rids)):
+        raise HTTPException(status_code=400, detail="Duplicate relation id")
+    group_ids = {g.id for g in payload.groups}
+    sanitized_relations: list[ClientMasterRelation] = []
+    for r in payload.relations:
+        if not (r.id or "").strip():
+            raise HTTPException(status_code=400, detail="Relation id must not be empty")
+        kind = (r.kind or "").strip()
+        if kind not in _RELATION_KINDS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation {r.id!r} has invalid kind {r.kind!r}",
+            )
+        if r.fromClientId not in id_set:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation {r.id!r} references unknown client {r.fromClientId!r}",
+            )
+        if r.toClientId not in id_set:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation {r.id!r} references unknown client {r.toClientId!r}",
+            )
+        if r.fromClientId == r.toClientId:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation {r.id!r} must connect two different clients",
+            )
+        percent = r.percent
+        if kind == "shareholding":
+            if percent is not None and not (0 < float(percent) <= 100):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Relation {r.id!r} percent must be between 0 and 100",
+                )
+        else:
+            percent = None
+        group_id = (r.groupId or "").strip() or None
+        if group_id and group_id not in group_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation {r.id!r} references unknown group {group_id!r}",
+            )
+        sanitized_relations.append(
+            ClientMasterRelation(
+                id=r.id.strip(),
+                kind=kind,
+                fromClientId=r.fromClientId,
+                toClientId=r.toClientId,
+                percent=float(percent) if percent is not None else None,
+                note=(r.note or "").strip() or None,
+                groupId=group_id,
+            )
+        )
+    payload.relations = sanitized_relations
+    payload.relationLayouts = _sanitize_relation_layouts(payload.relationLayouts, id_set)
+
+
+def _relation_layout_focus_id(key: str) -> str:
+    return (key or "").split("__", 1)[0].strip()
+
+
+def _sanitize_point_map(raw: dict[str, dict[str, float]] | None) -> dict[str, dict[str, float]]:
+    if not raw:
+        return {}
+    out: dict[str, dict[str, float]] = {}
+    for i, (pid, pt) in enumerate(raw.items()):
+        if i >= 120:
+            break
+        sid = (pid or "").strip()
+        if not sid or len(sid) > 80:
+            continue
+        if not isinstance(pt, dict):
+            continue
+        try:
+            x = float(pt.get("x"))  # type: ignore[arg-type]
+            y = float(pt.get("y"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if not (x == x and y == y):  # NaN
+            continue
+        if abs(x) > 8000 or abs(y) > 8000:
+            continue
+        out[sid] = {"x": x, "y": y}
+    return out
+
+
+def _sanitize_relation_layouts(
+    layouts: dict[str, ClientMasterRelationLayout] | None,
+    client_ids: set[str],
+) -> dict[str, ClientMasterRelationLayout]:
+    if not layouts:
+        return {}
+    out: dict[str, ClientMasterRelationLayout] = {}
+    for i, (key, layout) in enumerate(layouts.items()):
+        if i >= 200:
+            break
+        k = (key or "").strip()
+        if not k or len(k) > 120 or "__" not in k:
+            continue
+        focus = _relation_layout_focus_id(k)
+        if focus not in client_ids:
+            continue
+        cleaned = ClientMasterRelationLayout(
+            nodes=_sanitize_point_map(layout.nodes),
+            labels=_sanitize_point_map(layout.labels),
+            bends=_sanitize_point_map(layout.bends),
+        )
+        if cleaned.nodes or cleaned.labels or cleaned.bends:
+            out[k] = cleaned
+    return out
 
 
 def _role_permissions_payload_from_store() -> RolePermissionsPayload:

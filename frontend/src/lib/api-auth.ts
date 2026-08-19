@@ -96,7 +96,8 @@ export async function authFetch(input: RequestInfo | URL, init?: RequestInit): P
   }
 
   const onLoginPage = window.location.pathname.startsWith("/login");
-  if (!onLoginPage && loadCurrentUser()) {
+  const onGuestPdfPage = window.location.pathname.startsWith("/pdf");
+  if (!onLoginPage && !onGuestPdfPage && loadCurrentUser()) {
     clearCurrentUser();
     window.location.assign("/login?reason=session");
   }

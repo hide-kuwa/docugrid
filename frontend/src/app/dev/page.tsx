@@ -258,12 +258,6 @@ export default function DevConsolePage() {
             >
               タスク一覧
             </Link>
-            <Link
-              href="/capture"
-              className="rounded-lg border border-blue-700/50 px-4 py-2 text-xs font-bold text-blue-100 hover:bg-blue-950/50"
-            >
-              撮影
-            </Link>
           </div>
           <ul className="mt-4 flex flex-wrap gap-2 text-[10px] text-slate-500">
             {firmPersonas.map((p) => (

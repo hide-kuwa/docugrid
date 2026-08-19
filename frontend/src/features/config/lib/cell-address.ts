@@ -8,6 +8,7 @@ export type ConfigSheetId =
   | "documents"
   | "screens"
   | "featureSurfaces"
+  | "addons"
   | "integrations"
   | "audit";
 

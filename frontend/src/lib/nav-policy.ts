@@ -28,6 +28,10 @@ const CATEGORY_PERMISSIONS: Record<SettingsCategoryId, AppPermission> = {
   audit: "settings.manage",
   roles: "settings.platform",
   integrations: "settings.platform",
+  drive: "settings.manage",
+  featureSurfaces: "settings.platform",
+  addons: "settings.manage",
+  messaging: "settings.manage",
   mcp: "client.view",
 };
 

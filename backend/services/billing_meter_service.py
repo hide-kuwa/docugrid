@@ -1,4 +1,4 @@
-"""Stripe metered billing — 顧問先 100 円/社/月 (Billing Meters API)."""
+"""Stripe metered billing — 顧問先 300 円/社/月 (Billing Meters API)."""
 
 from __future__ import annotations
 

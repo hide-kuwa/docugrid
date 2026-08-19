@@ -143,22 +143,46 @@ def create_firm_with_representative(
     rep_email: str,
     rep_display_name: str | None = None,
 ) -> tuple[str, str, FirmMember]:
-    """Register a new firm; representative becomes firm_admin (billing owner)."""
+    """Register a new firm; representative becomes firm_admin (billing owner).
+
+    PROLEXT（課金免除ドメイン）は常に firm_prolext に載せ、Stripe なしでも利用可。
+    既に事務所がある場合は参加申請（join）を案内する。
+    """
     init_firm_onboarding_db()
-    firm_id = f"firm_{uuid.uuid4().hex[:12]}"
+    from services.stripe_billing_service import is_billing_exempt_email
+    from services.tenancy import FIRM_LABELS, PROLEXT_FIRM_ID
+
+    email_norm = rep_email.strip().lower()
+    use_prolext = is_billing_exempt_email(email_norm)
+    if use_prolext:
+        firm_id = PROLEXT_FIRM_ID
+        label = FIRM_LABELS.get(PROLEXT_FIRM_ID, "PROLEXT税理士法人")
+        if firm_label.strip():
+            # 画面入力は参考に残すが、canonical ラベルを優先
+            label = FIRM_LABELS.get(PROLEXT_FIRM_ID, firm_label.strip())
+    else:
+        firm_id = f"firm_{uuid.uuid4().hex[:12]}"
+        label = firm_label.strip() or firm_id
+
     join_code = _join_code()
     now = _utc_now()
     with sqlite3.connect(STORAGE_DIR / "firm_members.db") as conn:
+        existing = conn.execute("SELECT id, join_code FROM firms WHERE id=?", (firm_id,)).fetchone()
+        if existing:
+            if use_prolext:
+                # 2人目以降は「事務所を新規作成」ではなく join へ
+                raise ValueError("prolext_firm_exists")
+            raise ValueError("firm_id_collision")
         conn.execute(
             """
             INSERT INTO firms (id, label, status, updated_at, join_code)
             VALUES (?, ?, 'active', ?, ?)
             """,
-            (firm_id, firm_label.strip() or firm_id, now, join_code),
+            (firm_id, label, now, join_code),
         )
     member = create_member(
         firm_id=firm_id,
-        email=rep_email.strip().lower(),
+        email=email_norm,
         firm_role="firm_admin",
         display_name=rep_display_name,
         stakeholder_id=f"rep-{uuid.uuid4().hex[:10]}",
@@ -297,7 +321,14 @@ def accept_invite(*, token: str, email: str, display_name: str | None = None) ->
             (INVITE_STATUS_ACCEPTED, invite.id),
         )
     refreshed = get_member_by_id(member.id)
-    return refreshed or member
+    result = refreshed or member
+    try:
+        from services.drive_share import maybe_share_root_with_email
+
+        maybe_share_root_with_email(result.firm_id, result.email)
+    except Exception:
+        pass
+    return result
 
 
 def create_join_request(

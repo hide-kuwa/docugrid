@@ -65,6 +65,26 @@ def test_drive_credentials_rejects_invalid_json() -> None:
     assert r.status_code == 400
 
 
+def test_drive_credentials_accepts_firm_admin() -> None:
+    """事務所設定権限でも Drive クレデンシャルを上げられる（本格稼働）。"""
+    creds = {
+        "type": "service_account",
+        "project_id": "taxx-test",
+        "private_key_id": "key-id",
+        "private_key": "-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----\\n",
+        "client_email": "taxx-drive@test.iam.gserviceaccount.com",
+        "client_id": "123",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    r = client.post(
+        "/api/drive/credentials",
+        files={"file": ("sa.json", io.BytesIO(json.dumps(creds).encode("utf-8")), "application/json")},
+        headers=_admin_headers(),
+    )
+    assert r.status_code == 200, r.text
+
+
 def test_drive_credentials_accepts_service_account_shape() -> None:
     creds = {
         "type": "service_account",

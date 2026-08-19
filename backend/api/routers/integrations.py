@@ -27,25 +27,270 @@ async def get_drive_status(request: Request):
     _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     cfg = _load_system_config(ctx.firm_id)
-    sa_email = get_drive_service_account_email(ctx.firm_id)
+    from services.drive_context import get_drive_connected_email, resolve_drive_auth_method
+    from services.drive_oauth import drive_oauth_configured
+    from services.drive_share import describe_root_location
+
+    connected_email = get_drive_connected_email(ctx.firm_id)
+    location = describe_root_location(ctx.firm_id, cfg.drive_root_folder_id)
+    from services.drive_share import build_office_visibility_hints
+
+    hints = build_office_visibility_hints(
+        ctx.firm_id,
+        connected_email=connected_email,
+        root_location=str(location.get("location") or "none"),
+    )
     return DriveStatusPayload(
         google_drive_connected=cfg.google_drive_connected,
         drive_root_folder_id=cfg.drive_root_folder_id,
         drive_credentials_configured=cfg.drive_credentials_configured,
         drive_mode=resolve_drive_mode(ctx.firm_id),
-        service_account_email=sa_email,
+        service_account_email=get_drive_service_account_email(ctx.firm_id),
+        auth_method=resolve_drive_auth_method(ctx.firm_id),
+        connected_email=connected_email,
+        oauth_available=drive_oauth_configured(),
+        root_location=str(location.get("location") or "none"),
+        shared_drive_id=location.get("shared_drive_id"),
+        shared_drive_name=location.get("shared_drive_name"),
+        office_visible=bool(location.get("office_visible")),
+        needs_office_share=bool(location.get("needs_office_share")),
+        shared_member_emails=list(location.get("shared_member_emails") or []),
+        eligible_member_emails=list(hints.get("eligible_member_emails") or []),
+        eligible_member_count=int(hints.get("eligible_member_count") or 0),
+        office_hints=list(hints.get("office_hints") or []),
+    )
+
+
+@router.get("/api/drive/oauth/start", response_model=DriveOAuthStartPayload)
+async def drive_oauth_start(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    from services.drive_oauth import (
+        build_authorize_url,
+        drive_oauth_redirect_uri,
+    )
+    from services.drive import DriveConfigurationError
+
+    try:
+        url = build_authorize_url(firm_id=ctx.firm_id, actor_email=ctx.email)
+    except DriveConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    _log_audit_event(request, "drive.oauth.start", "success")
+    return DriveOAuthStartPayload(authorize_url=url, redirect_uri=drive_oauth_redirect_uri())
+
+
+@router.get("/api/drive/oauth/callback")
+async def drive_oauth_callback(
+    request: Request,
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    """Google redirects here (unauthenticated). State JWT carries firm_id."""
+    from fastapi.responses import RedirectResponse
+    from services.drive_oauth import (
+        complete_oauth_callback,
+        drive_oauth_frontend_return_url,
+    )
+    from services.drive import DriveConfigurationError
+    from services.drive_context import invalidate_drive_service_cache
+
+    if error:
+        return RedirectResponse(drive_oauth_frontend_return_url(ok=False, error=str(error)))
+    if not code or not state:
+        return RedirectResponse(drive_oauth_frontend_return_url(ok=False, error="missing_code_or_state"))
+    try:
+        result = complete_oauth_callback(code, state)
+    except (DriveConfigurationError, KeyError, ValueError) as exc:
+        return RedirectResponse(drive_oauth_frontend_return_url(ok=False, error=str(exc)[:80]))
+
+    firm_id = result["firm_id"]
+    invalidate_drive_service_cache(firm_id)
+    existing = _load_system_config(firm_id)
+    body = SystemConfigUpdateBody(
+        google_drive_connected=True,
+        notification_email_enabled=existing.notification_email_enabled,
+        ocr_auto_extract_enabled=existing.ocr_auto_extract_enabled,
+        alert_consumption_tax_months_before_due=existing.alert_consumption_tax_months_before_due,
+        alert_corporate_tax_months_before_due=existing.alert_corporate_tax_months_before_due,
+        ai_openai_enabled=existing.ai_openai_enabled,
+        ai_openai_model=existing.ai_openai_model,
+        ai_gemini_enabled=existing.ai_gemini_enabled,
+        ai_gemini_model=existing.ai_gemini_model,
+        drive_root_folder_id=result["root_folder_id"],
+        matrix_year_display_count=existing.matrix_year_display_count,
+    )
+    _save_system_config(firm_id, body)
+    _log_audit_event(request, "drive.oauth.callback", "success", f"firm={firm_id}")
+    return RedirectResponse(drive_oauth_frontend_return_url(ok=True))
+
+
+@router.delete("/api/drive/oauth")
+async def drive_oauth_disconnect(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    from services.drive_oauth import clear_drive_oauth
+    from services.drive_context import invalidate_drive_service_cache
+
+    clear_drive_oauth(ctx.firm_id)
+    invalidate_drive_service_cache(ctx.firm_id)
+    existing = _load_system_config(ctx.firm_id)
+    # Keep SA credentials if present; only turn mirror off when neither auth remains.
+    still = drive_credentials_configured(ctx.firm_id)
+    body = SystemConfigUpdateBody(
+        google_drive_connected=existing.google_drive_connected and still,
+        notification_email_enabled=existing.notification_email_enabled,
+        ocr_auto_extract_enabled=existing.ocr_auto_extract_enabled,
+        alert_consumption_tax_months_before_due=existing.alert_consumption_tax_months_before_due,
+        alert_corporate_tax_months_before_due=existing.alert_corporate_tax_months_before_due,
+        ai_openai_enabled=existing.ai_openai_enabled,
+        ai_openai_model=existing.ai_openai_model,
+        ai_gemini_enabled=existing.ai_gemini_enabled,
+        ai_gemini_model=existing.ai_gemini_model,
+        drive_root_folder_id=existing.drive_root_folder_id if still else None,
+        matrix_year_display_count=existing.matrix_year_display_count,
+    )
+    _save_system_config(ctx.firm_id, body)
+    _log_audit_event(request, "drive.oauth.disconnect", "success")
+    return {"ok": True}
+
+
+@router.get("/api/drive/shared-drives", response_model=DriveSharedDrivesPayload)
+async def get_drive_shared_drives(request: Request):
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    if not drive_credentials_configured(ctx.firm_id):
+        raise HTTPException(status_code=400, detail="Google Drive が未接続です")
+    from services.drive_share import list_accessible_shared_drives
+    from services.drive import DriveConfigurationError
+
+    try:
+        drives = list_accessible_shared_drives(ctx.firm_id)
+    except DriveConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"共有ドライブ一覧を取得できませんでした: {exc}",
+        ) from exc
+    from services.drive_context import get_drive_connected_email
+
+    connected = get_drive_connected_email(ctx.firm_id)
+    empty_hint = None
+    if not drives:
+        empty_hint = (
+            f"一覧が空です。Google Drive で共有ドライブを開き、"
+            f"{connected or '接続アカウント'} をメンバーに追加してから「一覧を更新」してください。"
+            "（個人のマイドライブだけのアカウントでは共有ドライブは出ません）"
+        )
+    return DriveSharedDrivesPayload(
+        drives=[DriveSharedDriveItem(id=d["id"], name=d.get("name") or "") for d in drives],
+        empty_hint=empty_hint,
+        connected_email=connected,
+    )
+
+
+@router.post("/api/drive/use-shared-drive")
+async def post_drive_use_shared_drive(request: Request, body: DriveUseSharedDriveBody):
+    """Point firm root at DocuGrid folder inside a shared drive (office-visible)."""
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    if not drive_credentials_configured(ctx.firm_id):
+        raise HTTPException(status_code=400, detail="Google Drive が未接続です")
+    from services.drive_share import use_shared_drive_root
+    from services.drive import DriveConfigurationError
+
+    try:
+        result = use_shared_drive_root(ctx.firm_id, body.shared_drive_id)
+    except DriveConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"共有ドライブの設定に失敗: {exc}") from exc
+
+    existing = _load_system_config(ctx.firm_id)
+    update = SystemConfigUpdateBody(
+        google_drive_connected=True,
+        notification_email_enabled=existing.notification_email_enabled,
+        ocr_auto_extract_enabled=existing.ocr_auto_extract_enabled,
+        alert_consumption_tax_months_before_due=existing.alert_consumption_tax_months_before_due,
+        alert_corporate_tax_months_before_due=existing.alert_corporate_tax_months_before_due,
+        ai_openai_enabled=existing.ai_openai_enabled,
+        ai_openai_model=existing.ai_openai_model,
+        ai_gemini_enabled=existing.ai_gemini_enabled,
+        ai_gemini_model=existing.ai_gemini_model,
+        drive_root_folder_id=result["root_folder_id"],
+        matrix_year_display_count=existing.matrix_year_display_count,
+    )
+    _save_system_config(ctx.firm_id, update)
+    _log_audit_event(
+        request,
+        "drive.use_shared_drive",
+        "success",
+        f"drive={body.shared_drive_id}",
+    )
+    return result
+
+
+@router.post("/api/drive/share-with-firm", response_model=DriveShareFirmPayload)
+async def post_drive_share_with_firm(request: Request):
+    """Share My Drive DocuGrid root with active firm member emails."""
+    _require_permission(request, "settings.manage")
+    ctx = _auth_context(request)
+    if not drive_credentials_configured(ctx.firm_id):
+        raise HTTPException(status_code=400, detail="Google Drive が未接続です")
+    from services.drive_share import share_root_with_firm_members
+    from services.drive import DriveConfigurationError
+    from services.drive_context import get_drive_connected_email
+
+    try:
+        result = share_root_with_firm_members(
+            ctx.firm_id,
+            connected_email=get_drive_connected_email(ctx.firm_id),
+        )
+    except DriveConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"メンバー共有に失敗: {exc}") from exc
+    _log_audit_event(request, "drive.share_with_firm", "success")
+    cfg = _load_system_config(ctx.firm_id)
+    from services.drive_share import eligible_member_emails_for_share
+
+    eligible = eligible_member_emails_for_share(
+        ctx.firm_id,
+        connected_email=get_drive_connected_email(ctx.firm_id),
+    )
+    tip = None
+    failed = list(result.get("failed") or [])
+    if failed:
+        tip = (
+            "失敗したメールは Google アカウントとして存在しないか、共有権限が拒否されています。"
+            "メンバー招待メールを実在の Google（Workspace）アカウントに合わせてください。"
+        )
+    elif not eligible and result.get("mode") == "member_emails":
+        tip = "共有対象のメンバーがいません。Google ログインと同じメールでメンバーを招待してください。"
+    return DriveShareFirmPayload(
+        ok=bool(result.get("ok", True)),
+        mode=str(result.get("mode") or "member_emails"),
+        shared=list(result.get("shared") or []),
+        already=list(result.get("already") or []),
+        failed=failed,
+        domain=result.get("domain"),
+        message=str(result.get("message") or ""),
+        root_folder_id=cfg.drive_root_folder_id,
+        eligible_member_emails=eligible,
+        tip=tip,
     )
 
 
 @router.post("/api/drive/test")
 async def test_drive_connection(request: Request):
-    _require_platform_settings(request)
+    _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     cfg = _load_system_config(ctx.firm_id)
     if not drive_credentials_configured(ctx.firm_id):
         raise HTTPException(
             status_code=400,
-            detail="サービスアカウント JSON をアップロードしてください（Settings → 外部連携）",
+            detail="Google Drive が未接続です。設定 → Google Drive から接続してください。",
         )
     if not cfg.drive_root_folder_id:
         raise HTTPException(
@@ -64,6 +309,7 @@ async def test_drive_connection(request: Request):
     return {
         "ok": True,
         "mode": "live",
+        "auth_method": getattr(svc, "auth_method", "unknown"),
         "root_folder_id": cfg.drive_root_folder_id,
         "root_folder_name": ping.get("folder_name"),
         "healthcheck_folder_id": probe,
@@ -72,7 +318,7 @@ async def test_drive_connection(request: Request):
 
 @router.post("/api/drive/credentials")
 async def upload_drive_credentials(request: Request, file: UploadFile = File(...)):
-    _require_platform_settings(request)
+    _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     raw = await file.read()
     if not raw:
@@ -93,7 +339,7 @@ async def upload_drive_credentials(request: Request, file: UploadFile = File(...
 
 @router.delete("/api/drive/credentials")
 async def delete_drive_credentials(request: Request):
-    _require_platform_settings(request)
+    _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     clear_drive_credentials(ctx.firm_id)
     invalidate_drive_service_cache(ctx.firm_id)
@@ -283,9 +529,21 @@ async def get_client_master(request: Request):
         for g in payload.groups
         if any(cid in allowed for cid in g.clientIds)
     ]
+    filtered_relations = [
+        r
+        for r in payload.relations
+        if r.fromClientId in allowed and r.toClientId in allowed
+    ]
+    filtered_layouts = {
+        k: v
+        for k, v in payload.relationLayouts.items()
+        if k.split("__", 1)[0] in allowed
+    }
     payload = ClientMasterPayload(
         clients=filtered_clients,
         groups=filtered_groups,
+        relations=filtered_relations,
+        relationLayouts=filtered_layouts,
         updated_at=payload.updated_at,
     )
     _log_audit_event(request, "client_master.get", "success", f"clients={len(payload.clients)}")

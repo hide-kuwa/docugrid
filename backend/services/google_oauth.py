@@ -30,9 +30,18 @@ def verify_google_id_token(token: str, *, client_id: str | None = None) -> dict[
             token.strip(),
             google_requests.Request(),
             cid,
+            clock_skew_in_seconds=60,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=401, detail="Invalid Google credential") from exc
+        # Audience / origin mismatch is the usual local-dev cause (localhost vs 127.0.0.1).
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Invalid Google credential. "
+                "Open the app at http://localhost:3000 (not 127.0.0.1), "
+                "and ensure that origin is listed on the Google OAuth client."
+            ),
+        ) from exc
     if claims.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
         raise HTTPException(status_code=401, detail="Invalid Google token issuer")
     return claims

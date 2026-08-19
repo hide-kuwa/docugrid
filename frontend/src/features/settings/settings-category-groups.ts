@@ -9,13 +9,13 @@ export const SETTINGS_CATEGORY_GROUPS: Record<SettingsConsole, SettingsCategoryG
   firm: [
     { title: "マスタ", ids: ["clients", "clientProfile", "stakeholders"] },
     { title: "業務", ids: ["templates", "reviewChecklist", "shortcuts"] },
-    { title: "表示", ids: ["appearance", "featureSurfaces"] },
+    { title: "表示", ids: ["appearance", "featureSurfaces", "addons"] },
     { title: "課金・履歴", ids: ["billing", "audit"] },
-    { title: "連携", ids: ["mcp"] },
+    { title: "連携", ids: ["drive", "mcp", "messaging"] },
   ],
   dev: [
     { title: "権限・書類", ids: ["roles", "documents"] },
-    { title: "設計・インフラ", ids: ["screens", "featureSurfaces", "integrations"] },
+    { title: "設計・インフラ", ids: ["screens", "featureSurfaces", "addons", "integrations"] },
   ],
 };
 

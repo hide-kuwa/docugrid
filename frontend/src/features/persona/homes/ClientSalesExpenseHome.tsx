@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Camera, Loader2, Receipt } from "lucide-react";
+import { Loader2, Receipt } from "lucide-react";
 import type { PersonaDefinition } from "@/config/personas";
 import type { ScreenDesignPersona } from "@/config/screen-design-types";
 import { useOrgDirectory } from "@/features/org/useOrgDirectory";
@@ -153,22 +152,6 @@ export function ClientSalesExpenseHome({ persona, user, design, demoMode }: Prop
         <div className="mt-4">
           <ExpenseStatusWidget clientId={clientId} />
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-700">
-          <Camera className="h-4 w-4" />
-          撮影から提出
-        </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          スマホで領収書を撮影してキャプチャ画面から提出できます。
-        </p>
-        <Link
-          href="/capture"
-          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-500"
-        >
-          キャプチャ画面を開く
-        </Link>
       </section>
 
       {loading ? (

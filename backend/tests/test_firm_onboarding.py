@@ -83,6 +83,31 @@ def test_register_firm_creates_representative(
     assert any(m.email == "rep@newfirm.example" for m in members)
 
 
+def test_register_prolext_domain_uses_firm_prolext(
+    isolated_firm_storage, monkeypatch: pytest.MonkeyPatch, api_client: TestClient
+) -> None:
+    from services.tenancy import PROLEXT_FIRM_ID
+
+    _fake_google(monkeypatch, "owner@lext-tax.jp", "PROLEXT Owner")
+    r = api_client.post(
+        "/api/auth/register-firm",
+        json={"credential": "fake-google-id-token", "firm_label": "PROLEXT税理士法人"},
+    )
+    assert r.status_code == 200, r.text
+    rep = list_members_by_email("owner@lext-tax.jp")[0]
+    assert rep.firm_id == PROLEXT_FIRM_ID
+    assert rep.firm_role == "firm_admin"
+
+    _fake_google(monkeypatch, "second@lext-tax.jp", "Second")
+    r2 = TestClient(app).post(
+        "/api/auth/register-firm",
+        json={"credential": "fake-google-id-token", "firm_label": "PROLEXT税理士法人"},
+    )
+    assert r2.status_code == 409, r2.text
+    detail = r2.json()["detail"]
+    assert detail.get("code") == "prolext_firm_exists"
+
+
 def test_join_request_then_approve(
     isolated_firm_storage, monkeypatch: pytest.MonkeyPatch, api_client: TestClient
 ) -> None:

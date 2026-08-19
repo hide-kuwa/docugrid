@@ -135,11 +135,24 @@ async def auth_register_firm(body: FirmRegisterBody, request: Request):
             status_code=409,
             detail={"code": "already_member", "message": "このメールは既に事務所に登録されています。"},
         )
-    _, join_code, member = create_firm_with_representative(
-        firm_label=body.firm_label.strip(),
-        rep_email=email,
-        rep_display_name=str(claims.get("name") or "").strip() or None,
-    )
+    try:
+        _, join_code, member = create_firm_with_representative(
+            firm_label=body.firm_label.strip(),
+            rep_email=email,
+            rep_display_name=(body.display_name or "").strip()
+            or str(claims.get("name") or "").strip()
+            or None,
+        )
+    except ValueError as exc:
+        if str(exc) == "prolext_firm_exists":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "prolext_firm_exists",
+                    "message": "PROLEXT税理士法人は既に登録済みです。事務所コードで参加申請してください。",
+                },
+            ) from exc
+        raise
     role = _get_stakeholder_role_map().get(member.stakeholder_id) or member.firm_role
     token_resp = _issue_session_token(
         request=request,

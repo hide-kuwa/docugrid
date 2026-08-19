@@ -2,6 +2,9 @@
 # ノーコードでモード切替。コードに機能 ID を足すときだけこの YAML を更新する。
 # 上書きは platform / firm の JSON（settings UI）→ resolve でマージ。
 #
+# ユーザー向けに触れる機能を足したら docs/help/coverage.md にも同じ id（または対応行）を足す。
+# 手順: docs/help/maintaining.md
+#
 # mode:
 #   live     — 本番利用可（書き込み可）
 #   preview  — 見本・デモのみ（UI は見せるが書き込みブロック）
@@ -75,3 +78,27 @@ surfaces:
     description: OCR状態・ハイブリッド検索（キーワード+埋め込み）・再OCRを設定画面で実験
     default_mode: preview
     group: ai
+
+  - id: messaging.channels
+    label: 通知連携（メール / Slack / LINE）
+    description: ログイン後の設定からチャネル接続。本番通知の前提
+    default_mode: live
+    group: integrations
+
+  - id: support.assistant
+    label: AIサポートチャット
+    description: 使い方・不具合報告・CSエスカレーション（メール優先／電話は最終）
+    default_mode: preview
+    group: support
+
+  - id: crm.perm_tabs
+    label: 永続・保有／提案／案件
+    description: Doc 永続の横タブ（CRM 入口）。C0 骨格、API 未接続
+    default_mode: preview
+    group: crm
+
+  - id: settings.addons
+    label: アドオン
+    description: 事務所が付け外しできる公式パック／こちら専用パック
+    default_mode: live
+    group: settings

@@ -50,6 +50,9 @@ def startup_init_db() -> None:
 
     init_client_metrics_db()
     init_client_comms_db()
+    from services.dm_inbox_service import init_dm_inbox_db
+
+    init_dm_inbox_db()
     from services.client_records_service import init_client_records_db
     from services.client_calendar_service import init_client_calendar_db
 
@@ -61,6 +64,9 @@ def startup_init_db() -> None:
     init_client_simulation_db()
     init_client_karte_db()
     init_ocr_jobs_db()
+    from services.spi_vault import init_spi_db
+
+    init_spi_db()
     ensure_demo_calendar_seed()
     ensure_invoice_cache_seed()
     # validate_auth_config() raises RuntimeError on fatal production misconfiguration.
@@ -75,6 +81,14 @@ def startup_init_db() -> None:
     init_document_versions_db()
     init_client_assignments_db()
     init_ai_usage_db()
+    from services.migration_wallet import init_migration_wallet_db
+    from services.migration_ingest_service import init_migration_ingest_db
+
+    init_migration_wallet_db()
+    init_migration_ingest_db()
+    from services.support_ticket_service import init_support_tickets_db
+
+    init_support_tickets_db()
     init_platform_metrics_db()
     init_firm_members_db()
     from services.firm_onboarding import init_firm_onboarding_db

@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
-# 税理士事務所: 基本料 1 万円/月 + 顧問先 100 円/社/月
+# 税理士事務所: 基本料 1 万円/月 + 顧問先 300 円/社/月
 FIRM_BASE_YEN_MONTHLY = int(os.environ.get("BILLING_FIRM_BASE_YEN", "10000"))
-FIRM_PER_CLIENT_YEN_MONTHLY = int(os.environ.get("BILLING_FIRM_PER_CLIENT_YEN", "100"))
+FIRM_PER_CLIENT_YEN_MONTHLY = int(os.environ.get("BILLING_FIRM_PER_CLIENT_YEN", "300"))
 
 # 販売パートナー: 手数料 20% · 契約 1〜3 年
 PARTNER_COMMISSION_PERCENT_DEFAULT = float(os.environ.get("BILLING_PARTNER_COMMISSION_PERCENT", "20"))
@@ -16,6 +16,15 @@ PARTNER_CONTRACT_YEARS_MAX = 3
 
 # クライアント AI: 100 円パックあたりのトークン数
 AI_YEN_PER_PACK = 100
+
+# 初回データ整理パック（月次 AI 枠とは別商品）
+MIGRATION_YEN_PER_PACK = int(os.environ.get("MIGRATION_YEN_PER_PACK", "10000"))
+MIGRATION_TOKENS_PER_100_YEN = int(
+    os.environ.get(
+        "MIGRATION_TOKENS_PER_100_YEN",
+        os.environ.get("AI_TOKENS_PER_100_YEN", "10000"),
+    )
+)
 
 # Stripe Billing Meters（API 2025-03-31+）— 顧問先从量の event_name
 CLIENT_METER_EVENT_NAME = "docugrid_billable_clients"
@@ -44,5 +53,7 @@ def pricing_model_payload() -> dict[str, Any]:
         "partnerContractYearsMin": PARTNER_CONTRACT_YEARS_MIN,
         "partnerContractYearsMax": PARTNER_CONTRACT_YEARS_MAX,
         "aiYenPerPack": AI_YEN_PER_PACK,
+        "migrationYenPerPack": MIGRATION_YEN_PER_PACK,
+        "migrationTokensPer100Yen": MIGRATION_TOKENS_PER_100_YEN,
         "primaryPlanId": PRIMARY_PLAN_ID,
     }

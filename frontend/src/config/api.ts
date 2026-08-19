@@ -18,6 +18,15 @@ export const API_ENDPOINTS = {
   DOCUGRID_SAVE: `${API_BASE}/docugrid/save`,
   DOCUGRID_LOAD: (documentId: string) =>
     `${API_BASE}/docugrid/load/${encodeURIComponent(documentId)}`,
+  /** ログイン不要のゲスト PDF 作業（/pdf） */
+  PUBLIC_PDF: {
+    INFO: `${API_BASE}/public/pdf/info`,
+    HIGHLIGHT: `${API_BASE}/public/pdf/highlight`,
+    REORDER: `${API_BASE}/public/pdf/reorder`,
+    MERGE: `${API_BASE}/public/pdf/merge`,
+    THUMBNAILS: `${API_BASE}/public/pdf/thumbnails`,
+    RENDER_PAGE: `${API_BASE}/public/pdf/render`,
+  },
   /** Per client × period × slot document persistence */
   SLOTS: `${API_BASE}/slots`,
   SLOT_FILE: (docId: string) => `${API_BASE}/slots/${encodeURIComponent(docId)}/file`,

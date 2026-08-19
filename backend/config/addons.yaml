@@ -1,0 +1,47 @@
+# DocuGrid アドオンカタログ（built-in）
+# 事務所が付け外しできる公式パックと、こちら専用（internal）を分ける。
+# カスタム下書き・公式昇格は storage/platform/addons_custom.json。
+#
+# status: draft | pilot | official | internal
+# installable_by: firm | platform
+
+version: 1
+
+addons:
+  - id: consumption-tax-judge
+    title: 消費税 課税事業者判定
+    summary: 基準期間・特定期間から来期の課税／免税を判定し、税務アラートに載せる（判定エンジンは公式）。
+    status: official
+    installable_by: firm
+    group: tax
+    provides:
+      - tax_alerts.consumption
+      - tax.consumption_taxpayer
+
+  - id: industry-construction-slots
+    title: 建設業スロット
+    summary: 建設業向けの必須資料枠・届出セット。標準マトリクスへの上乗せ定義。
+    status: official
+    installable_by: firm
+    group: slots
+    provides:
+      - slots.construction
+
+  - id: tax-alert-crm
+    title: 税務アラート CRM
+    summary: 届出・期限・根拠を顧問先単位で束ねる税務特化 CRM（本体は公式）。
+    status: official
+    installable_by: firm
+    group: tax
+    provides:
+      - tax_alerts.inbox
+      - crm.tax_alerts
+
+  - id: spi-vault
+    title: マイナンバー保管
+    summary: SPI 暗号化レーン。事務所画面からは付け外しできない。
+    status: internal
+    installable_by: platform
+    group: security
+    provides:
+      - spi.vault

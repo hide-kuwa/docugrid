@@ -18,12 +18,19 @@ export type DocVersion = {
   file?: File;
 };
 
-export type ToolType = "none" | "marker" | "box" | "line" | "check" | "eraser";
+export type ToolType = "none" | "marker" | "box" | "line" | "check" | "text" | "eraser";
 
 /** 0..1 正規化座標のフリーハンド点 */
 export type NormPoint = { x: number; y: number };
 
 export type NormRect = { x: number; y: number; w: number; h: number };
+
+/** PDF 上の編集可能なテキスト注釈（正規化座標） */
+export type TextAnnotationHit = NormRect & {
+  text: string;
+  fontSize: number;
+  color: string;
+};
 
 export type AuditTarget = "primary" | "reference";
 export type AuditSide = "left" | "right";
@@ -69,11 +76,28 @@ export interface ViewerModalProps {
   uploadStatus: UploadStatus;
   isLoading: boolean;
   onHighlight: (
-    type: "box" | "marker" | "line" | "check" | "eraser",
+    type: "box" | "marker" | "line" | "check" | "text" | "eraser",
     page: number,
     rect: NormRect,
-    options?: { file?: File; updatePrimary?: boolean; path?: NormPoint[] },
-  ) => Promise<File | { file: File; previewDataUrl: string } | void>;
+    options?: {
+      file?: File;
+      updatePrimary?: boolean;
+      path?: NormPoint[];
+      text?: string;
+      fontSize?: number;
+      textColor?: string;
+      /** 既存テキストのヒット検出のみ（PDF 非変更） */
+      probeOnly?: boolean;
+      /** 既存テキストを消してから書き直す */
+      replaceText?: boolean;
+      originRect?: NormRect;
+    },
+  ) => Promise<
+    | File
+    | { file: File; previewDataUrl: string }
+    | { hit: TextAnnotationHit | null }
+    | void
+  >;
   onReorder: (newOrder: number[]) => Promise<File | void>;
   onMerge: (files: File[]) => Promise<File | void>;
   onGetThumbnails: (fileOverride?: File) => Promise<string[]>;
@@ -86,6 +110,11 @@ export interface ViewerModalProps {
   syncWithDocugrid?: boolean;
   viewerMode?: ViewerMode;
   onViewerModeChange?: (mode: ViewerMode) => void;
+  /** full = 監査フロー / pdfSimple = 保存・ダウンロード中心（ゲスト /pdf 含む） */
+  chromeMode?: "full" | "pdfSimple";
+  /** 結合・サムネ取得などの API 失敗メッセージ（ビューア内に表示） */
+  operationError?: string | null;
+  onDismissOperationError?: () => void;
   /** 監査イベントを紐づける対象スロット（client × 期 × slot）。未指定なら永続化しない。 */
   slotIdentity?: { clientId: string; periodKey: string; slotId: string };
   slotLabel?: string;

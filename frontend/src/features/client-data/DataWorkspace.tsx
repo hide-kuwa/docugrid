@@ -13,6 +13,7 @@ import { ClientStockValuationPanel } from "@/features/client-data/ClientStockVal
 import { ClientSpecialNotesPanel } from "@/features/client-data/ClientSpecialNotesPanel";
 import { ClientKartePanel } from "@/features/client-data/ClientKartePanel";
 import { ClientPayrollPanel } from "@/features/payroll/ClientPayrollPanel";
+import { ClientRelationsPanel } from "@/features/client-data/ClientRelationsPanel";
 import { DataContextGrid } from "@/features/client-data/DataContextGrid";
 import type { DataWorkspaceTabId } from "@/features/client-data/data-workspace-tabs";
 import {
@@ -33,6 +34,13 @@ type Props = {
   docStatusLoading?: boolean;
   /** マトリクスの期キー（カルテの期フィールド既定） */
   defaultPeriodKey?: string;
+  /** レール連動時は制御コンポーネント（縦ドラムから渡す） */
+  activeTab?: DataWorkspaceTabId;
+  onTabChange?: (tab: DataWorkspaceTabId) => void;
+  /** レールが同階層にあるとき、上部ドラムを隠す（ナビは左縦ドラム） */
+  hideTabDrum?: boolean;
+  /** 関係図でノードをクリックしたときに顧問先を切替 */
+  onSelectRelatedClient?: (clientId: string) => void;
 };
 
 export function DataWorkspace({
@@ -45,17 +53,30 @@ export function DataWorkspace({
   docStatus,
   docStatusLoading,
   defaultPeriodKey,
+  activeTab: controlledTab,
+  onTabChange,
+  hideTabDrum = false,
+  onSelectRelatedClient,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<DataWorkspaceTabId>("master");
+  const [uncontrolledTab, setUncontrolledTab] = useState<DataWorkspaceTabId>("karte");
   const [client, setClient] = useState(clientFromOrg);
+  const activeTab = controlledTab ?? uncontrolledTab;
+
+  const setActiveTab = useCallback(
+    (tab: DataWorkspaceTabId) => {
+      if (onTabChange) onTabChange(tab);
+      else setUncontrolledTab(tab);
+    },
+    [onTabChange],
+  );
 
   useEffect(() => {
     setClient(clientFromOrg);
   }, [clientFromOrg]);
 
   useEffect(() => {
-    setActiveTab("master");
-  }, [client.id]);
+    if (controlledTab == null) setUncontrolledTab("karte");
+  }, [client.id, controlledTab]);
 
   const refreshClient = useCallback(async () => {
     const fresh = await fetchClientById(clientFromOrg.id);
@@ -66,7 +87,9 @@ export function DataWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <DataContextGrid activeTab={activeTab} onTabChange={setActiveTab} />
+      {hideTabDrum ? null : (
+        <DataContextGrid activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === "master" ? (
           <ClientDataOverview
@@ -75,6 +98,13 @@ export function DataWorkspace({
             editor={editor}
             filledSlotKeys={filledSlotKeys}
             onOpenRelatedDocument={onOpenRelatedDocument}
+          />
+        ) : null}
+        {activeTab === "relations" ? (
+          <ClientRelationsPanel
+            client={client}
+            canEdit={canEdit}
+            onFocusClient={onSelectRelatedClient}
           />
         ) : null}
         {activeTab === "charts" ? (

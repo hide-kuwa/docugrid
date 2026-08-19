@@ -21,7 +21,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 
-def _load_env_file(path: Path) -> None:
+def _load_env_file(path: Path, *, override: bool = True) -> None:
+    """Load KEY=VALUE lines into os.environ.
+
+    When used with --env-file, override=True so the file wins over a dirty shell
+    (e.g. DOCUGRID_ALLOW_HEADER_AUTH left true from a previous test session).
+    """
     if not path.is_file():
         raise FileNotFoundError(path)
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -31,7 +36,9 @@ def _load_env_file(path: Path) -> None:
         key, _, value = line.partition("=")
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if not key:
+            continue
+        if override or key not in os.environ:
             os.environ[key] = value
 
 
@@ -174,7 +181,7 @@ def validate(*, check_stripe: bool) -> int:
         )
         from services.super_admin import (
             LEGACY_DEV_SUPER_ADMIN_EMAIL,
-            get_super_admin_email,
+            get_super_admin_emails,
         )
 
         if header_auth_allowed():
@@ -205,19 +212,21 @@ def validate(*, check_stripe: bool) -> int:
             warnings.append("DOCUGRID_SESSION_COOKIE_SECURE should be true behind HTTPS")
             _warn("session cookie Secure not forced")
 
-        super_email = get_super_admin_email()
-        if not super_email:
+        from services.super_admin import get_super_admin_emails
+
+        super_emails = get_super_admin_emails()
+        if not super_emails:
             _ok("legacy super-admin email disabled")
-        elif super_email == LEGACY_DEV_SUPER_ADMIN_EMAIL and not staging_local_enabled():
+        elif LEGACY_DEV_SUPER_ADMIN_EMAIL in super_emails and not staging_local_enabled():
             errors.append(
-                "DOCUGRID_SUPER_ADMIN_EMAIL must not be admin@taxx.jp in production "
+                "DOCUGRID_SUPER_ADMIN_EMAIL must not include admin@taxx.jp in production "
                 "(unset to disable, or set your operator email)"
             )
             _fail("legacy admin@taxx.jp super-admin still active")
-        elif super_email == LEGACY_DEV_SUPER_ADMIN_EMAIL:
+        elif LEGACY_DEV_SUPER_ADMIN_EMAIL in super_emails:
             _warn("staging-local: legacy admin@taxx.jp super-admin enabled")
         else:
-            _ok(f"super-admin email configured ({super_email})")
+            _ok(f"super-admin email configured ({', '.join(super_emails)})")
 
         if legacy_files_enabled():
             errors.append("DOCUGRID_ALLOW_LEGACY_FILES must be false in production")
@@ -274,6 +283,42 @@ def validate(*, check_stripe: bool) -> int:
             pass
     else:
         _warn("Skipping hardening checks (not production)")
+
+    # --- Phase 6: support CS inbox (optional until wired) ---
+    print("\n[6] Support CS (email escalation)")
+    inbox = os.environ.get("DOCUGRID_SUPPORT_INBOX_EMAIL", "").strip()
+    smtp_host = os.environ.get("DOCUGRID_SUPPORT_SMTP_HOST", "").strip()
+    if inbox:
+        _ok(f"DOCUGRID_SUPPORT_INBOX_EMAIL={inbox}")
+    elif is_production():
+        warnings.append(
+            "DOCUGRID_SUPPORT_INBOX_EMAIL unset - tickets store locally; "
+            "set inbox (+ SMTP) before relying on email CS"
+        )
+        _warn("support inbox not set (tickets stored_only / mailto fallback)")
+    else:
+        _warn("support inbox not set (dev OK)")
+
+    if smtp_host:
+        _ok(f"DOCUGRID_SUPPORT_SMTP_HOST={smtp_host}")
+        for var in (
+            "DOCUGRID_SUPPORT_SMTP_USER",
+            "DOCUGRID_SUPPORT_SMTP_PASSWORD",
+            "DOCUGRID_SUPPORT_SMTP_FROM",
+        ):
+            if os.environ.get(var, "").strip():
+                _ok(f"{var} set")
+            else:
+                warnings.append(f"{var} missing while SMTP host is set")
+                _warn(f"{var} missing")
+    elif inbox and is_production():
+        warnings.append(
+            "Support inbox set but DOCUGRID_SUPPORT_SMTP_HOST empty - "
+            "outbound mail will not send until SMTP is configured"
+        )
+        _warn("SMTP host missing (inbox alone = mailto / stored_only)")
+    else:
+        _warn("SMTP not configured (optional)")
 
     # --- Summary ---
     print("\n--- Summary ---")

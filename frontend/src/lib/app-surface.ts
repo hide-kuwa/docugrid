@@ -17,7 +17,10 @@ export type SettingsCategoryId =
   | "reviewChecklist"
   | "screens"
   | "featureSurfaces"
+  | "addons"
   | "integrations"
+  | "drive"
+  | "messaging"
   | "billing"
   | "audit"
   | "mcp"
@@ -40,9 +43,12 @@ export const FIRM_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "billing",
   "audit",
   "mcp",
+  "messaging",
+  "drive",
   "shortcuts",
   "appearance",
   "featureSurfaces",
+  "addons",
 ];
 
 /** 開発・プラットフォーム設定（ロール設計・画面設計など） */
@@ -51,6 +57,7 @@ export const DEV_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "documents",
   "screens",
   "featureSurfaces",
+  "addons",
   "integrations",
 ];
 
@@ -59,6 +66,10 @@ export type SettingsConsole = "firm" | "dev";
 export function isUserRoute(pathname: string): boolean {
   if (pathname === "/") return true;
   if (pathname.startsWith("/login")) return true;
+  if (pathname === "/pdf" || pathname.startsWith("/pdf/")) return true;
+  if (pathname.startsWith("/welcome")) return true;
+  if (pathname.startsWith("/help")) return true;
+  if (pathname.startsWith("/tools")) return true;
   return USER_ROUTE_PREFIXES.some(
     (prefix) => prefix !== "/" && (pathname === prefix || pathname.startsWith(`${prefix}/`)),
   );

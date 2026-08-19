@@ -13,9 +13,10 @@ alwaysApply: true
 
 - Implement first; explain only non-obvious security or tenancy choices.
 - End with: files changed, `pytest` command, remaining risk (if any).
-- No markdown files unless user requests docs.
+- No markdown files unless user requests docs — **exception:** user-facing UI changes must update `docs/help/coverage.md` (+ stub/page). See `.cursor/rules/docugrid-help.mdc`.
 
 ## Code style
 
 - Match surrounding code. Minimal diff. No drive-by refactors.
 - New tenancy checks: reuse `authorize_client_access`, `authorize_firm_resource` from `backend/services/tenancy.py`.
+- User-facing UI: update `docs/help/coverage.md` (+ help page stub). See `docugrid-help` rule.

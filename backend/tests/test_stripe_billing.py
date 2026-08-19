@@ -110,33 +110,52 @@ def test_super_admin_bypasses_billing_gate_when_unpaid(
 def test_exempt_domain_bypasses_billing_gate_when_unpaid(
     firm_billing_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """lext-tax.com のアカウントは未課金でも製品ルートを利用できる。"""
+    """lext-tax.com / lext-tax.jp / prolext.jp は未課金でも製品ルートを利用できる。"""
     monkeypatch.setattr("api.application.is_stripe_configured", lambda: True)
     monkeypatch.setattr("services.stripe_billing_service.is_billing_enforced", lambda: True)
     save_billing_record("firm_default", {"status": "none", "planId": "firm"})
-    headers = {**_admin_headers(), "X-Docugrid-User": "staff@lext-tax.com"}
-    r = client.get("/api/document-catalog/fields", headers=headers)
-    assert r.status_code == 200, r.text
-    me = client.get("/api/billing/me", headers=headers)
-    assert me.status_code == 200, me.text
-    body = me.json()
-    assert body["active"] is True
-    assert body["requiresAttention"] is False
+    for email in ("staff@lext-tax.com", "staff@lext-tax.jp", "staff@prolext.jp"):
+        headers = {**_admin_headers(), "X-Docugrid-User": email}
+        r = client.get("/api/document-catalog/fields", headers=headers)
+        assert r.status_code == 200, r.text
+        me = client.get("/api/billing/me", headers=headers)
+        assert me.status_code == 200, me.text
+        body = me.json()
+        assert body["active"] is True
+        assert body["requiresAttention"] is False
+
+
+def test_exempt_prolext_firm_helper() -> None:
+    from services.stripe_billing_service import is_billing_exempt
+    from services.tenancy import PROLEXT_FIRM_ID
+
+    assert is_billing_exempt(email="outsider@example.com", firm_id=PROLEXT_FIRM_ID) is True
+    assert is_billing_exempt(email="outsider@example.com", firm_id="firm_other") is False
+    assert is_billing_exempt(email="staff@lext-tax.jp", firm_id="firm_other") is True
 
 
 def test_exempt_domain_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.stripe_billing_service import is_billing_exempt_email
+    from services.stripe_billing_service import is_billing_exempt_email, is_billing_exempt_firm
 
     assert is_billing_exempt_email("a@lext-tax.com") is True
+    assert is_billing_exempt_email("a@lext-tax.jp") is True
+    assert is_billing_exempt_email("a@prolext.jp") is True
     assert is_billing_exempt_email("A@LEXT-TAX.COM") is True
     assert is_billing_exempt_email("a@evil-lext-tax.com") is False
+    assert is_billing_exempt_email("a@evil-prolext.jp") is False
     assert is_billing_exempt_email("a@example.com") is False
     assert is_billing_exempt_email(None) is False
+    assert is_billing_exempt_firm("firm_prolext") is True
+    assert is_billing_exempt_firm("firm_other") is False
     monkeypatch.setenv("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS", "other.example")
     assert is_billing_exempt_email("a@lext-tax.com") is False
     assert is_billing_exempt_email("a@other.example") is True
     monkeypatch.setenv("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS", "")
     assert is_billing_exempt_email("a@lext-tax.com") is False
+    monkeypatch.setenv("DOCUGRID_BILLING_FREE_FIRM_IDS", "")
+    assert is_billing_exempt_firm("firm_prolext") is False
+    monkeypatch.delenv("DOCUGRID_BILLING_FREE_FIRM_IDS", raising=False)
+    monkeypatch.delenv("DOCUGRID_BILLING_FREE_EMAIL_DOMAINS", raising=False)
 
 
 def test_billing_gate_allows_document_view_when_active(
@@ -205,7 +224,7 @@ def test_billing_record_roundtrip(firm_billing_path) -> None:
     status = get_billing_status("firm-demo", client_count=12, seat_count=4)
     assert status["clientCount"] == 12
     assert status["planId"] == "firm"
-    assert status["estimatedMonthlyYen"] == 10000 + 100 * 12
+    assert status["estimatedMonthlyYen"] == 10000 + 300 * 12
 
 
 def test_billing_webhook_invalid_signature(firm_billing_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -225,7 +244,7 @@ def test_meter_billable_all_clients() -> None:
     assert billable_client_count("firm", 15) == 15
     summary = usage_summary("firm", 8)
     assert summary["billableClients"] == 8
-    assert summary["perClientYen"] == 100
+    assert summary["perClientYen"] == 300
     assert summary["meterEvent"] is None or isinstance(summary["meterEvent"], str)
 
 

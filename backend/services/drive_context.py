@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from services.drive import DriveConfigurationError, DriveService
-from services.firm_settings import drive_credentials_path
-
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+from services.drive_oauth import (
+    drive_oauth_connected,
+    get_drive_oauth_email,
+    load_oauth_credentials,
+)
+from services.firm_settings import drive_credentials_path, get_drive_service_account_email
 
 _drive_cache: dict[str, DriveService] = {}
 
@@ -26,18 +29,37 @@ def resolve_drive_credentials_path(firm_id: str) -> Path:
 
 
 def drive_credentials_configured(firm_id: str) -> bool:
-    return resolve_drive_credentials_path(firm_id).exists()
+    """True when OAuth or service-account credentials exist for the firm."""
+    return drive_oauth_connected(firm_id) or resolve_drive_credentials_path(firm_id).exists()
 
 
 def resolve_drive_mode(firm_id: str) -> str:
     return "live" if drive_credentials_configured(firm_id) else "unconfigured"
 
 
+def resolve_drive_auth_method(firm_id: str) -> str:
+    if drive_oauth_connected(firm_id):
+        return "oauth"
+    if resolve_drive_credentials_path(firm_id).exists():
+        return "service_account"
+    return "none"
+
+
+def get_drive_connected_email(firm_id: str) -> Optional[str]:
+    if drive_oauth_connected(firm_id):
+        return get_drive_oauth_email(firm_id)
+    return get_drive_service_account_email(firm_id)
+
+
 def get_drive_service(firm_id: str) -> DriveService:
     fid = (firm_id or "").strip() or "firm_default"
     if fid not in _drive_cache:
-        cred_path = resolve_drive_credentials_path(fid)
-        _drive_cache[fid] = DriveService(credentials_path=str(cred_path))
+        if drive_oauth_connected(fid):
+            creds = load_oauth_credentials(fid)
+            _drive_cache[fid] = DriveService(credentials=creds, auth_method="oauth")
+        else:
+            cred_path = resolve_drive_credentials_path(fid)
+            _drive_cache[fid] = DriveService(credentials_path=str(cred_path))
     return _drive_cache[fid]
 
 

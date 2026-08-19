@@ -16,7 +16,7 @@
 | 用途 | 環境変数 | デフォルト料金 |
 |------|----------|----------------|
 | 事務所基本料（月額） | `STRIPE_PRICE_FIRM_BASE` | ¥10,000/月 |
-| 顧問先从量（月額・使用量連動） | `STRIPE_PRICE_CLIENT_METERED` | ¥100/社/月 |
+| 顧問先从量（月額・使用量連動） | `STRIPE_PRICE_CLIENT_METERED` | ¥300/社/月 |
 | AI トップアップ（任意） | `STRIPE_PRICE_AI_TOPUP_100` | ¥100/パック |
 
 料金ロジックの SSOT: `backend/services/billing_catalog.py`  
@@ -118,7 +118,7 @@ DOCUGRID_FRONTEND_URL=https://app.example.com
 
 # 任意 — デフォルトと異なる場合のみ
 # BILLING_FIRM_BASE_YEN=10000
-# BILLING_FIRM_PER_CLIENT_YEN=100
+# BILLING_FIRM_PER_CLIENT_YEN=300
 # BILLING_PARTNER_COMMISSION_PERCENT=20
 ```
 

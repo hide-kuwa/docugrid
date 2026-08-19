@@ -102,7 +102,7 @@ export const PERSONA_WORK_PROFILES: PersonaWorkProfile[] = [
     primaryTasks: ["経費領収書提出", "精算ステータス確認"],
     dataNeeds: [
       { id: "monthly_slots", label: "月次スロット状況", source: "GET /api/document-status", status: "ready" },
-      { id: "upload", label: "撮影アップロード", source: "POST /api/slots", status: "ready" },
+      { id: "upload", label: "資料アップロード", source: "POST /api/slots", status: "ready" },
     ],
     widgets: [
       { id: "expense_submit", label: "経費提出", priority: 1, status: "implemented" },

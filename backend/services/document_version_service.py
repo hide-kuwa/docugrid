@@ -272,6 +272,7 @@ def create_document_version(
     created_by_email: Optional[str] = None,
     page_count: Optional[int] = None,
     metadata_json: Optional[str] = None,
+    contains_individual_number: bool = False,
 ) -> DocumentVersion:
     init_document_versions_db()
     if page_count is None:
@@ -284,10 +285,18 @@ def create_document_version(
     version_id = uuid.uuid4().hex
     logical = get_logical_by_id(logical_id)
     firm_id = logical.firm_id if logical else DEFAULT_FIRM_ID
-    storage_key = f"{firm_id}/versions/{version_id}.pdf"
-    dest = STORAGE_DIR / storage_key
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(content)
+    if contains_individual_number:
+        from services.spi_vault import encrypt_bytes, spi_storage_key
+
+        storage_key = spi_storage_key(firm_id, version_id)
+        dest = STORAGE_DIR / storage_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(encrypt_bytes(content))
+    else:
+        storage_key = f"{firm_id}/versions/{version_id}.pdf"
+        dest = STORAGE_DIR / storage_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
     now = _now_iso()
 
     with sqlite3.connect(VERSIONS_DB_PATH) as conn:

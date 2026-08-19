@@ -138,9 +138,9 @@ export function ClientCommunicationsPanel({ client, canEdit }: Props) {
       ) : null}
 
       <WipBanner
-        kind="mock"
+        kind="partial"
         title="コミュニケーション履歴"
-        message="初回はサンプルスレッドが入ります。Slack / Gmail など外部連携は未実装です（手動入力のみ保存）。"
+        message="手動スレッドは保存できます。メール / Slack / LINE の本番通知は 設定 → 通知連携 でチャネルを接続してから使えます。"
         className="mb-4"
       />
 

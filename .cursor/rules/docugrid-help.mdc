@@ -1,0 +1,25 @@
+---
+description: Keep user help (docs/help) in sync when shipping user-facing UI
+globs:
+  - frontend/src/**/*
+  - backend/config/feature_surfaces.yaml
+  - frontend/src/lib/feature-tours.ts
+alwaysApply: false
+---
+
+# DocuGrid user help hygiene
+
+When you add or significantly change **user-facing** UI (new rail item, panel, upload flow, save path, guest page, etc.):
+
+1. Update `docs/help/coverage.md` (add a row or bump status). Use `stub` if the prose is not ready yet — **do not skip the row**.
+2. Add or edit the matching page under `docs/help/*.md` (minimum: audience, what it does, what it cannot do).
+   Put a **2–4 line summary at the top** — future AI support chatbot will use help pages as its knowledge base (`docs/help/support-bot-vision.md`).
+3. If labels on screen changed, update bold UI names in the help page.
+4. Optional: first-run spotlight → `frontend/src/lib/feature-tours.ts` + `data-tour="..."`.
+5. If the change is `feature_surfaces.yaml`, keep the surface `id` aligned with coverage’s 機能 ID column.
+
+Do **not** treat “no markdown unless asked” as blocking `docs/help/` updates that accompany a feature change — help coverage is part of the Done criteria for user-facing work.
+
+Skip help only when coverage marks the item `n/a` with a one-line reason (internal/dev-only).
+
+See `docs/help/maintaining.md`.

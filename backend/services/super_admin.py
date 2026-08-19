@@ -19,13 +19,31 @@ from services.tenancy import DEFAULT_FIRM_ID
 _DEV_SUPER_ADMIN_EMAIL = "admin@taxx.jp"
 
 
-def _resolve_super_admin_email() -> str:
+def _parse_email_list(raw: str) -> list[str]:
+    emails: list[str] = []
+    seen: set[str] = set()
+    for part in raw.replace(";", ",").split(","):
+        email = part.strip().lower()
+        if email and email not in seen:
+            seen.add(email)
+            emails.append(email)
+    return emails
+
+
+def get_super_admin_emails() -> list[str]:
+    """Configured platform super-admin emails (comma-separated env supported)."""
     raw = os.environ.get("DOCUGRID_SUPER_ADMIN_EMAIL")
     if raw is not None:
-        return raw.strip().lower()
+        return _parse_email_list(raw)
     if is_production() and not staging_local_enabled():
-        return ""
-    return _DEV_SUPER_ADMIN_EMAIL
+        return []
+    return [_DEV_SUPER_ADMIN_EMAIL]
+
+
+def get_super_admin_email() -> str:
+    """Primary super-admin email (first configured). Empty when disabled."""
+    emails = get_super_admin_emails()
+    return emails[0] if emails else ""
 
 
 SUPER_ADMIN_EMAIL = ""  # resolved lazily via getter for env changes in tests
@@ -34,13 +52,11 @@ SUPER_ADMIN_ROLE = "platform_admin"
 LEGACY_DEV_SUPER_ADMIN_EMAIL = _DEV_SUPER_ADMIN_EMAIL
 
 
-def get_super_admin_email() -> str:
-    return _resolve_super_admin_email()
-
-
 def is_super_admin_email(email: str | None) -> bool:
-    configured = get_super_admin_email()
-    return bool(configured) and (email or "").strip().lower() == configured
+    configured = get_super_admin_emails()
+    if not configured:
+        return False
+    return (email or "").strip().lower() in configured
 
 
 def all_app_permissions(known: set[str]) -> set[str]:

@@ -234,6 +234,12 @@ export function useViewerKeyboardShortcuts({
         handler: () => setActiveTool("check"),
       },
       {
+        id: "tool-text",
+        key: "t",
+        when: () => canEdit && !isReordering,
+        handler: () => setActiveTool("text"),
+      },
+      {
         id: "tool-eraser",
         key: "e",
         when: () => canEdit && !isReordering,

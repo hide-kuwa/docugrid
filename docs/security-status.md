@@ -65,6 +65,7 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 | AV スキャン / PDF 無害化 | ❌ 方針のみ（`file-upload-security.md` §4） |
 | 保管時暗号化（アプリ層） | ❌ インフラ任せ |
 | 事務所別 Google Drive ミラー | ✅ スロット（オプション）。戦略は [`google-drive-storage-strategy.md`](google-drive-storage-strategy.md) |
+| マイナンバー（特定個人情報） | ✅ SPI 暗号化レーン（Drive/AI 除外・専用権限）。[`my-number-handling.md`](my-number-handling.md) |
 
 ---
 
@@ -135,6 +136,8 @@ DocuGrid は **マルチテナント（事務所ごとのデータ分離）** �
 ---
 
 ## 6. 次にやること（推奨順）
+
+作業計画の要約: [`production-go-live-plan.md`](production-go-live-plan.md)
 
 1. **P0** 実ホスト向け `.env.production` に Google Client ID / CORS / HTTPS を入れ、`validate_production_env.py` 通過 + production 起動確認（staging-local は除外）
 2. **P2** firm 単位 RBAC（権限行列の事務所オーバーライド）

@@ -21,10 +21,12 @@ SLOT_DOCS_DB_PATH = STORAGE_DIR / "slot_documents.db"
 
 DEFAULT_FIRM_ID = "firm_default"
 FIRM_BETA_ID = "firm_beta"
+PROLEXT_FIRM_ID = "firm_prolext"
 
 FIRM_LABELS: dict[str, str] = {
     DEFAULT_FIRM_ID: "デフォルト事務所",
     FIRM_BETA_ID: "ベータ事務所",
+    PROLEXT_FIRM_ID: "PROLEXT税理士法人",
 }
 
 
@@ -143,7 +145,7 @@ def get_client_firm_map() -> dict[str, str]:
     mapped = dict(_client_firm_map_cached(mtime))
     if mapped:
         return mapped
-    return {f"c{i}": DEFAULT_FIRM_ID for i in range(1, 6)}
+    return {f"c{i}": DEFAULT_FIRM_ID for i in range(1, 10)}
 
 
 def get_client_firm_id(client_id: str) -> str:

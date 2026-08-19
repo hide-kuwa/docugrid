@@ -53,7 +53,9 @@ type DocugridActions = {
   /** ビューア並べ替え UI: 選択スロットだけ pageOrder を残す */
   keepOnlyPageSlotsAtIndices: (slotIndices: number[]) => void;
   /** PDF 実ページ数がストアより多いとき、先頭ファイルの pageOrder を拡張 */
-  ensurePrimaryFilePageCount: (targetCount: number) => void;
+  ensurePrimaryFilePageCount: (targetCount: number, fromIndex?: number) => void;
+  /** 単一 PDF 結合後: pageOrder を元 PDF ページ番号の並びで置き換え */
+  replacePrimaryPageOrder: (originalIndices: number[]) => void;
 };
 
 export type DocugridStore = DocugridNormalizedState & DocugridActions;
@@ -143,15 +145,15 @@ export const useDocugridStore = create<DocugridStore>()(
       });
     },
 
-    ensurePrimaryFilePageCount: (targetCount: number) => {
+    ensurePrimaryFilePageCount: (targetCount: number, fromIndex?: number) => {
       set((draft) => {
         const fileId = draft.fileOrder[0];
         if (!fileId || targetCount <= 0) return;
         const file = draft.filesById[fileId];
         if (!file) return;
-        const currentLen = draft.pageOrder.length;
-        if (currentLen >= targetCount) return;
-        for (let i = currentLen; i < targetCount; i++) {
+        const start = fromIndex ?? draft.pageOrder.length;
+        if (start >= targetCount) return;
+        for (let i = start; i < targetCount; i++) {
           const pid = asPageId(`${fileId}::${i}`);
           if (!draft.pagesById[pid]) {
             draft.pagesById[pid] = {
@@ -166,7 +168,37 @@ export const useDocugridStore = create<DocugridStore>()(
             draft.pageOrder.push(pid);
           }
         }
-        file.pageCount = Math.max(file.pageCount, targetCount);
+        file.pageCount = Math.max(file.pageCount ?? 0, targetCount);
+        markFileSync(draft, fileId, "dirty");
+        draft.sessionSyncStatus = "dirty";
+        draft.lastSyncError = undefined;
+      });
+    },
+
+    replacePrimaryPageOrder: (originalIndices: number[]) => {
+      set((draft) => {
+        const fileId = draft.fileOrder[0];
+        if (!fileId || originalIndices.length === 0) return;
+        const file = draft.filesById[fileId];
+        if (!file) return;
+        const nextOrder: PageId[] = [];
+        for (const idx of originalIndices) {
+          const pid = asPageId(`${fileId}::${idx}`);
+          if (!draft.pagesById[pid]) {
+            draft.pagesById[pid] = {
+              id: pid,
+              fileId,
+              originalIndex: idx,
+              displayKey: `${fileId}-pg-${idx}`,
+            };
+            draft.highlightIdsByPageId[pid] = [];
+          } else {
+            draft.pagesById[pid]!.originalIndex = idx;
+          }
+          nextOrder.push(pid);
+        }
+        draft.pageOrder = nextOrder;
+        file.pageCount = Math.max(file.pageCount ?? 0, originalIndices.length);
         markFileSync(draft, fileId, "dirty");
         draft.sessionSyncStatus = "dirty";
         draft.lastSyncError = undefined;

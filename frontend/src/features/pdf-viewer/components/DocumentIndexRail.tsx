@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -21,6 +21,8 @@ import {
 type Props = {
   file: File | null;
   enabled: boolean;
+  /** 注釈更新では変えず、開く／並べ替え／版切替で変えるキー */
+  analysisKey?: string | number | null;
   currentPage: number;
   documentLabel?: string;
   onJumpToPage: (pageIndex: number) => void;
@@ -40,15 +42,40 @@ function sectionAccent(kind: DocumentSection["kind"]): string {
 export function DocumentIndexRail({
   file,
   enabled,
+  analysisKey,
   currentPage,
   documentLabel,
   onJumpToPage,
 }: Props) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
+  /** この analysisKey では自動オープン済み（手動で閉じたあとに再開しない） */
+  const autoOpenedKeyRef = useRef<string | null>(null);
+
+  // 閉じたままでも読取は進める（開いたときだけ解析だと自動オープンできない）
   const { sections, loading, error, pageCount } = useDocumentSections(
     file,
-    enabled && open,
+    enabled,
+    analysisKey,
   );
+
+  useEffect(() => {
+    const key = analysisKey != null ? String(analysisKey) : null;
+    if (!key) return;
+    if (autoOpenedKeyRef.current === key) return;
+    // 新しい文書は閉じた状態から開始
+    setOpen(false);
+  }, [analysisKey]);
+
+  useEffect(() => {
+    if (!enabled || loading || error) return;
+    const key = analysisKey != null ? String(analysisKey) : null;
+    if (!key || autoOpenedKeyRef.current === key) return;
+    autoOpenedKeyRef.current = key;
+    // セクションが取れたときだけ自動で開く
+    if (sections.length > 0) {
+      setOpen(true);
+    }
+  }, [enabled, loading, error, sections.length, analysisKey]);
 
   const isCorpTax = useMemo(
     () => looksLikeCorpTaxPackage(documentLabel, sections),
@@ -72,7 +99,7 @@ export function DocumentIndexRail({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-2 text-left hover:bg-slate-50"
-        title={open ? "索引を閉じる" : "索引を開く"}
+        title={open ? "索引を閉じる" : loading ? "帳票を解析中…" : "索引を開く"}
       >
         {open ? (
           <>
@@ -82,6 +109,8 @@ export function DocumentIndexRail({
             </span>
             <ChevronLeft className="h-4 w-4 shrink-0 text-slate-400" />
           </>
+        ) : loading ? (
+          <Loader2 className="mx-auto h-4 w-4 animate-spin text-violet-600" />
         ) : (
           <ChevronRight className="mx-auto h-4 w-4 text-slate-500" />
         )}

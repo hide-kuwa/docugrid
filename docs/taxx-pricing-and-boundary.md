@@ -116,13 +116,13 @@
 | テンプレ1回あたりの pt 単価 | 公開テンプレの相場が未観測 |
 | Stripe Connect による作者分配 | マーケット Phase 2 |
 | TAXX / DocuGrid **別 Subscription 2本** | 顧客ゼロ段階では運用負債 |
-| 顧問先 ¥100/社を TAXX に含めるか | 現行 `billing_catalog` との整合を別 PR で |
+| 顧問先 ¥300/社を TAXX に含めるか | 現行 `billing_catalog` との整合を別 PR で |
 
 ### 4.3 現行コードとの関係
 
 | 場所 | 状態 |
 |------|------|
-| `billing_catalog.py` | DocuGrid: ¥10,000 + ¥100/顧問先/月（**実装済み SSOT**） |
+| `billing_catalog.py` | DocuGrid: ¥10,000 + ¥300/顧問先/月（**実装済み SSOT**） |
 | `stripe_connect_service.py` | 営業パートナー報酬（Keisan 作者分配とは別用途） |
 | 本書 §6 | **設計メモのみ。コードに写さないこと** |
 

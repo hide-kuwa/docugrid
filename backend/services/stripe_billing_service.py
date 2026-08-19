@@ -53,7 +53,11 @@ def is_billing_enforced() -> bool:
 
 
 # 課金免除ドメイン（無料登録・利用可）。env で上書き可能（カンマ区切り）。
-DEFAULT_BILLING_EXEMPT_EMAIL_DOMAINS = ("lext-tax.com",)
+# PROLEXT税理士法人: lext-tax.com / lext-tax.jp / prolext.jp（Stripe 未整備でも登録・利用可）
+DEFAULT_BILLING_EXEMPT_EMAIL_DOMAINS = ("lext-tax.com", "lext-tax.jp", "prolext.jp")
+
+# 事務所単位の課金免除（既定: firm_prolext = PROLEXT税理士法人）
+DEFAULT_BILLING_EXEMPT_FIRM_IDS = ("firm_prolext",)
 
 
 def billing_exempt_email_domains() -> frozenset[str]:
@@ -65,12 +69,30 @@ def billing_exempt_email_domains() -> frozenset[str]:
     )
 
 
+def billing_exempt_firm_ids() -> frozenset[str]:
+    raw = os.environ.get("DOCUGRID_BILLING_FREE_FIRM_IDS")
+    if raw is None:
+        return frozenset(DEFAULT_BILLING_EXEMPT_FIRM_IDS)
+    return frozenset(x.strip() for x in raw.split(",") if x.strip())
+
+
 def is_billing_exempt_email(email: str | None) -> bool:
-    """Emails on exempt domains (e.g. lext-tax.com) use the product without a subscription."""
+    """Emails on exempt domains (PROLEXT) use the product without a subscription."""
     normalized = (email or "").strip().lower()
     if "@" not in normalized:
         return False
     return normalized.rsplit("@", 1)[1] in billing_exempt_email_domains()
+
+
+def is_billing_exempt_firm(firm_id: str | None) -> bool:
+    """PROLEXT (firm_prolext) など、課金なしで利用できる事務所。"""
+    fid = (firm_id or "").strip()
+    return bool(fid) and fid in billing_exempt_firm_ids()
+
+
+def is_billing_exempt(*, email: str | None = None, firm_id: str | None = None) -> bool:
+    """メールドメインまたは事務所 ID のいずれかが免除なら True。"""
+    return is_billing_exempt_email(email) or is_billing_exempt_firm(firm_id)
 
 
 def list_plans() -> list[dict[str, Any]]:

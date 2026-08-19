@@ -101,8 +101,198 @@ def add_check_annotation(page: fitz.Page, rect: fitz.Rect) -> fitz.Annot:
     return annot
 
 
+def _text_box_from_rect(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    *,
+    content: str,
+    fs: float,
+) -> fitz.Rect:
+    lines = content.splitlines() or [" "]
+    line_count = max(1, len(lines))
+    longest = max((len(line) for line in lines), default=1)
+    min_h = max(page.rect.height * 0.028, fs * 1.35 * line_count + 10)
+    min_w = max(
+        page.rect.width * 0.12,
+        min(page.rect.width * 0.75, fs * 0.6 * longest + 18),
+    )
+    box = fitz.Rect(rect)
+    if box.height < min_h:
+        box.y1 = box.y0 + min_h
+    if box.width < min_w:
+        box.x1 = box.x0 + min_w
+    box = box & page.rect
+    if box.is_empty:
+        box = fitz.Rect(
+            max(0, rect.x0),
+            max(0, rect.y0),
+            min(page.rect.width, rect.x0 + min_w),
+            min(page.rect.height, rect.y0 + min_h),
+        )
+    return box
+
+
+def add_text_annotation(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    text: str,
+    *,
+    fontsize: float | None = None,
+    text_color: tuple[float, float, float] | None = None,
+) -> fitz.Annot:
+    """テキストを注釈層（FreeText）に載せる。ページ本体は変更しない。
+
+    消しゴムは注釈削除のみで、元 PDF の帳票線・文字を傷つけない。
+    """
+    content = (text or "").rstrip() or " "
+    fs = float(fontsize) if fontsize and fontsize > 0 else 12.0
+    fs = min(36.0, max(8.0, fs))
+    box = _text_box_from_rect(page, rect, content=content, fs=fs)
+    color = text_color or (0.05, 0.15, 0.55)
+    has_cjk = any(ord(ch) > 0x2E80 for ch in content)
+    font_candidates = ("japan", "china-s", "korea-s", "helv") if has_cjk else ("helv", "japan")
+
+    annot: fitz.Annot | None = None
+    last_err: Exception | None = None
+    for fontname in font_candidates:
+        try:
+            annot = page.add_freetext_annot(
+                box,
+                content,
+                fontsize=fs,
+                fontname=fontname,
+                text_color=color,
+                fill_color=(1.0, 0.97, 0.72),
+                align=fitz.TEXT_ALIGN_LEFT,
+            )
+            break
+        except Exception as exc:
+            last_err = exc
+            annot = None
+    if annot is None:
+        raise RuntimeError(f"failed to add FreeText annotation: {last_err}")
+
+    color_hex = "#{:02x}{:02x}{:02x}".format(
+        max(0, min(255, int(round(color[0] * 255)))),
+        max(0, min(255, int(round(color[1] * 255)))),
+        max(0, min(255, int(round(color[2] * 255)))),
+    )
+    # FreeText の content = 表示文字。メタは title に置く（content を JSON にすると文字が壊れる）
+    metadata = {
+        "schema": "docugrid.annotation.v1",
+        "id": uuid.uuid4().hex,
+        "kind": "text",
+        "fontsize": fs,
+        "color": color_hex,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+    }
+    annot.set_border(width=0.7)
+    annot.set_opacity(0.72)
+    annot.set_info(
+        title=json.dumps(metadata, ensure_ascii=False, separators=(",", ":")),
+        subject=f"{DOCUGRID_ANNOT_SUBJECT_PREFIX}text",
+        content=content[:2000],
+    )
+    annot.update()
+    return annot
+
+
+def _parse_text_annot_payload(annot: fitz.Annot) -> dict[str, object]:
+    """FreeText の表示文字 + title メタから text / fontsize / color を取り出す。"""
+    text = str((annot.info or {}).get("content") or "")
+    fontsize = 14.0
+    color = "#1e3a8a"
+    # 旧実装: content が JSON の場合
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "text" in data:
+            text = str(data.get("text") or "")
+            try:
+                fontsize = float(data.get("fontsize") or 14)
+            except (TypeError, ValueError):
+                fontsize = 14.0
+            c = data.get("color")
+            if isinstance(c, str) and c.startswith("#") and len(c) >= 7:
+                color = c[:7]
+            return {"text": text, "fontsize": fontsize, "color": color}
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    title_raw = str((annot.info or {}).get("title") or "")
+    try:
+        meta = json.loads(title_raw)
+        if isinstance(meta, dict):
+            try:
+                fontsize = float(meta.get("fontsize") or 14)
+            except (TypeError, ValueError):
+                fontsize = 14.0
+            c = meta.get("color")
+            if isinstance(c, str) and c.startswith("#") and len(c) >= 7:
+                color = c[:7]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return {"text": text, "fontsize": fontsize, "color": color}
+
+
+def find_text_annotation_at(page: fitz.Page, hit_rect: fitz.Rect) -> dict[str, object] | None:
+    """クリック位置に重なる DocuGrid テキスト注釈を返す（正規化座標）。"""
+    center = fitz.Point(
+        (hit_rect.x0 + hit_rect.x1) / 2,
+        (hit_rect.y0 + hit_rect.y1) / 2,
+    )
+    candidates: list[tuple[float, fitz.Annot]] = []
+    for annot in list(page.annots() or []):
+        subject = str((annot.info or {}).get("subject") or "")
+        if subject != f"{DOCUGRID_ANNOT_SUBJECT_PREFIX}text":
+            continue
+        if not annot.rect.intersects(hit_rect):
+            continue
+        annot_center = fitz.Point(
+            (annot.rect.x0 + annot.rect.x1) / 2,
+            (annot.rect.y0 + annot.rect.y1) / 2,
+        )
+        distance = math.hypot(annot_center.x - center.x, annot_center.y - center.y)
+        candidates.append((distance, annot))
+    if not candidates:
+        return None
+    _, target = min(candidates, key=lambda item: item[0])
+    pw = max(page.rect.width, 1e-6)
+    ph = max(page.rect.height, 1e-6)
+    r = target.rect
+    payload = _parse_text_annot_payload(target)
+    return {
+        "x": r.x0 / pw,
+        "y": r.y0 / ph,
+        "w": max(0.0, (r.x1 - r.x0) / pw),
+        "h": max(0.0, (r.y1 - r.y0) / ph),
+        "text": payload["text"],
+        "fontsize": payload["fontsize"],
+        "color": payload["color"],
+    }
+
+
+def replace_text_annotation(
+    page: fitz.Page,
+    origin: fitz.Rect,
+    new_rect: fitz.Rect,
+    text: str,
+    *,
+    fontsize: float | None = None,
+    text_color: tuple[float, float, float] | None = None,
+) -> fitz.Annot:
+    """既存テキスト注釈を消して書き直す（ページ本体は触らない）。"""
+    delete_one_docugrid_annotation(page, origin)
+    return add_text_annotation(
+        page,
+        new_rect,
+        text,
+        fontsize=fontsize,
+        text_color=text_color,
+    )
+
+
 def delete_one_docugrid_annotation(page: fitz.Page, hit_rect: fitz.Rect) -> bool:
-    """消しゴムに触れたDocuGrid注釈を、近いものから1要素だけ削除する。"""
+    """消しゴム: DocuGrid 注釈を1つ削除するだけ。元 PDF コンテンツは変更しない。"""
     center = fitz.Point(
         (hit_rect.x0 + hit_rect.x1) / 2,
         (hit_rect.y0 + hit_rect.y1) / 2,
@@ -127,49 +317,18 @@ def delete_one_docugrid_annotation(page: fitz.Page, hit_rect: fitz.Rect) -> bool
     return True
 
 
-def _segment_rect(p1: fitz.Point, p2: fitz.Point, half_w: float) -> fitz.Rect:
-    dx = p2.x - p1.x
-    dy = p2.y - p1.y
-    length = math.hypot(dx, dy)
-    if length < 1e-6:
-        return fitz.Rect(p1.x - half_w, p1.y - half_w, p1.x + half_w, p1.y + half_w)
-    nx = -dy / length * half_w
-    ny = dx / length * half_w
-    xs = [p1.x + nx, p1.x - nx, p2.x - nx, p2.x + nx]
-    ys = [p1.y + ny, p1.y - ny, p2.y - ny, p2.y + ny]
-    return fitz.Rect(min(xs), min(ys), max(xs), max(ys))
-
-
-def _queue_redact_rect(page: fitz.Page, rect: fitz.Rect) -> None:
-    clipped = rect & page.rect
-    if clipped.is_empty:
-        return
-    page.add_redact_annot(clipped, fill=(1, 1, 1))
-
-
-def _apply_redactions(page: fitz.Page) -> None:
-    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-
-
-def erase_region(page: fitz.Page, rect: fitz.Rect) -> None:
-    """矩形領域を redaction で除去（焼き付け線・テキストを消す）。"""
-    _queue_redact_rect(page, rect)
-    _apply_redactions(page)
-
-
 def draw_freehand_eraser(page: fitz.Page, path: List[dict[str, float]]) -> None:
-    """ストローク軌道に沿って redaction を適用（焼き付け蛍光ペンを確実に消す）。"""
+    """ストロークに触れた DocuGrid 注釈だけを削除する（ページ本体は触らない）。"""
+    erase_rect = path_bbox_rect(page, path)
+    # 太めのヒット幅で注釈を拾う
     w = marker_stroke_width(page) * 1.15
-    half_w = w * 0.5
-    pts = path_to_fitz_points(page, path)
-    if not pts:
-        return
-    if len(pts) == 1:
-        erase_region(page, fitz.Rect(pts[0].x - half_w, pts[0].y - half_w, pts[0].x + half_w, pts[0].y + half_w))
-        return
-    for i in range(len(pts) - 1):
-        _queue_redact_rect(page, _segment_rect(pts[i], pts[i + 1], half_w))
-    _apply_redactions(page)
+    erase_rect = fitz.Rect(
+        erase_rect.x0 - w * 0.5,
+        erase_rect.y0 - w * 0.5,
+        erase_rect.x1 + w * 0.5,
+        erase_rect.y1 + w * 0.5,
+    )
+    delete_one_docugrid_annotation(page, erase_rect)
 
 
 def path_bbox_rect(page: fitz.Page, path: List[dict[str, float]], pad_ratio: float = 0.008) -> fitz.Rect:

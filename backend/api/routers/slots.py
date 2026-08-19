@@ -26,19 +26,30 @@ async def upsert_slot_document(
     slot_label: Optional[str] = Form(None),
     classify_metadata: Optional[str] = Form(None),
     async_classify: Optional[str] = Form(None),
+    contains_individual_number: Optional[str] = Form(None),
     file: UploadFile = File(...),
 ):
-    role = _require_client_permission(request, "document.upload", client_id)
+    is_spi = str(contains_individual_number or "").strip().lower() in ("1", "true", "yes")
+    if is_spi:
+        role = _require_client_permission(request, "my_number.manage", client_id)
+    else:
+        role = _require_client_permission(request, "document.upload", client_id)
     content = await _read_upload_content(file)
     page_count = _validate_pdf_bytes(content)
     sha = hashlib.sha256(content).hexdigest()
     identity = resolve_identity(request)
     uploaded_by = identity.stakeholder_id or identity.email or ""
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-    auto_share_with_client = _is_client_portal_role(identity.role)
+    # 特定個人情報は顧問先ポータル共有しない
+    auto_share_with_client = (not is_spi) and _is_client_portal_role(identity.role)
     client_shared_at = now if auto_share_with_client else None
     client_shared_by = uploaded_by if auto_share_with_client else None
     title = slot_label or f"slot-{slot_id}"
+    spi_retention_until = None
+    if is_spi:
+        from services.spi_vault import default_retention_until
+
+        spi_retention_until = default_retention_until()
 
     metadata_json: Optional[str] = None
     if classify_metadata:
@@ -75,6 +86,7 @@ async def upsert_slot_document(
         created_by_email=identity.email,
         page_count=page_count,
         metadata_json=metadata_json,
+        contains_individual_number=is_spi,
     )
 
     client_firm = get_client_firm_id(client_id)
@@ -90,17 +102,21 @@ async def upsert_slot_document(
             existing_drive_file_id = prev_row["google_drive_file_id"]
 
     drive_cfg = _load_system_config(client_firm)
-    drive_file_id = maybe_upload_slot_to_drive(
-        firm_id=client_firm,
-        drive_connected=drive_cfg.google_drive_connected,
-        drive_root_folder_id=drive_cfg.drive_root_folder_id,
-        client_id=client_id,
-        period_key=period_key,
-        slot_label=slot_label or title,
-        content=content,
-        filename=file.filename or "document.pdf",
-        existing_file_id=existing_drive_file_id,
-    )
+    # 特定個人情報は Drive ミラーしない（ガイドライン: 持ち出し・目的外提供の抑制）
+    drive_file_id = None
+    if not is_spi:
+        drive_file_id = maybe_upload_slot_to_drive(
+            firm_id=client_firm,
+            drive_connected=drive_cfg.google_drive_connected,
+            drive_root_folder_id=drive_cfg.drive_root_folder_id,
+            client_id=client_id,
+            period_key=period_key,
+            slot_label=slot_label or title,
+            content=content,
+            filename=file.filename or "document.pdf",
+            existing_file_id=existing_drive_file_id,
+        )
+    spi_flag = "1" if is_spi else "0"
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         prev = conn.execute(
@@ -115,7 +131,8 @@ async def upsert_slot_document(
                     slot_label=?, original_name=?, storage_key=?,
                     page_count=?, content_sha256=?, byte_size=?, uploaded_by=?, uploaded_at=?,
                     logical_document_id=?, current_version_id=?, firm_id=?, google_drive_file_id=?,
-                    client_shared_at=?, client_shared_by=?
+                    client_shared_at=?, client_shared_by=?,
+                    contains_individual_number=?, spi_retention_until=?
                 WHERE id=?
                 """,
                 (
@@ -133,6 +150,8 @@ async def upsert_slot_document(
                     drive_file_id,
                     client_shared_at,
                     client_shared_by,
+                    spi_flag,
+                    spi_retention_until,
                     doc_id,
                 ),
             )
@@ -144,8 +163,8 @@ async def upsert_slot_document(
                     (id, client_id, period_key, slot_id, slot_label, original_name, storage_key,
                      page_count, content_sha256, byte_size, uploaded_by, uploaded_at,
                      logical_document_id, current_version_id, firm_id, google_drive_file_id,
-                     client_shared_at, client_shared_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     client_shared_at, client_shared_by, contains_individual_number, spi_retention_until)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc_id,
@@ -166,6 +185,8 @@ async def upsert_slot_document(
                     drive_file_id,
                     client_shared_at,
                     client_shared_by,
+                    spi_flag,
+                    spi_retention_until,
                 ),
             )
         row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
@@ -174,7 +195,8 @@ async def upsert_slot_document(
         request,
         "slot.upload",
         "success",
-        f"client={client_id} period={period_key} slot={slot_id} ver={version.version_label}",
+        f"client={client_id} period={period_key} slot={slot_id} ver={version.version_label}"
+        + (" spi=1" if is_spi else ""),
     )
     _append_review_event(
         client_id=client_id,
@@ -208,13 +230,16 @@ async def upsert_slot_document(
             document_version_id=version.id,
             detail=f"doc_id={doc_id}; auto_share=1",
         )
-    defer_normalize = async_classify is not None and async_classify.strip().lower() in (
+    defer_normalize = (not is_spi) and async_classify is not None and async_classify.strip().lower() in (
         "1",
         "true",
         "yes",
         "on",
     )
-    if defer_normalize:
+    if is_spi:
+        # 特定個人情報は AI 分類・OCR 外部送信の対象外
+        pass
+    elif defer_normalize:
         job = create_ocr_job(
             firm_id=client_firm,
             client_id=client_id,
@@ -316,7 +341,17 @@ async def get_slot_document_file(request: Request, doc_id: str):
         row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
-    _require_client_access(request, role, row["client_id"], required_permission="document.view")
+    is_spi = False
+    if "contains_individual_number" in row.keys() and row["contains_individual_number"]:
+        is_spi = str(row["contains_individual_number"]).strip().lower() in ("1", "true", "yes")
+    from services.spi_vault import is_spi_storage_key, read_decrypted_by_storage_key
+
+    if is_spi or is_spi_storage_key(row["storage_key"]):
+        is_spi = True
+        _require_permission(request, "my_number.view")
+        _require_client_access(request, role, row["client_id"], required_permission="my_number.view")
+    else:
+        _require_client_access(request, role, row["client_id"], required_permission="document.view")
     _deny_soft_deleted_row_unless_purge(request, row)
     _deny_client_slot_unless_shared(request, row)
     logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
@@ -325,6 +360,22 @@ async def get_slot_document_file(request: Request, doc_id: str):
     row_firm = row["firm_id"] if "firm_id" in row.keys() and row["firm_id"] else None
     if row_firm:
         authorize_firm_resource(ctx, str(row_firm))
+    if is_spi:
+        try:
+            plain = read_decrypted_by_storage_key(row["storage_key"])
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="File missing") from exc
+        _log_audit_event(
+            request,
+            "slot.download",
+            "success",
+            f"id={doc_id} client={row['client_id']} spi=1",
+        )
+        return Response(
+            content=plain,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{row["original_name"]}"'},
+        )
     path = resolve_storage_path(row["storage_key"])
     if not path.exists():
         drive_id = row["google_drive_file_id"] if "google_drive_file_id" in row.keys() else None
@@ -567,6 +618,13 @@ async def share_slot_with_client(request: Request, doc_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
         _require_client_access(request, role, row["client_id"], required_permission="document.upload")
+        if "contains_individual_number" in row.keys() and str(
+            row["contains_individual_number"] or ""
+        ).strip().lower() in ("1", "true", "yes"):
+            raise HTTPException(
+                status_code=403,
+                detail="Specific personal information documents cannot be shared to the client portal",
+            )
         if row["deleted_at"] if "deleted_at" in row.keys() else None:
             raise HTTPException(status_code=409, detail="Cannot share deleted document")
         if row["client_shared_at"] if "client_shared_at" in row.keys() else None:
@@ -783,6 +841,7 @@ async def get_document_version_file(request: Request, version_id: str):
         raise HTTPException(status_code=404, detail="Version not found")
     init_document_versions_db()
     from services.document_version_service import VERSIONS_DB_PATH
+    from services.spi_vault import is_spi_storage_key, read_decrypted_by_storage_key
 
     with sqlite3.connect(VERSIONS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -792,11 +851,26 @@ async def get_document_version_file(request: Request, version_id: str):
         ).fetchone()
     if not lrow:
         raise HTTPException(status_code=404, detail="Logical document not found")
-    _require_client_access(request, role, lrow["client_id"], required_permission="document.view")
+    if is_spi_storage_key(version.storage_key):
+        _require_permission(request, "my_number.view")
+        _require_client_access(request, role, lrow["client_id"], required_permission="my_number.view")
+    else:
+        _require_client_access(request, role, lrow["client_id"], required_permission="document.view")
     _deny_if_logical_purged(version.logical_document_id)
     vfirm = resolve_version_firm_id(version_id)
     if vfirm:
         authorize_firm_resource(_auth_context(request), vfirm)
+    if is_spi_storage_key(version.storage_key):
+        try:
+            plain = read_decrypted_by_storage_key(version.storage_key)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="File missing") from exc
+        _log_audit_event(request, "version.download", "success", f"version={version_id} spi=1")
+        return Response(
+            content=plain,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{version.original_name}"'},
+        )
     path = version_file_path(version)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing")

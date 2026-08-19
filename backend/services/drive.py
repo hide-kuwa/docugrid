@@ -1,8 +1,9 @@
 import io
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
+from google.auth.credentials import Credentials as GoogleCredentials
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -10,6 +11,8 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 logger = logging.getLogger(__name__)
 
 DRIVE_SCOPE = ["https://www.googleapis.com/auth/drive.file"]
+# Firm OAuth connector: list shared drives + manage folder permissions for office visibility.
+DRIVE_FULL_SCOPE = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
@@ -18,22 +21,35 @@ class DriveConfigurationError(RuntimeError):
 
 
 class DriveService:
-    def __init__(self, credentials_path: str):
-        path = Path(credentials_path)
-        if not path.exists():
-            raise DriveConfigurationError(
-                f"Drive credentials not found: {credentials_path}. "
-                "Upload a service account JSON in Settings → Integrations."
-            )
+    def __init__(
+        self,
+        credentials_path: Optional[str] = None,
+        *,
+        credentials: Optional[GoogleCredentials] = None,
+        auth_method: str = "service_account",
+    ):
         try:
-            self._credentials = self._load_credentials(str(path))
+            if credentials is not None:
+                self._credentials = credentials
+                self._auth_method = auth_method or "oauth"
+            else:
+                if not credentials_path:
+                    raise DriveConfigurationError("Drive credentials path missing")
+                path = Path(credentials_path)
+                if not path.exists():
+                    raise DriveConfigurationError(
+                        f"Drive credentials not found: {credentials_path}. "
+                        "Connect Google Drive in Settings, or upload a service account JSON."
+                    )
+                self._credentials = self._load_credentials(str(path))
+                self._auth_method = "service_account"
             self._service = build(
                 "drive",
                 "v3",
                 credentials=self._credentials,
                 cache_discovery=False,
             )
-            logger.info("Connected to Google Drive API (%s).", credentials_path)
+            logger.info("Connected to Google Drive API (%s).", self._auth_method)
         except DriveConfigurationError:
             raise
         except Exception as exc:
@@ -42,6 +58,10 @@ class DriveService:
     @property
     def mode(self) -> str:
         return "live"
+
+    @property
+    def auth_method(self) -> str:
+        return self._auth_method
 
     def _load_credentials(self, path: str):
         return service_account.Credentials.from_service_account_file(path, scopes=DRIVE_SCOPE)
@@ -144,7 +164,11 @@ class DriveService:
             return {"ok": False, "mode": "live", "error": "drive_root_folder_id_missing"}
         meta = (
             self._service.files()
-            .get(fileId=root_folder_id, fields="id,name,mimeType", supportsAllDrives=True)
+            .get(
+                fileId=root_folder_id,
+                fields="id,name,mimeType,driveId,shared",
+                supportsAllDrives=True,
+            )
             .execute()
         )
         return {
@@ -152,4 +176,111 @@ class DriveService:
             "mode": "live",
             "folder_id": meta.get("id"),
             "folder_name": meta.get("name"),
+            "drive_id": meta.get("driveId") or None,
+            "shared": bool(meta.get("shared")),
+            "auth_method": self._auth_method,
         }
+
+    def list_shared_drives(self, *, page_size: int = 50) -> list[dict]:
+        """Shared drives the connected account can write into."""
+        drives: list[dict] = []
+        page_token: Optional[str] = None
+        while True:
+            kwargs: dict = {"pageSize": min(100, max(1, page_size))}
+            if page_token:
+                kwargs["pageToken"] = page_token
+            result = self._service.drives().list(**kwargs).execute()
+            for item in result.get("drives") or []:
+                drives.append(
+                    {
+                        "id": item.get("id") or "",
+                        "name": item.get("name") or "",
+                    }
+                )
+            page_token = result.get("nextPageToken")
+            if not page_token or len(drives) >= page_size:
+                break
+        return [d for d in drives if d.get("id")]
+
+    def ensure_folder_in_shared_drive(self, shared_drive_id: str, name: str) -> str:
+        """Create or reuse a named folder at the root of a shared drive."""
+        if not shared_drive_id:
+            raise DriveConfigurationError("shared_drive_id required")
+        return self.ensure_folder(shared_drive_id, name)
+
+    def list_user_permission_emails(self, file_id: str) -> list[str]:
+        emails: list[str] = []
+        page_token: Optional[str] = None
+        while True:
+            kwargs: dict = {
+                "fileId": file_id,
+                "fields": "nextPageToken,permissions(id,type,emailAddress,role,domain)",
+                "supportsAllDrives": True,
+            }
+            if page_token:
+                kwargs["pageToken"] = page_token
+            result = self._service.permissions().list(**kwargs).execute()
+            for perm in result.get("permissions") or []:
+                if perm.get("type") == "user":
+                    email = (perm.get("emailAddress") or "").strip().lower()
+                    if email:
+                        emails.append(email)
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+        return emails
+
+    def share_with_user(
+        self,
+        file_id: str,
+        email: str,
+        *,
+        role: str = "writer",
+    ) -> str:
+        """Grant a Google user access. Idempotent when already shared."""
+        target = (email or "").strip().lower()
+        if not target or "@" not in target:
+            raise ValueError("invalid email")
+        existing = set(self.list_user_permission_emails(file_id))
+        if target in existing:
+            return "already"
+        try:
+            self._service.permissions().create(
+                fileId=file_id,
+                body={"type": "user", "role": role, "emailAddress": target},
+                sendNotificationEmail=False,
+                supportsAllDrives=True,
+                fields="id",
+            ).execute()
+            return "shared"
+        except Exception as exc:
+            message = str(exc).lower()
+            if "already exists" in message or "duplicate" in message:
+                return "already"
+            raise
+
+    def share_with_domain(
+        self,
+        file_id: str,
+        domain: str,
+        *,
+        role: str = "writer",
+    ) -> str:
+        """Workspace domain share (not for consumer gmail.com)."""
+        dom = (domain or "").strip().lower().lstrip("@")
+        if not dom or dom in {"gmail.com", "googlemail.com"}:
+            raise ValueError("invalid workspace domain")
+        try:
+            self._service.permissions().create(
+                fileId=file_id,
+                body={"type": "domain", "role": role, "domain": dom},
+                sendNotificationEmail=False,
+                supportsAllDrives=True,
+                fields="id",
+            ).execute()
+            return "shared"
+        except Exception as exc:
+            message = str(exc).lower()
+            if "already exists" in message or "duplicate" in message:
+                return "already"
+            raise

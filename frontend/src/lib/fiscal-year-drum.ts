@@ -46,10 +46,22 @@ export function buildYearDrumMeta(
   };
 }
 
-export function buildMatrixPeriods(yearMeta: YearDrumMeta): PeriodLists {
+/** 月次ドラム: 決算月を先頭に、そこから遡る（例: 3月決算 → 3月…4月） */
+export function buildMonthDrumLabels(fiscalMonth = 3): string[] {
+  const fm = fiscalMonth >= 1 && fiscalMonth <= 12 ? fiscalMonth : 3;
+  return Array.from({ length: 12 }, (_, i) => {
+    const month = ((fm - 1 - i) % 12 + 12) % 12 + 1;
+    return `${month}月`;
+  });
+}
+
+export function buildMatrixPeriods(
+  yearMeta: YearDrumMeta,
+  fiscalMonth = 3,
+): PeriodLists {
   return {
     year: yearMeta.labels,
-    month: Array.from({ length: 12 }, (_, i) => `${12 - i}月`),
+    month: buildMonthDrumLabels(fiscalMonth),
   };
 }
 

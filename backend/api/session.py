@@ -139,11 +139,16 @@ def _login_with_email(
         pending_err = _login_auth_error_for_email(email)
         if pending_err:
             raise pending_err
+        normalized = (email or "").strip().lower()
         raise HTTPException(
             status_code=403,
             detail={
                 "code": "not_registered",
-                "message": "この Google アカウントは DocuGrid に登録されていません。代表からの招待または参加申請が必要です。",
+                "email": normalized,
+                "message": (
+                    f"({normalized}) は DocuGrid に登録されていません。"
+                    "代表からの招待、事務所コードでの参加、または登録済みの Google アカウントを選び直してください。"
+                ),
             },
         )
     role = _get_stakeholder_role_map().get(member.stakeholder_id) or member.firm_role

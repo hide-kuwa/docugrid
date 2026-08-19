@@ -70,6 +70,69 @@ def test_eraser_removes_only_one_added_element() -> None:
     assert _sample_pixel(page, 0.5, 0.3) == original
 
 
+def test_text_annotation_is_erasable() -> None:
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=400)
+    # 帳票っぽい下地（白塗りと区別できる模様）
+    page.draw_rect(page.rect, color=(0.9, 0.75, 0.55), fill=(0.9, 0.75, 0.55))
+    for i in range(0, 400, 20):
+        page.draw_line(fitz.Point(0, i), fitz.Point(400, i), color=(0.75, 0.45, 0.2), width=0.6)
+        page.draw_line(fitz.Point(i, 0), fitz.Point(i, 400), color=(0.75, 0.45, 0.2), width=0.6)
+    page.insert_text((50, 58), "下地ABC", fontsize=12, color=(0.2, 0.1, 0.1))
+
+    rect = fitz.Rect(40, 40, 200, 70)
+    from services.pdf_annotations import add_text_annotation
+
+    before = _sample_pixel(page, 0.3, 0.14)
+    add_text_annotation(page, rect, "確認メモ", fontsize=14)
+    annotations = list(page.annots() or [])
+    assert len(annotations) == 1
+    assert annotations[0].info["subject"] == "DocuGrid:text"
+    assert annotations[0].info["content"] == "確認メモ"
+    meta = json.loads(annotations[0].info["title"])
+    assert meta["kind"] == "text"
+    assert "確認メモ" in page.get_text()
+    after = _sample_pixel(page, 0.3, 0.14)
+    assert after != before
+
+    assert delete_one_docugrid_annotation(page, rect)
+    assert list(page.annots() or []) == []
+    erased = _sample_pixel(page, 0.3, 0.14)
+    # 注釈削除のみなので下地ピクセルが復元される（白抜けしない）
+    assert erased == before
+    assert "確認メモ" not in page.get_text()
+    assert "ABC" in page.get_text()
+
+
+def test_text_annotation_can_be_found_and_replaced() -> None:
+    page = _blank_page()
+    rect = fitz.Rect(40, 40, 200, 80)
+    from services.pdf_annotations import (
+        add_text_annotation,
+        find_text_annotation_at,
+        replace_text_annotation,
+    )
+
+    add_text_annotation(page, rect, "初版", fontsize=12, text_color=(0.1, 0.1, 0.5))
+    hit = find_text_annotation_at(page, fitz.Rect(50, 50, 60, 60))
+    assert hit is not None
+    assert hit["text"] == "初版"
+
+    replace_text_annotation(
+        page,
+        rect,
+        fitz.Rect(40, 40, 220, 90),
+        "改訂版",
+        fontsize=14,
+        text_color=(0.5, 0.0, 0.0),
+    )
+    assert "改訂版" in page.get_text()
+    assert "初版" not in page.get_text()
+    hit2 = find_text_annotation_at(page, fitz.Rect(50, 50, 60, 60))
+    assert hit2 is not None
+    assert hit2["text"] == "改訂版"
+
+
 def test_eraser_does_not_delete_foreign_pdf_annotation() -> None:
     page = _blank_page()
     foreign = page.add_rect_annot(fitz.Rect(50, 50, 200, 200))

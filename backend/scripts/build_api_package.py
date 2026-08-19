@@ -189,6 +189,7 @@ def main() -> int:
         from api.schemas import (
             ClientMasterClient,
             ClientMasterGroup,
+            ClientMasterRelation,
             ClientMasterPayload,
             RolePermissionsPayload,
             StakeholderMasterPayload,

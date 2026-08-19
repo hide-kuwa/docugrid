@@ -40,9 +40,21 @@ async def highlight_pdf(
     y: float = Form(...),
     w: float = Form(...),
     h: float = Form(...),
-    type: str = Form("marker"),  # marker, box, line, check, eraser
+    type: str = Form("marker"),  # marker, box, line, check, text, eraser
     # marker / eraser のフリーハンド: [{ "x": 0..1, "y": 0..1 }, ...] の JSON 配列
     path_json: Optional[str] = Form(None),
+    # text ツール用の文字列
+    text: Optional[str] = Form(None),
+    fontsize: Optional[float] = Form(None),
+    text_color: Optional[str] = Form(None),
+    # text: 既存テキストのクリック検出のみ（PDF は変更しない）
+    probe_only: Optional[str] = Form(None),
+    # text: 既存を消してから書き直す
+    replace_text: Optional[str] = Form(None),
+    origin_x: Optional[float] = Form(None),
+    origin_y: Optional[float] = Form(None),
+    origin_w: Optional[float] = Form(None),
+    origin_h: Optional[float] = Form(None),
     # "1" / "true" のとき PDF に加えレンダー PNG を JSON で返し、クライアントの2往復を1回にまとめる
     include_render: Optional[str] = Form(None),
 ):
@@ -84,6 +96,56 @@ async def highlight_pdf(
                 )
             elif type == "check":
                 add_check_annotation(p, rect)
+            elif type == "text":
+                want_probe = probe_only and str(probe_only).lower() in ("1", "true", "yes", "on")
+                if want_probe:
+                    hit = find_text_annotation_at(p, rect)
+                    return JSONResponse(content={"hit": hit})
+                rgb = None
+                if text_color and text_color.startswith("#") and len(text_color) >= 7:
+                    try:
+                        rgb = (
+                            int(text_color[1:3], 16) / 255.0,
+                            int(text_color[3:5], 16) / 255.0,
+                            int(text_color[5:7], 16) / 255.0,
+                        )
+                    except ValueError:
+                        rgb = None
+                want_replace = replace_text and str(replace_text).lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                )
+                if (
+                    want_replace
+                    and origin_x is not None
+                    and origin_y is not None
+                    and origin_w is not None
+                    and origin_h is not None
+                ):
+                    origin = fitz.Rect(
+                        origin_x * page_w,
+                        origin_y * page_h,
+                        (origin_x + origin_w) * page_w,
+                        (origin_y + origin_h) * page_h,
+                    )
+                    replace_text_annotation(
+                        p,
+                        origin,
+                        rect,
+                        text or "",
+                        fontsize=fontsize,
+                        text_color=rgb,
+                    )
+                else:
+                    add_text_annotation(
+                        p,
+                        rect,
+                        text or "",
+                        fontsize=fontsize,
+                        text_color=rgb,
+                    )
             elif type == "eraser":
                 erase_rect = path_bbox_rect(p, stroke_path) if stroke_path else rect
                 delete_one_docugrid_annotation(p, erase_rect)

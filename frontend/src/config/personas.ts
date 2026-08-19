@@ -52,7 +52,6 @@ export const PERSONAS: PersonaDefinition[] = [
     homePath: "/",
     navItems: [
       { id: "matrix", label: "資料マトリクス", href: "/" },
-      { id: "capture", label: "撮影", href: "/capture" },
       { id: "tasks", label: "承認待ち", href: "/tasks" },
     ],
     plannedFeatures: ["全顧問先ダッシュボード", "承認キュー", "アラート一覧", "担当別進捗"],
@@ -67,7 +66,6 @@ export const PERSONAS: PersonaDefinition[] = [
     homePath: "/",
     navItems: [
       { id: "matrix", label: "資料マトリクス", href: "/" },
-      { id: "capture", label: "撮影", href: "/capture" },
       { id: "tasks", label: "今日やること", href: "/tasks" },
     ],
     plannedFeatures: ["担当顧問先マトリクス", "未提出スロット", "OCR 振り分け", "DocuGrid 編集"],
@@ -82,7 +80,6 @@ export const PERSONAS: PersonaDefinition[] = [
     homePath: "/",
     navItems: [
       { id: "matrix", label: "資料マトリクス", href: "/" },
-      { id: "capture", label: "撮影", href: "/capture" },
       { id: "tasks", label: "レビュー待ち", href: "/tasks" },
     ],
     plannedFeatures: ["サブ担当顧問先のみ", "レビューコメント", "差戻し履歴"],
@@ -97,7 +94,6 @@ export const PERSONAS: PersonaDefinition[] = [
     homePath: "/workspace/client_accounting",
     navItems: [
       { id: "upload", label: "資料提出", href: "/workspace/client_accounting" },
-      { id: "capture", label: "撮影", href: "/capture" },
       { id: "checklist", label: "確認チェックリスト", href: "/checklist" },
       { id: "status", label: "提出状況", href: "/workspace/client_accounting#status" },
     ],
@@ -123,7 +119,7 @@ export const PERSONAS: PersonaDefinition[] = [
     shell: "workspace",
     homePath: "/workspace/client_sales_expense",
     navItems: [
-      { id: "capture", label: "経費撮影", href: "/capture" },
+      { id: "home", label: "経費精算", href: "/workspace/client_sales_expense" },
       { id: "history", label: "精算履歴", href: "/workspace/client_sales_expense#history" },
     ],
     plannedFeatures: ["モバイル撮影アップロード", "経費カテゴリ", "承認フロー追跡"],

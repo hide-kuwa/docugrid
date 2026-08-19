@@ -39,9 +39,9 @@ def ma_storage(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_firms_needed_for_1b_arr_at_50_clients() -> None:
-    # 10000 + 50*100 = 15000/mo -> 180000/yr per firm
-    # 1B / 180000 = 5555.55 -> 5556
-    assert firms_needed_for_arr(1_000_000_000, 50) == 5556
+    # 10000 + 50*300 = 25000/mo -> 300000/yr per firm
+    # 1B / 300000 = 3333.33 -> 3334
+    assert firms_needed_for_arr(1_000_000_000, 50) == 3334
 
 
 def test_compute_avg_clients_from_firms() -> None:
@@ -126,7 +126,7 @@ def test_ma_assumptions_api(ma_storage) -> None:
 def test_build_ma_goals_default_target(ma_storage) -> None:
     goals = build_ma_goals(target_arr_yen=1_000_000_000, horizon_months=60, avg_clients_per_firm=50)
     assert goals["target"]["arrYen"] == 1_000_000_000
-    assert goals["recommendations"]["targetPayingFirms"] == 5556
+    assert goals["recommendations"]["targetPayingFirms"] == 3334
     assert goals["recommendations"]["monthlyGrossAcquisitions"] > 0
     assert len(goals["milestones"]) == 5
 

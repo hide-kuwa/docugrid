@@ -23,6 +23,9 @@ mcp-server/.env
 
 storage/
 
+# Empty production storage scaffold (never commit real prod data)
+deploy/
+
 # Local dev / secrets
 login.json
 

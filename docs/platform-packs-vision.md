@@ -6,7 +6,7 @@
 DocuGrid を「機能の集合」から「**事務所がルール・教師データを育てて配布できる基盤**」へ広げるための構想。
 本書は方針の正本。実装時の判断はここに合わせる。
 
-関連: [`extensibility-principles.md`](extensibility-principles.md)、[`ssot-normalization.md`](ssot-normalization.md)、[`document-taxonomy.md`](document-taxonomy.md)、[`no-code-config-vision.md`](no-code-config-vision.md)、[`auth-tenancy-design.md`](auth-tenancy-design.md)、[`common-pitfalls.md`](common-pitfalls.md)
+関連: [`extensibility-principles.md`](extensibility-principles.md)、[`ssot-normalization.md`](ssot-normalization.md)、[`document-taxonomy.md`](document-taxonomy.md)、[`no-code-config-vision.md`](no-code-config-vision.md)、[`auth-tenancy-design.md`](auth-tenancy-design.md)、[`common-pitfalls.md`](common-pitfalls.md)、[`crm-packs-vision.md`](crm-packs-vision.md)（汎用 CRM × 保険／不動産パック）
 
 ---
 

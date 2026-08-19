@@ -55,6 +55,23 @@ export type ClientFamilyGroup = {
   note?: string;
 };
 
+/** カルテ「関係」系図の辺（向きあり）。groups は枠・袋の互換用。 */
+export type ClientRelationKind =
+  | "group_company"
+  | "relative"
+  | "shareholding"
+  | "referral";
+
+export type ClientRelationEdge = {
+  id: string;
+  kind: ClientRelationKind;
+  fromClientId: string;
+  toClientId: string;
+  percent?: number;
+  note?: string;
+  groupId?: string;
+};
+
 export type StaffAssignmentRole = "main" | "sub";
 
 export type StaffAssignment = {
@@ -249,6 +266,10 @@ export const CLIENTS: OrgClient[] = [
   { id: "c3", name: "佐藤商事", fiscalMonth: 9, category: "corporate", tags: ["卸売"] },
   { id: "c4", name: "鈴木 太郎 (個人)", fiscalMonth: 12, category: "individual", tags: ["個人事業"] },
   { id: "c5", name: "山田不動産", fiscalMonth: 12, category: "corporate", tags: ["不動産"] },
+  { id: "c6", name: "鈴木 花子 (個人)", fiscalMonth: 12, category: "individual", tags: ["個人"] },
+  { id: "c7", name: "鈴木HD", fiscalMonth: 3, category: "corporate", tags: ["持株"] },
+  { id: "c8", name: "田村 一郎 (個人)", fiscalMonth: 12, category: "individual", tags: ["紹介元"] },
+  { id: "c9", name: "鈴木フーズ", fiscalMonth: 3, category: "corporate", tags: ["食品"] },
 ];
 
 export const CLIENT_FAMILY_GROUPS: ClientFamilyGroup[] = [
@@ -256,14 +277,14 @@ export const CLIENT_FAMILY_GROUPS: ClientFamilyGroup[] = [
     id: "g1",
     name: "鈴木グループ",
     relationType: "group_company",
-    clientIds: ["c1", "c2"],
+    clientIds: ["c1", "c2", "c7", "c9"],
     note: "グループ会社として連結管理",
   },
   {
     id: "g2",
     name: "鈴木家資産管理",
     relationType: "relative_group",
-    clientIds: ["c1", "c4"],
+    clientIds: ["c1", "c4", "c6"],
     note: "親族保有資産・個人事業を含む",
   },
   {
@@ -275,14 +296,117 @@ export const CLIENT_FAMILY_GROUPS: ClientFamilyGroup[] = [
   },
 ];
 
+export const CLIENT_RELATIONS: ClientRelationEdge[] = [
+  {
+    id: "r1",
+    kind: "group_company",
+    fromClientId: "c1",
+    toClientId: "c2",
+    groupId: "g1",
+    note: "鈴木グループ",
+  },
+  {
+    id: "r1b",
+    kind: "group_company",
+    fromClientId: "c7",
+    toClientId: "c1",
+    groupId: "g1",
+    note: "持株→事業会社",
+  },
+  {
+    id: "r1c",
+    kind: "group_company",
+    fromClientId: "c1",
+    toClientId: "c9",
+    groupId: "g1",
+    note: "食品子会社",
+  },
+  {
+    id: "r2",
+    kind: "relative",
+    fromClientId: "c1",
+    toClientId: "c4",
+    groupId: "g2",
+    note: "代表との親族関係",
+  },
+  {
+    id: "r2b",
+    kind: "relative",
+    fromClientId: "c4",
+    toClientId: "c6",
+    groupId: "g2",
+    note: "配偶者",
+  },
+  {
+    id: "r3",
+    kind: "shareholding",
+    fromClientId: "c4",
+    toClientId: "c1",
+    percent: 60,
+    note: "個人株主",
+  },
+  {
+    id: "r3b",
+    kind: "shareholding",
+    fromClientId: "c6",
+    toClientId: "c1",
+    percent: 15,
+    note: "親族株主",
+  },
+  {
+    id: "r3c",
+    kind: "shareholding",
+    fromClientId: "c7",
+    toClientId: "c2",
+    percent: 100,
+    groupId: "g1",
+    note: "HD がテックを保有",
+  },
+  {
+    id: "r4",
+    kind: "shareholding",
+    fromClientId: "c3",
+    toClientId: "c5",
+    percent: 25,
+    groupId: "g3",
+    note: "主要株主",
+  },
+  {
+    id: "r5",
+    kind: "referral",
+    fromClientId: "c8",
+    toClientId: "c1",
+    note: "田村さんからの紹介で顧問開始",
+  },
+  {
+    id: "r5b",
+    kind: "referral",
+    fromClientId: "c5",
+    toClientId: "c9",
+    note: "不動産経由でフーズを紹介",
+  },
+];
+
 export const RELATION_TYPE_LABEL: Record<ClientRelationType, string> = {
   group_company: "グループ会社",
   shareholder: "株主関係",
   relative_group: "親戚グループ",
 };
 
+export const RELATION_KIND_LABEL: Record<ClientRelationKind, string> = {
+  group_company: "同一グループ",
+  relative: "親族",
+  shareholding: "出資",
+  referral: "紹介",
+};
+
 export const getClientGroups = (clientId: string): ClientFamilyGroup[] =>
   CLIENT_FAMILY_GROUPS.filter((group) => group.clientIds.includes(clientId));
+
+export const getClientRelations = (clientId: string): ClientRelationEdge[] =>
+  CLIENT_RELATIONS.filter(
+    (edge) => edge.fromClientId === clientId || edge.toClientId === clientId,
+  );
 
 export const STAFFS: OrgStaff[] = [
   {
@@ -294,6 +418,8 @@ export const STAFFS: OrgStaff[] = [
       { clientId: "c1", assignmentRole: "main" },
       { clientId: "c2", assignmentRole: "main" },
       { clientId: "c3", assignmentRole: "main" },
+      { clientId: "c7", assignmentRole: "main" },
+      { clientId: "c9", assignmentRole: "main" },
     ],
   },
   {
@@ -304,6 +430,8 @@ export const STAFFS: OrgStaff[] = [
     assignments: [
       { clientId: "c4", assignmentRole: "sub" },
       { clientId: "c5", assignmentRole: "main" },
+      { clientId: "c6", assignmentRole: "sub" },
+      { clientId: "c8", assignmentRole: "sub" },
     ],
   },
 ];
@@ -317,7 +445,7 @@ export const STAKEHOLDER_MASTER: StakeholderMaster[] = [
     organizationName: "DocuGrid税理士事務所",
     appRoleId: "platform_admin",
     status: "active",
-    scopedClientIds: ["c1", "c2", "c3", "c4", "c5"],
+    scopedClientIds: ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"],
   },
   {
     id: "actor-s1",
@@ -344,7 +472,7 @@ export const STAKEHOLDER_MASTER: StakeholderMaster[] = [
     organizationName: "DocuGrid税理士事務所",
     appRoleId: "approver",
     status: "active",
-    scopedClientIds: ["c1", "c2", "c3", "c4", "c5"],
+    scopedClientIds: ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"],
   },
   {
     id: "actor-c1",
@@ -407,7 +535,7 @@ export const STAKEHOLDER_MASTER: StakeholderMaster[] = [
     organizationName: "○○税務署",
     appRoleId: "viewer",
     status: "active",
-    scopedClientIds: ["c1", "c2", "c3", "c4", "c5"],
+    scopedClientIds: ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"],
   },
 ];
 
@@ -441,5 +569,9 @@ export const DOCUMENT_CATEGORIES: DocumentCategoryConfig[] = [
 export const PERIODS = {
   /** @deprecated 年度は buildYearDrumMeta() で動的生成。フォールバック用のみ */
   year: ["R8", "R7", "R6", "R5", "R4", "OLD"],
-  month: Array.from({ length: 12 }, (_, i) => `${12 - i}月`),
+  /** @deprecated 月次は buildMonthDrumLabels(fiscalMonth) で動的生成。フォールバックは 3月決算想定 */
+  month: Array.from({ length: 12 }, (_, i) => {
+    const month = ((3 - 1 - i) % 12 + 12) % 12 + 1;
+    return `${month}月`;
+  }),
 };

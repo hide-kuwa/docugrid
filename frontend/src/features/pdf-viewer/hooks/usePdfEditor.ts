@@ -13,6 +13,7 @@ import {
   isMeaningfulPath,
   smoothMarkerPath,
 } from "../lib/annotation-geometry";
+import { extendPageOrderAfterAppend } from "../lib/page-order-append";
 import { NormPoint, NormRect, ToolType } from "../types";
 
 type AnnotatableTool = Exclude<ToolType, "none">;
@@ -28,8 +29,21 @@ interface UsePdfEditorProps {
     type: AnnotatableTool,
     page: number,
     rect: NormRect,
-    options?: { path?: NormPoint[] },
-  ) => Promise<File | { file: File; previewDataUrl: string } | void>;
+    options?: {
+      path?: NormPoint[];
+      text?: string;
+      fontSize?: number;
+      textColor?: string;
+      probeOnly?: boolean;
+      replaceText?: boolean;
+      originRect?: NormRect;
+    },
+  ) => Promise<
+    | File
+    | { file: File; previewDataUrl: string }
+    | { hit: { x: number; y: number; w: number; h: number; text: string; fontSize: number; color: string } | null }
+    | void
+  >;
   onReorder: (order: number[]) => Promise<File | void>;
   onMerge: (files: File[]) => Promise<File | void>;
   onGetThumbnails: (fileOverride?: File) => Promise<string[]>;
@@ -47,7 +61,8 @@ type EditSnapshot = {
   action: string;
 };
 
-const EDIT_UNDO_LIMIT = 30;
+const EDIT_UNDO_LIMIT = 5;
+const PAGE_ORDER_UNDO_LIMIT = 5;
 
 export const usePdfEditor = ({
   file,
@@ -102,7 +117,11 @@ export const usePdfEditor = ({
   // 2. State定義
   // ========================================================================
   const [editPageImage, setEditPageImage] = useState<string | null>(null);
+  const [pageImages, setPageImages] = useState<Record<number, string>>({});
+  const pageImagesRef = useRef<Record<number, string>>({});
+  const pageLoadInflightRef = useRef<Set<number>>(new Set());
   const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const thumbnailsRef = useRef<string[]>([]);
   const [thumbnailsReady, setThumbnailsReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
 
@@ -110,14 +129,94 @@ export const usePdfEditor = ({
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
+
+  useEffect(() => {
+    pageImagesRef.current = pageImages;
+  }, [pageImages]);
+
+  const revokePageImages = useCallback((images: Record<number, string>) => {
+    for (const url of Object.values(images)) {
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    }
+  }, []);
+
+  const setPageImageAt = useCallback((slot: number, img: string | null) => {
+    setPageImages((prev) => {
+      const existing = prev[slot];
+      if (existing === img) return prev;
+      if (existing?.startsWith("blob:") && existing !== img) URL.revokeObjectURL(existing);
+      if (!img) {
+        if (!(slot in prev)) return prev;
+        const next = { ...prev };
+        delete next[slot];
+        return next;
+      }
+      return { ...prev, [slot]: img };
+    });
+    if (currentPageRef.current === slot) {
+      setEditPageImage((prev) => {
+        if (prev?.startsWith("blob:") && prev !== img) URL.revokeObjectURL(prev);
+        return img;
+      });
+    }
+  }, []);
+
+  const ensurePageImage = useCallback(
+    async (slot: number) => {
+      if (slot < 0) return;
+      if (pageImagesRef.current[slot]) return;
+      if (pageLoadInflightRef.current.has(slot)) return;
+      if (!fileRef.current) return;
+      pageLoadInflightRef.current.add(slot);
+      try {
+        const order = bridgeOrderRef.current;
+        const renderPage =
+          syncWithDocugridRef.current && order.length > 0 ? order[slot] ?? slot : slot;
+        const img = await handlersRef.current.onRenderPage(renderPage);
+        if (!img) return;
+        if (pageImagesRef.current[slot]) {
+          if (img.startsWith("blob:")) URL.revokeObjectURL(img);
+          return;
+        }
+        setPageImageAt(slot, img);
+      } finally {
+        pageLoadInflightRef.current.delete(slot);
+      }
+    },
+    [setPageImageAt],
+  );
   
-  const [activeTool, setActiveTool] = useState<ToolType>("none");
+  const [activeTool, setActiveToolState] = useState<ToolType>("none");
+  const [textDraft, setTextDraft] = useState<{
+    slot: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    text: string;
+    fontSize: number;
+    color: string;
+    origin?: { x: number; y: number; w: number; h: number };
+  } | null>(null);
+
+  const setActiveTool = useCallback((tool: ToolType) => {
+    if (tool !== "text") setTextDraft(null);
+    setActiveToolState(tool);
+  }, []);
+
   const [isReordering, setIsReordering] = useState(false);
+  const isReorderingRef = useRef(false);
+  const thumbGenRef = useRef(0);
+  const mergeInflightRef = useRef(false);
+  useEffect(() => {
+    isReorderingRef.current = isReordering;
+  }, [isReordering]);
   const [isSplitView, setIsSplitView] = useState(false);
   
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [comparePreviewUrl, setComparePreviewUrl] = useState<string | null>(null);
   const [localPageOrder, setLocalPageOrder] = useState<number[]>([]);
+  const localPageOrderRef = useRef<number[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
   const [undoStack, setUndoStack] = useState<number[][]>([]);
   const [redoStack, setRedoStack] = useState<number[][]>([]);
@@ -133,13 +232,23 @@ export const usePdfEditor = ({
   }, [editRedoStack]);
 
   const docugridBridge = useDocugridPageOrderBridge(syncWithDocugrid);
-  const { reorderSlots: reorderDocugridSlots } = docugridBridge;
   const docugridPageOrderLen = useDocugridStore((s) => s.pageOrder.length);
   const docugridOrderKey = docugridBridge.orderedOriginalIndices.join(",");
   /** サムネグリッド用: 各スロットが指す元 PDF の 0-based ページ番号（MainCanvas の thumbnails[pageIndex] と同型） */
   const pageOrder = syncWithDocugrid
     ? docugridBridge.orderedOriginalIndices
     : localPageOrder;
+
+  useEffect(() => {
+    thumbnailsRef.current = thumbnails;
+  }, [thumbnails]);
+  useEffect(() => {
+    localPageOrderRef.current = localPageOrder;
+  }, [localPageOrder]);
+  const pageCountRef = useRef(pageCount);
+  useEffect(() => {
+    pageCountRef.current = pageCount;
+  }, [pageCount]);
 
   const syncWithDocugridRef = useRef(syncWithDocugrid);
   useEffect(() => {
@@ -169,8 +278,32 @@ export const usePdfEditor = ({
     rect: NormRect;
     path?: NormPoint[];
   } | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasElRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = canvasElRef;
+
+  /** 注釈開始前に対象ページと描画面を同期（縦スクロール用） */
+  const preparePageForAnnotation = useCallback((slot: number, el: HTMLDivElement) => {
+    currentPageRef.current = slot;
+    setCurrentPage(slot);
+    canvasElRef.current = el;
+  }, []);
   const applyGenerationRef = useRef(0);
+
+  const applyThumbnails = useCallback(
+    (imgs: string[], oldPageCount: number, prevOrder: number[]) => {
+      if (imgs.length === 0) return;
+      const nextOrder = extendPageOrderAfterAppend(prevOrder, oldPageCount, imgs.length);
+      setThumbnails(imgs);
+      setThumbnailsReady(true);
+      if (syncWithDocugridRef.current) {
+        useDocugridStore.getState().replacePrimaryPageOrder(nextOrder);
+      } else {
+        setLocalPageOrder(nextOrder);
+      }
+      setCurrentPage((prev) => Math.min(prev, Math.max(0, imgs.length - 1)));
+    },
+    [],
+  );
 
   // ========================================================================
   // 3. 統合初期化フロー (ここがループ防止の心臓部)
@@ -194,22 +327,36 @@ export const usePdfEditor = ({
       }
 
       setThumbnailsReady(false);
+      const gen = ++thumbGenRef.current;
       // サムネイルはバックグラウンド取得（全ページ分の生成で初回表示が止まらないようにする）
       void handlersRef.current
         .onGetThumbnails()
         .then((imgs) => {
-          if (!isMounted) return;
+          if (!isMounted || gen !== thumbGenRef.current) return;
+          if (imgs.length === 0) {
+            setThumbnailsReady(true);
+            return;
+          }
+          if (isReorderingRef.current) {
+            setThumbnails(imgs);
+            setThumbnailsReady(true);
+            setCurrentPage((prev) => {
+              const maxPage = Math.max(0, imgs.length - 1);
+              return Math.min(prev, maxPage);
+            });
+            return;
+          }
           setThumbnails(imgs);
           setThumbnailsReady(true);
-          if (imgs.length > 0) {
-            if (syncWithDocugridRef.current) {
-              useDocugridStore.getState().ensurePrimaryFilePageCount(imgs.length);
-            } else {
-              setLocalPageOrder((prev) => {
-                if (prev.length >= imgs.length) return prev;
-                return Array.from({ length: imgs.length }, (_, i) => i);
-              });
-            }
+          if (syncWithDocugridRef.current) {
+            useDocugridStore.getState().replacePrimaryPageOrder(
+              Array.from({ length: imgs.length }, (_, i) => i),
+            );
+          } else {
+            setLocalPageOrder((prev) => {
+              if (prev.length === imgs.length) return prev;
+              return Array.from({ length: imgs.length }, (_, i) => i);
+            });
           }
           setCurrentPage((prev) => {
             const maxPage = Math.max(0, imgs.length - 1);
@@ -225,14 +372,27 @@ export const usePdfEditor = ({
     initializeEditor();
 
     return () => { isMounted = false; };
-  }, [editorKey, pdfUrl]); // pdfUrl changes trigger re-init
+  }, [editorKey, pdfUrl, applyThumbnails]); // pdfUrl changes trigger re-init
 
-  // 新規アップロード時のみページを先頭へ（注釈で pdfUrl だけ変わる場合は増やさない viewerSession）
+  // 別資料を開いたときだけ編集 Undo をリセット（merge 等の viewerSession では消さない）
   useLayoutEffect(() => {
-    setCurrentPage(0);
     setEditUndoStack([]);
     setEditRedoStack([]);
-  }, [viewerSession, editorKey]);
+  }, [editorKey]);
+
+  // ページ画像キャッシュは viewerSession / editorKey 変更時にクリア
+  useLayoutEffect(() => {
+    setCurrentPage(0);
+    setPageImages((prev) => {
+      revokePageImages(prev);
+      return {};
+    });
+    setEditPageImage((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
+    pageLoadInflightRef.current.clear();
+  }, [viewerSession, editorKey, revokePageImages]);
 
   const resolveRenderPage = useCallback(() => {
     const slot = currentPageRef.current;
@@ -245,22 +405,26 @@ export const usePdfEditor = ({
     const page = resolveRenderPage();
     const img = await handlersRef.current.onRenderPage(page, target);
     if (img) {
-      setEditPageImage((prev) => {
-        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-        return img;
-      });
+      setPageImageAt(currentPageRef.current, img);
     }
+    const gen = ++thumbGenRef.current;
+    const prevOrder = syncWithDocugridRef.current
+      ? [...bridgeOrderRef.current]
+      : [...localPageOrderRef.current];
+    const oldPageCount = Math.max(
+      prevOrder.length,
+      thumbnailsRef.current.length,
+      pageCountRef.current ?? 0,
+    );
     void handlersRef.current.onGetThumbnails(target).then((imgs) => {
-      setThumbnails(imgs);
-      setThumbnailsReady(true);
-      if (imgs.length > 0 && !syncWithDocugridRef.current) {
-        setLocalPageOrder((prev) => {
-          if (prev.length === imgs.length) return prev;
-          return Array.from({ length: imgs.length }, (_, i) => i);
-        });
+      if (gen !== thumbGenRef.current) return;
+      if (imgs.length === 0) {
+        setThumbnailsReady(true);
+        return;
       }
+      applyThumbnails(imgs, oldPageCount, prevOrder);
     });
-  }, [resolveRenderPage]);
+  }, [resolveRenderPage, setPageImageAt, applyThumbnails]);
 
   const pushEditSnapshot = useCallback((before: File, after: File, action: string) => {
     setEditUndoStack((prev) => {
@@ -278,52 +442,91 @@ export const usePdfEditor = ({
         return;
       }
       const slot = currentPage;
-      const order = bridgeOrderRef.current;
-      const renderPage =
-        syncWithDocugridRef.current && order.length > 0 ? order[slot] ?? slot : slot;
-      const img = await handlersRef.current.onRenderPage(renderPage);
-      if (!isMounted) {
-        if (img?.startsWith("blob:")) URL.revokeObjectURL(img);
+      if (pageImagesRef.current[slot]) {
+        setEditPageImage(pageImagesRef.current[slot] ?? null);
         return;
       }
-      setEditPageImage((prev) => {
-        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-        return img;
-      });
+      await ensurePageImage(slot);
+      if (!isMounted) return;
+      setEditPageImage(pageImagesRef.current[slot] ?? null);
     };
     void loadCurrentPageImage();
     return () => {
       isMounted = false;
     };
-  }, [currentPage, editorKey, pdfUrl, pageCount, docugridOrderKey, docugridPageOrderLen]);
+  }, [currentPage, editorKey, pdfUrl, pageCount, docugridOrderKey, docugridPageOrderLen, ensurePageImage]);
 
-  // ページ数が変わった時だけローカルオーダーをリセット（Docugrid 同期時はストアが権威）
+  // ページ数が変わった時だけローカルオーダーをリセット（並べ替え中の追加は onDropAppend が担当）
   useEffect(() => {
-    if (pageCount && !syncWithDocugrid) {
+    if (pageCount && !syncWithDocugrid && !isReordering) {
       setLocalPageOrder(Array.from({ length: pageCount }, (_, i) => i));
       setSelectedSlots([]);
       setUndoStack([]);
       setRedoStack([]);
     }
-  }, [pageCount, syncWithDocugrid]);
+  }, [pageCount, syncWithDocugrid, isReordering]);
+
+  const wasReorderingRef = useRef(false);
+  useEffect(() => {
+    if (isReordering && !wasReorderingRef.current) {
+      setUndoStack([]);
+      setRedoStack([]);
+    }
+    wasReorderingRef.current = isReordering;
+  }, [isReordering]);
+
+  const snapshotPageOrder = useCallback((): number[] => {
+    if (syncWithDocugridRef.current) {
+      return [...bridgeOrderRef.current];
+    }
+    return [...localPageOrderRef.current];
+  }, []);
+
+  const restorePageOrder = useCallback((indices: number[]) => {
+    if (syncWithDocugridRef.current) {
+      useDocugridStore.getState().replacePrimaryPageOrder(indices);
+    } else {
+      setLocalPageOrder(indices);
+    }
+    setSelectedSlots([]);
+  }, []);
+
+  const pushPageOrderUndo = useCallback(() => {
+    const snap = snapshotPageOrder();
+    setUndoStack((prev) => {
+      const next = [...prev, snap];
+      return next.length > PAGE_ORDER_UNDO_LIMIT
+        ? next.slice(-PAGE_ORDER_UNDO_LIMIT)
+        : next;
+    });
+    setRedoStack([]);
+  }, [snapshotPageOrder]);
 
   const applyPageOrderChange = useCallback((updater: (current: number[]) => number[]) => {
-    if (syncWithDocugrid) return;
-    setLocalPageOrder((current) => {
-      const next = updater(current);
-      if (next.join(",") === current.join(",")) return current;
-      setUndoStack((prev) => [...prev, current]);
-      setRedoStack([]);
-      return next;
-    });
-  }, [syncWithDocugrid]);
+    const current = snapshotPageOrder();
+    const next = updater(current);
+    if (next.join(",") === current.join(",")) return;
+    pushPageOrderUndo();
+    restorePageOrder(next);
+  }, [snapshotPageOrder, pushPageOrderUndo, restorePageOrder]);
 
   // ========================================================================
   // 4. アクションハンドラー (依存配列は空にする)
   // ========================================================================
 
   const applyAnnotation = useCallback(
-    async (type: ToolType, rect: NormRect, path?: NormPoint[]) => {
+    async (
+      type: ToolType,
+      rect: NormRect,
+      path?: NormPoint[],
+      text?: string,
+      style?: {
+        fontSize?: number;
+        textColor?: string;
+        replaceText?: boolean;
+        originRect?: NormRect;
+      },
+    ) => {
     const currentFile = fileRef.current;
     if (type === "none" || !currentFile) return;
 
@@ -341,8 +544,13 @@ export const usePdfEditor = ({
     try {
       const result = await handlersRef.current.onHighlight(type, page, rect, {
         path,
+        text,
+        fontSize: style?.fontSize,
+        textColor: style?.textColor,
+        replaceText: style?.replaceText,
+        originRect: style?.originRect,
       });
-      if (!result) return;
+      if (!result || !("file" in result || result instanceof File)) return;
 
       const newFile = result instanceof File ? result : result.file;
       const previewDataUrl = result instanceof File ? null : result.previewDataUrl;
@@ -352,6 +560,7 @@ export const usePdfEditor = ({
         box: "赤枠",
         line: "ライン",
         check: "チェック",
+        text: style?.replaceText ? "テキスト編集" : "テキスト",
         eraser: "消しゴム",
         none: "編集",
       }[type] || "編集";
@@ -360,17 +569,11 @@ export const usePdfEditor = ({
       pushEditSnapshot(currentFile, newFile, actionName);
 
       if (previewDataUrl) {
-        setEditPageImage((prev) => {
-          if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-          return previewDataUrl;
-        });
+        setPageImageAt(slot, previewDataUrl);
       } else {
         const newImg = await handlersRef.current.onRenderPage(page, newFile);
         if (newImg) {
-          setEditPageImage((prev) => {
-            if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-            return newImg;
-          });
+          setPageImageAt(slot, newImg);
         }
       }
     } catch (err) {
@@ -381,7 +584,7 @@ export const usePdfEditor = ({
       }
     }
   },
-  []);
+  [pushEditSnapshot, setPageImageAt]);
 
   const isFreehandTool = (tool: ToolType) => tool === "marker" || tool === "eraser";
 
@@ -402,21 +605,44 @@ export const usePdfEditor = ({
 
   const onDropAppend = useCallback(async (acceptedFiles: File[]) => {
     const currentFile = fileRef.current;
-    if (!currentFile || acceptedFiles.length === 0) return;
-    const newFile = await handlersRef.current.onMerge([currentFile, ...acceptedFiles]);
-    if (newFile) {
+    if (!currentFile || acceptedFiles.length === 0 || mergeInflightRef.current) return;
+    mergeInflightRef.current = true;
+    const prevOrder = syncWithDocugridRef.current
+      ? [...bridgeOrderRef.current]
+      : [...localPageOrderRef.current];
+    const oldPageCount = Math.max(
+      prevOrder.length,
+      thumbnailsRef.current.length,
+      pageCountRef.current ?? 0,
+    );
+    try {
+      const newFile = await handlersRef.current.onMerge([currentFile, ...acceptedFiles]);
+      if (!newFile) return;
+
+      const gen = ++thumbGenRef.current;
+      const imgs = await handlersRef.current.onGetThumbnails(newFile);
+      if (gen !== thumbGenRef.current) return;
+
+      applyThumbnails(imgs, oldPageCount, prevOrder);
+
+      mergeInflightRef.current = false;
+      fileRef.current = newFile;
+      handlersRef.current.onReplaceFile?.(newFile);
+
       const actionName = `PDF結合 (+${acceptedFiles.length}ファイル)`;
       handlersRef.current.recordAction(newFile as File, actionName);
       pushEditSnapshot(currentFile, newFile as File, actionName);
+    } finally {
+      mergeInflightRef.current = false;
     }
-  }, [pushEditSnapshot]);
+  }, [pushEditSnapshot, applyThumbnails]);
 
   // Dropzone設定
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open: openDropzone } = useDropzone({
     onDrop: onDropAppend, 
     accept: { "application/pdf": [".pdf"] }, 
     multiple: true, 
-    noClick: true
+    noClick: false
   });
 
   // ========================================================================
@@ -450,6 +676,8 @@ export const usePdfEditor = ({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (activeTool === "none" || activeTool === "check") return;
+      // テキスト入力中は新しいドラッグを始めない
+      if (activeTool === "text" && textDraft) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
       setIsDrawing(true);
@@ -464,7 +692,7 @@ export const usePdfEditor = ({
       setCurrentStrokePath(null);
       setCurrentRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
     },
-    [activeTool],
+    [activeTool, textDraft],
   );
 
   const handlePointerMove = useCallback(
@@ -520,6 +748,79 @@ export const usePdfEditor = ({
         return;
       }
 
+      if (activeTool === "text") {
+        if (textDraft) return;
+        if (isDrawing) {
+          releaseCaptureSafe(e.currentTarget, e.pointerId);
+        }
+        const committedRect = rectDraftRef.current;
+        const clickPos = getNormalizedPos(e);
+        setIsDrawing(false);
+        setStartPos(null);
+        setCurrentRect(null);
+        setCurrentStrokePath(null);
+
+        const dragged =
+          committedRect && (committedRect.w > 0.04 || committedRect.h > 0.025);
+        if (!dragged) {
+          // クリック: 既存テキストがあれば編集モードへ
+          const probeRect = {
+            x: Math.max(0, clickPos.x - 0.01),
+            y: Math.max(0, clickPos.y - 0.01),
+            w: 0.02,
+            h: 0.02,
+          };
+          const slot = currentPageRef.current;
+          const order = bridgeOrderRef.current;
+          const page =
+            syncWithDocugridRef.current && order.length > 0 ? order[slot] ?? slot : slot;
+          try {
+            const probed = await handlersRef.current.onHighlight("text", page, probeRect, {
+              probeOnly: true,
+            });
+            if (probed && typeof probed === "object" && "hit" in probed && probed.hit) {
+              const hit = probed.hit;
+              setTextDraft({
+                slot,
+                x: hit.x,
+                y: hit.y,
+                w: Math.max(0.12, hit.w),
+                h: Math.max(0.05, hit.h),
+                text: hit.text,
+                fontSize: Math.round(hit.fontSize) || 14,
+                color: hit.color || "#1e3a8a",
+                origin: { x: hit.x, y: hit.y, w: hit.w, h: hit.h },
+              });
+              return;
+            }
+          } catch (err) {
+            console.warn("text probe failed:", err);
+          }
+        }
+
+        const box = dragged
+          ? {
+              x: Math.min(0.92, Math.max(0, committedRect.x)),
+              y: Math.min(0.92, Math.max(0, committedRect.y)),
+              w: Math.min(0.9, Math.max(0.12, committedRect.w)),
+              h: Math.min(0.4, Math.max(0.05, committedRect.h)),
+            }
+          : {
+              x: Math.min(0.7, Math.max(0, clickPos.x)),
+              y: Math.min(0.88, Math.max(0, clickPos.y)),
+              w: 0.28,
+              h: 0.08,
+            };
+        setTextDraft({
+          slot: currentPageRef.current,
+          ...box,
+          text: "",
+          fontSize: 14,
+          color: "#1e3a8a",
+        });
+        return;
+      }
+
       if (activeTool !== "none" && isDrawing) {
         releaseCaptureSafe(e.currentTarget, e.pointerId);
       }
@@ -557,8 +858,40 @@ export const usePdfEditor = ({
         await applyAnnotation(activeTool, committedRect);
       }
     },
-    [activeTool, isDrawing, startPos, applyAnnotation],
+    [activeTool, isDrawing, startPos, applyAnnotation, textDraft],
   );
+
+  const commitTextDraft = useCallback(async () => {
+    if (!textDraft) return;
+    const content = textDraft.text.trim();
+    if (!content) {
+      setTextDraft(null);
+      return;
+    }
+    const draft = textDraft;
+    setTextDraft(null);
+    // 確定時に対象ページへ切替（スロットがずれないように）
+    if (draft.slot !== currentPageRef.current) {
+      currentPageRef.current = draft.slot;
+      setCurrentPage(draft.slot);
+    }
+    await applyAnnotation(
+      "text",
+      { x: draft.x, y: draft.y, w: draft.w, h: draft.h },
+      undefined,
+      draft.text,
+      {
+        fontSize: draft.fontSize,
+        textColor: draft.color,
+        replaceText: Boolean(draft.origin),
+        originRect: draft.origin,
+      },
+    );
+  }, [textDraft, applyAnnotation]);
+
+  const cancelTextDraft = useCallback(() => {
+    setTextDraft(null);
+  }, []);
 
   const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     releaseCaptureSafe(e.currentTarget, e.pointerId);
@@ -614,16 +947,12 @@ export const usePdfEditor = ({
       const from = dragItem.current;
       const to = position;
       if (from === to) return;
-      if (syncWithDocugrid) {
-        reorderDocugridSlots(from, to);
-      } else {
-        applyPageOrderChange((prev) => {
-          const next = [...prev];
-          const [moved] = next.splice(from, 1);
-          next.splice(to, 0, moved);
-          return next;
-        });
-      }
+      applyPageOrderChange((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
       setSelectedSlots((prev) => {
         if (prev.length === 0) return prev;
         return prev.map((slot) => {
@@ -635,7 +964,7 @@ export const usePdfEditor = ({
       });
       dragItem.current = to;
     },
-    [syncWithDocugrid, reorderDocugridSlots, applyPageOrderChange],
+    [applyPageOrderChange],
   );
   const handleDragEnd = useCallback(() => {
     dragItem.current = null;
@@ -650,24 +979,16 @@ export const usePdfEditor = ({
   }, []);
   const clearSlotSelection = useCallback(() => setSelectedSlots([]), []);
   const removeSelectedSlots = useCallback(() => {
-    if (syncWithDocugrid) {
-      useDocugridStore.getState().removePageSlotsAtIndices(selectedSlots);
-    } else {
-      applyPageOrderChange((prev) => prev.filter((_, idx) => !selectedSlots.includes(idx)));
-    }
+    applyPageOrderChange((prev) => prev.filter((_, idx) => !selectedSlots.includes(idx)));
     setSelectedSlots([]);
-  }, [syncWithDocugrid, selectedSlots, applyPageOrderChange]);
+  }, [selectedSlots, applyPageOrderChange]);
   const keepOnlySelectedSlots = useCallback(() => {
-    if (syncWithDocugrid) {
-      useDocugridStore.getState().keepOnlyPageSlotsAtIndices(selectedSlots);
-    } else {
-      applyPageOrderChange((prev) => prev.filter((_, idx) => selectedSlots.includes(idx)));
-    }
+    applyPageOrderChange((prev) => prev.filter((_, idx) => selectedSlots.includes(idx)));
     setSelectedSlots([]);
-  }, [syncWithDocugrid, selectedSlots, applyPageOrderChange]);
+  }, [selectedSlots, applyPageOrderChange]);
 
-  const canUndoPageOrder = !syncWithDocugrid && undoStack.length > 0;
-  const canRedoPageOrder = !syncWithDocugrid && redoStack.length > 0;
+  const canUndoPageOrder = undoStack.length > 0;
+  const canRedoPageOrder = redoStack.length > 0;
   const canUndoEdit = editUndoStack.length > 0;
   const canRedoEdit = editRedoStack.length > 0;
   /** 並べ替えモード中はページ順 Undo、通常は PDF 編集 Undo */
@@ -675,29 +996,37 @@ export const usePdfEditor = ({
   const canRedo = isReordering ? canRedoPageOrder || canRedoEdit : canRedoEdit;
 
   const undoPageOrder = useCallback(() => {
-    if (syncWithDocugrid) return;
     setUndoStack((prev) => {
       if (prev.length === 0) return prev;
       const nextPrev = [...prev];
       const restored = nextPrev.pop()!;
-      setRedoStack((redoPrev) => [...redoPrev, localPageOrder]);
-      setLocalPageOrder(restored);
-      setSelectedSlots([]);
+      const current = snapshotPageOrder();
+      setRedoStack((redoPrev) => {
+        const next = [...redoPrev, current];
+        return next.length > PAGE_ORDER_UNDO_LIMIT
+          ? next.slice(-PAGE_ORDER_UNDO_LIMIT)
+          : next;
+      });
+      restorePageOrder(restored);
       return nextPrev;
     });
-  }, [syncWithDocugrid, localPageOrder]);
+  }, [snapshotPageOrder, restorePageOrder]);
   const redoPageOrder = useCallback(() => {
-    if (syncWithDocugrid) return;
     setRedoStack((prev) => {
       if (prev.length === 0) return prev;
       const nextPrev = [...prev];
       const restored = nextPrev.pop()!;
-      setUndoStack((undoPrev) => [...undoPrev, localPageOrder]);
-      setLocalPageOrder(restored);
-      setSelectedSlots([]);
+      const current = snapshotPageOrder();
+      setUndoStack((undoPrev) => {
+        const next = [...undoPrev, current];
+        return next.length > PAGE_ORDER_UNDO_LIMIT
+          ? next.slice(-PAGE_ORDER_UNDO_LIMIT)
+          : next;
+      });
+      restorePageOrder(restored);
       return nextPrev;
     });
-  }, [syncWithDocugrid, localPageOrder]);
+  }, [snapshotPageOrder, restorePageOrder]);
 
   const undoEdit = useCallback(async () => {
     const stack = editUndoStackRef.current;
@@ -778,8 +1107,15 @@ export const usePdfEditor = ({
 
   return {
     editPageImage,
+    pageImages,
+    ensurePageImage,
+    preparePageForAnnotation,
     activeTool,
     setActiveTool,
+    textDraft,
+    setTextDraft,
+    commitTextDraft,
+    cancelTextDraft,
     isReordering,
     setIsReordering,
     isSplitView,
@@ -823,6 +1159,7 @@ export const usePdfEditor = ({
     handleDragEnd,
     getRootProps,
     getInputProps,
+    openDropzone,
     isDragActive,
     isDrawing,
     currentRect,

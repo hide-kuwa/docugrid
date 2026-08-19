@@ -125,12 +125,11 @@
 }
 
 /* --- Data workspace context drum (below company NavBar) --- */
+/* 左右余白は React 側のスペーサーで制御（padding 50% と二重にしない） */
 .data-context-drum {
   scroll-snap-type: x mandatory;
   display: flex;
   align-items: center;
-  padding-left: 50%;
-  padding-right: 50%;
   overscroll-behavior: contain;
 }
 .data-context-item {
@@ -165,6 +164,13 @@
   height: 2px;
   background: #3dbf9f;
   box-shadow: 0 0 8px rgba(61, 191, 159, 0.8);
+}
+.data-context-item.perm-crm-item.active {
+  color: #fde68a;
+}
+.data-context-item.perm-crm-item.active::after {
+  background: #eab308;
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.75);
 }
 .data-context-item-label {
   font-size: 0.7rem;

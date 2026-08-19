@@ -32,6 +32,8 @@ import { PERIODS } from "./mockData";
 import type { DocumentStatusSummary } from "@/features/docugrid/lib/document-status";
 import { TaxPackagePanel } from "@/features/docugrid/components/TaxPackagePanel";
 import { ClassifyEngineBadge } from "@/features/docugrid/components/ClassifyFeedback";
+import { PermCrmPanel } from "@/features/crm/PermCrmPanel";
+import { usePermCrmUiStore } from "@/features/crm/perm-crm-ui-store";
 
 const TIMELINE_EVENT_LABEL: Record<string, string> = {
   upload: "アップロード",
@@ -274,6 +276,9 @@ export default function MatrixGrid({
 }: MatrixGridProps) {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const permCrmTab = usePermCrmUiStore((s) => s.tab);
+  const showPermCrm = isPermPeriodIndex(activePeriodIdx);
+  const showPermDocs = !showPermCrm || permCrmTab === "docs";
 
   const slotCount = slotLabels.length;
 
@@ -339,7 +344,10 @@ export default function MatrixGrid({
   );
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100 transition-opacity duration-300 select-none">
+    <main
+      data-tour="doc-matrix"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100 transition-opacity duration-300 select-none"
+    >
       {slotNotice ? (() => {
         const tone = slotNoticeTone(slotNotice);
         const styles = slotNoticeStyles(tone);
@@ -442,6 +450,10 @@ export default function MatrixGrid({
       </header>
 
       <div className="flex-1 overflow-y-auto p-3 md:p-6">
+        {showPermCrm && permCrmTab !== "docs" ? (
+          <PermCrmPanel tab={permCrmTab} clientName={currentClient.name} />
+        ) : (
+          <>
         <MatrixSlotGrid
           displayOrder={displayOrder}
           slotLabels={slotLabels}
@@ -500,7 +512,10 @@ export default function MatrixGrid({
             onNotice={onPackageNotice}
           />
         )}
+          </>
+        )}
 
+        {showPermDocs ? (
         <div className="mt-10 space-y-5 border-t border-slate-200 pt-8">
           <h2 className="text-sm font-bold text-slate-600">ステータス・タスク</h2>
 
@@ -606,11 +621,20 @@ export default function MatrixGrid({
             </div>
           )}
 
-          {pendingReview.length > 0 && (
-            <div
-              data-tour="pending-review"
-              className="rounded-xl border border-amber-200 bg-amber-50/70 p-4"
-            >
+          <div
+            data-tour="pending-review"
+            className={
+              pendingReview.length > 0
+                ? "rounded-xl border border-amber-200 bg-amber-50/70 p-4"
+                : "rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-3 py-1.5"
+            }
+          >
+            {pendingReview.length === 0 ? (
+              <p className="text-[10px] font-medium text-slate-400">
+                要確認キュー（いま空）— 自動振り分けで迷った PDF がここに並びます
+              </p>
+            ) : (
+              <>
               <div className="mb-3 flex items-center gap-2 text-sm font-black text-amber-800">
                 <AlertTriangle className="h-4 w-4" aria-hidden />
                 要確認（{pendingReview.length}件） — 振り分け先を選んでください
@@ -674,8 +698,9 @@ export default function MatrixGrid({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
 
           {canView && (
             <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -802,6 +827,7 @@ export default function MatrixGrid({
             </section>
           )}
         </div>
+        ) : null}
       </div>
 
       {canUpload && pageOrderLen > 0 && (

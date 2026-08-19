@@ -52,6 +52,23 @@ async def update_system_config(request: Request, payload: SystemConfigUpdateBody
     role = _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     existing = _load_system_config(ctx.firm_id)
+    perms = _get_role_permissions().get(role, set())
+    if "settings.platform" not in perms:
+        # Preserve platform-only fields so firm Drive saves don't wipe AI config
+        # and don't trip the platform gate via masked GET values.
+        payload = payload.model_copy(
+            update={
+                "ocr_auto_extract_enabled": existing.ocr_auto_extract_enabled,
+                "ai_openai_enabled": existing.ai_openai_enabled,
+                "ai_openai_model": existing.ai_openai_model,
+                "ai_gemini_enabled": existing.ai_gemini_enabled,
+                "ai_gemini_model": existing.ai_gemini_model,
+                "ai_openai_api_key": None,
+                "ai_gemini_api_key": None,
+                "clear_ai_openai_key": False,
+                "clear_ai_gemini_key": False,
+            }
+        )
     if _system_config_update_touches_platform(payload, existing):
         _require_platform_settings(request)
     if payload.alert_consumption_tax_months_before_due < 0 or payload.alert_corporate_tax_months_before_due < 0:

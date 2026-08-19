@@ -62,6 +62,12 @@ def _get_role_permissions() -> dict[str, set[str]]:
                     merged[role] = {str(p) for p in perms if isinstance(p, str)}
         except Exception:
             pass
+    # Newly introduced default permissions (SPI) — seed onto roles that have them in defaults
+    # even when role_permissions.json was saved before the feature existed.
+    _seed = frozenset({"my_number.view", "my_number.manage"})
+    for role, default_perms in DEFAULT_ROLE_PERMISSIONS.items():
+        if role in merged:
+            merged[role] |= default_perms & _seed
     if not is_production():
         merged.setdefault("admin", set()).add("settings.platform")
     _role_permissions_cache = merged
@@ -128,9 +134,9 @@ def _enforce_billing_active_for_permission(
 
     if is_super_admin_email(email):
         return
-    from services.stripe_billing_service import is_billing_exempt_email
+    from services.stripe_billing_service import is_billing_exempt
 
-    if is_billing_exempt_email(email):
+    if is_billing_exempt(email=email, firm_id=firm_id):
         return
     if required_permission not in BILLING_BLOCKED_PERMISSIONS:
         return

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { listCaptureItems } from "@/features/capture/lib/capture-api";
@@ -60,14 +59,7 @@ export function ExpenseStatusWidget({ clientId }: Props) {
   }
 
   if (items.length === 0) {
-    return (
-      <p className="text-sm text-slate-500">
-        キャプチャの領収書はまだありません。{" "}
-        <Link href="/capture" className="font-bold text-violet-600 hover:underline">
-          撮影して提出
-        </Link>
-      </p>
-    );
+    return <p className="text-sm text-slate-500">キャプチャの領収書はまだありません。</p>;
   }
 
   return (
@@ -98,9 +90,6 @@ export function ExpenseStatusWidget({ clientId }: Props) {
           ))}
         </ul>
       ) : null}
-      <Link href="/capture" className="text-xs font-bold text-violet-600 hover:underline">
-        キャプチャ画面で詳細を確認 →
-      </Link>
     </div>
   );
 }

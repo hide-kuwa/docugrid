@@ -17,11 +17,13 @@ spawnSync("node", ["scripts/copy-pdfjs-assets.mjs"], {
   shell: true,
 });
 
+// Unset NEXT_PUBLIC_API_BASE so api.ts uses window.location.hostname:8000
+// (works for both localhost and other PCs on the same Wi-Fi).
 const child = spawn("npx", ["next", "dev", "-H", "0.0.0.0", "-p", "3000"], {
   cwd: frontendDir,
   env: {
     ...process.env,
-    NEXT_PUBLIC_API_BASE: `http://${ip}:8000/api`,
+    NEXT_PUBLIC_API_BASE: "",
   },
   stdio: "inherit",
   shell: true,

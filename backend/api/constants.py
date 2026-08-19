@@ -37,6 +37,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "review_checklist.edit",
         "dashboard.view",
         "alert.view",
+        "my_number.view",
+        "my_number.manage",
     },
     "reviewer": {
         "client.view",
@@ -63,6 +65,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "alert.manage",
         "settings.manage",
         "document.purge",
+        "my_number.view",
+        "my_number.manage",
     },
     "firm_admin": {
         "client.view",
@@ -78,6 +82,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "alert.manage",
         "settings.manage",
         "document.purge",
+        "my_number.view",
+        "my_number.manage",
     },
     "platform_admin": {
         "client.view",
@@ -93,6 +99,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
         "alert.manage",
         "settings.manage",
         "settings.platform",
+        "my_number.view",
+        "my_number.manage",
     },
 }
 
@@ -131,6 +139,8 @@ BILLING_BLOCKED_PERMISSIONS = frozenset(
         "review_checklist.edit",
         "alert.view",
         "alert.manage",
+        "my_number.view",
+        "my_number.manage",
     }
 )
 

@@ -125,8 +125,22 @@ export const TRUST_POINTS = [
   "firm_id / client_id によるテナント分離",
   "JWT セッションとロールベース権限",
   "資料・指標の変更履歴を監査ログで追跡",
+  "サーバー保存 ＋ 任意で Google Drive ミラー",
   "第三者提供なし — 事務所データは事務所の SSOT",
 ];
+
+/** LP・営業向け（正本: docs/help/storage-story.md） */
+export const STORAGE_STORY_LP = {
+  headline: "資料の正本は DocuGrid。Drive はそのまま活かす。",
+  subcopy:
+    "PDF はまず DocuGrid のサーバーに集約。Google Drive 連携 ON なら、同じファイルを事務所の Drive にも自動で残します。ブラウザや個人 PC に散らばらず、マトリクス・権限・版管理はアプリ側で一元化。",
+  bullets: [
+    "散らばらない — 格納先はサーバー中心。スタッフはマトリクスから同じ資料を見る",
+    "Drive と両立 — 連携 ON で Drive にもミラー。所内の Drive 文化を壊さない",
+    "移行に配慮 — 旧 Drive は残しつつ ZIP 整理。容量逼迫時もサーバーへ先に載せられる",
+  ],
+  helpPath: "/help?id=storage-story",
+};
 
 export const PLAN_FEATURES = [
   "資料マトリクス・PDF ビューア",
@@ -140,23 +154,23 @@ export const PLAN_FEATURES = [
 export const ONBOARDING_STEPS = [
   {
     step: "1",
-    title: "TAXX にログイン",
-    body: "事務所メンバーアカウントでサインイン。Google または開発用パスワード。",
+    title: "顧客マスタを CSV で取り込み",
+    body: "事務所設定から顧問先一覧を整えます。",
   },
   {
     step: "2",
-    title: "顧問先と期間を選択",
-    body: "横ドラムで顧問先、縦ドラムで月次 / 決算期を選びます。",
+    title: "（任意）旧フォルダを ZIP 一括整理",
+    body: "Drive や PC のバックアップを DocuGrid へ。要確認キューで人が確定。",
   },
   {
     step: "3",
-    title: "資料を枠へ配置",
-    body: "PDF をドロップ。OCR が走り、指標が正規化されます。",
+    title: "Google Drive を接続",
+    body: "整理済み PDF をサーバー ＋ Drive にミラー。共有ドライブ推奨。",
   },
   {
     step: "4",
-    title: "監査 → 帳簿連携",
-    body: "承認後、税務会計システムへ指標を渡して決算・申告を加速。",
+    title: "マトリクスで日々の資料を格納",
+    body: "OCR・監査・税務会計システムへの handoff へ。",
   },
 ];
 
@@ -180,6 +194,10 @@ export const FAQ_ITEMS = [
   {
     q: "データのセキュリティは？",
     a: "テナント境界（firm_id）と client スコープを API 層で強制。監査ログで操作を追跡できる設計です。",
+  },
+  {
+    q: "Google Drive だけで運用していた事務所は？",
+    a: "DocuGrid にサーバー保存し、必要なら Drive にもミラーします。旧 Drive フォルダは ZIP で一括整理できます。Drive が満杯でも、まずサーバーへ載せてから整理する運用が可能です。",
   },
 ];
 

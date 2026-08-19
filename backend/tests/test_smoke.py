@@ -228,6 +228,26 @@ def test_pdf_info_returns_page_count() -> None:
     assert data.get("page_count") == 1 or data.get("pageCount") == 1
 
 
+def test_public_pdf_info_and_render_without_auth() -> None:
+    """ゲスト /pdf 用: 認証なしで info / render できる。"""
+    pdf = _minimal_pdf_bytes()
+    info = client.post(
+        "/api/public/pdf/info",
+        files={"file": ("guest.pdf", io.BytesIO(pdf), "application/pdf")},
+    )
+    assert info.status_code == 200
+    assert info.json().get("page_count") == 1 or info.json().get("pageCount") == 1
+
+    render = client.post(
+        "/api/public/pdf/render",
+        data={"page": "0"},
+        files={"file": ("guest.pdf", io.BytesIO(pdf), "application/pdf")},
+    )
+    assert render.status_code == 200
+    assert render.headers.get("content-type", "").startswith("image/")
+    assert len(render.content) > 0
+
+
 def test_slot_document_persist_list_fetch_and_delete() -> None:
     pdf = _minimal_pdf_bytes()
     # Upload to a client × period × slot

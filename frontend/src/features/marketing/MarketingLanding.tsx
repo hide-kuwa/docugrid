@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Grid3X3, ScanLine, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Grid3X3, HardDrive, ScanLine, ShieldCheck, Sparkles } from "lucide-react";
 import { DocuGridLogo } from "@/components/brand";
+import { STORAGE_STORY_LP } from "@/features/marketing/marketing-content";
 import { DemoMatrix } from "./DemoMatrix";
 
 const FEATURES = [
@@ -31,13 +32,19 @@ export function MarketingLanding() {
           <DocuGridLogo size="sm" />
           <div className="flex items-center gap-2">
             <Link
+              href="/pdf"
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50"
+            >
+              PDF（ログイン不要）
+            </Link>
+            <Link
               href="/login"
               className="rounded-lg px-3 py-2 text-sm font-semibold text-muted hover:bg-neutral-100"
             >
               ログイン
             </Link>
             <Link
-              href="/login"
+              href="/register"
               className="taxx-btn-primary inline-flex gap-1.5 shadow-sm"
             >
               無料で試す
@@ -67,10 +74,10 @@ export function MarketingLanding() {
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
-                href="/login"
+                href="/register"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/25 hover:bg-blue-500"
               >
-                本番環境に入る
+                新規登録
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
               <a
@@ -101,18 +108,61 @@ export function MarketingLanding() {
           </div>
         </section>
 
+        <section id="storage" className="mx-auto max-w-6xl px-4 py-14 md:px-6">
+          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-sky-50 p-6 md:p-8">
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                <HardDrive className="h-6 w-6" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-black text-slate-900 md:text-2xl">
+                  {STORAGE_STORY_LP.headline}
+                </h2>
+                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 md:text-base">
+                  {STORAGE_STORY_LP.subcopy}
+                </p>
+                <ul className="mt-4 space-y-2 text-sm text-slate-700">
+                  {STORAGE_STORY_LP.bullets.map((line) => (
+                    <li key={line} className="flex gap-2">
+                      <span className="text-sky-600">✓</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 font-mono text-[11px] leading-relaxed text-slate-500">
+                  スタッフ → DocuGrid サーバー（運用の正）→（任意）Google Drive ミラー
+                </p>
+                <Link
+                  href={STORAGE_STORY_LP.helpPath}
+                  className="mt-4 inline-flex text-sm font-bold text-sky-700 hover:underline"
+                >
+                  保存の考え方をくわしく読む
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="mx-auto max-w-6xl px-4 py-16 text-center md:px-6">
           <h2 className="text-2xl font-bold text-slate-900 md:text-3xl">事務所の資料整理を、ひとつに。</h2>
           <p className="mx-auto mt-3 max-w-xl text-slate-600">
-            ログイン後は本物のマトリクス・PDF ビューア・監査フローが使えます。まずは上のデモで体験してから、お試しください。
+            ログインなしで PDF の注釈・並べ替えも使えます。事務所向けのマトリクスと監査はログイン後に。
           </p>
-          <Link
-            href="/login"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-8 py-3.5 text-sm font-bold text-white hover:bg-slate-800"
-          >
-            TAXX にログイン
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/pdf"
+              className="inline-flex items-center gap-2 rounded-xl border border-teal-600 bg-white px-8 py-3.5 text-sm font-bold text-teal-700 hover:bg-teal-50"
+            >
+              PDF を試す（ログイン不要）
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-8 py-3.5 text-sm font-bold text-white hover:bg-slate-800"
+            >
+              TAXX にログイン
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
         </section>
       </main>
 
