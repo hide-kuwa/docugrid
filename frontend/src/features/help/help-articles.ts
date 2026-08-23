@@ -36,7 +36,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "workspace",
     title: "ワークスペース（レール）",
-    summary: "Doc / PDF / DM / Tax / カルテの切り替え方。",
+    summary: "Doc / PDF / DM / Tax / カルテ／ひな形／判定の切り替え方。",
     docPath: "docs/help/workspace.md",
     audience: "担当スタッフ",
   },
@@ -45,6 +45,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "資料マトリクス（Doc）",
     summary: "R8 などの期とスロットへの資料の入れ方。",
     docPath: "docs/help/doc-matrix.md",
+    audience: "担当スタッフ",
+  },
+  {
+    id: "authoring",
+    title: "文書作成（差し込み）",
+    summary: "A4 に書いて差し込み、枠へ保存。ひな形はレールのひな形。",
+    docPath: "docs/help/authoring.md",
+    audience: "担当スタッフ",
+  },
+  {
+    id: "flowchart-templates",
+    title: "判定フロー",
+    summary: "レールの判定。顧問先で実行し、フローは画面で作る。",
+    docPath: "docs/help/flowchart-templates.md",
     audience: "担当スタッフ",
   },
   {
@@ -64,9 +78,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "audit-flow",
     title: "監査フロー",
-    summary: "作業保存・承認依頼・監査・差戻しの流れ。",
+    summary: "作業保存〜承認。閲覧と確認・同意の証跡。契約は未契約が隠れない。",
     docPath: "docs/help/audit-flow.md",
-    audience: "担当・承認者",
+    audience: "担当・承認者・クライアント",
   },
   {
     id: "pdf",
@@ -127,7 +141,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "karte-progress",
     title: "カルテ · 進捗",
-    summary: "顧問先のアラート・カレンダー・マイルストーン。",
+    summary: "アラート・カレンダー。判定フローはレールの判定へ。",
     docPath: "docs/help/karte-progress.md",
     audience: "担当スタッフ",
   },
@@ -155,7 +169,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "dm",
     title: "DM（連絡）",
-    summary: "統合連絡ハブ。工事中の機能あり。",
+    summary: "システム内チャットとメール／Slack／LINE の受信箱。",
     docPath: "docs/help/dm.md",
     audience: "担当スタッフ",
   },

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter
 
 from api.router_imports import *  # noqa: F403
@@ -642,5 +644,61 @@ async def get_firm_tasks(request: Request):
         unassigned_missing_total=unassigned_missing,
         unassigned_pending_total=unassigned_pending,
     )
+
+
+class ConsumptionTaxableOverrideBody(BaseModel):
+    result_override: Literal["auto", "taxable", "exempt"] = "auto"
+    input_overrides: dict | None = None
+
+
+@router.get("/api/clients/{client_id}/consumption-taxable-status")
+def get_client_consumption_taxable_status(request: Request, client_id: str):
+    """自動判定 + 保存済み手動上書き（手動優先）。テナントデータは JWT の firm のみ。"""
+    _require_client_permission(request, "client.view", client_id)
+    ctx = _auth_context(request)
+    from services.consumption_taxable_client import build_client_status
+
+    master = _load_client_master()
+    client_row = next((c for c in master.clients if c.id == client_id), None)
+    profile = client_row.profile if client_row else {}
+    try:
+        return build_client_status(ctx.firm_id, client_id, profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/api/clients/{client_id}/consumption-taxable-status")
+def put_client_consumption_taxable_status(
+    request: Request,
+    client_id: str,
+    body: ConsumptionTaxableOverrideBody,
+):
+    """フローチャート上のクリックを反映。最終結果は手動が自動より優先。"""
+    _require_client_permission(request, "client.edit", client_id)
+    ctx = _auth_context(request)
+    from services.consumption_taxable_client import build_client_status, save_manual_state
+
+    try:
+        save_manual_state(
+            ctx.firm_id,
+            client_id,
+            result_override=body.result_override,
+            input_overrides=body.input_overrides,
+            updated_by=ctx.email,
+        )
+        master = _load_client_master()
+        client_row = next((c for c in master.clients if c.id == client_id), None)
+        profile = client_row.profile if client_row else {}
+        payload = build_client_status(ctx.firm_id, client_id, profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_audit_event(
+        request,
+        "consumption_taxable.upsert",
+        "success",
+        f"override={body.result_override}",
+    )
+    return payload
+
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   APP_ROLES,
@@ -382,7 +383,16 @@ export function SettingsPageShell() {
             )}
 
             {activeCategory === "templates" && (
-              <AuthoringTemplatesPanel currentUser={currentUser} />
+              <>
+                <p className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+                  判定フローは別ページです。レールの <strong>判定</strong>、または{" "}
+                  <Link href="/flowchart" className="font-bold underline">
+                    判定ページ
+                  </Link>
+                  。文書ひな形の本編はレールの <strong>ひな形</strong> でも開けます。
+                </p>
+                <AuthoringTemplatesPanel currentUser={currentUser} />
+              </>
             )}
 
             {activeCategory === "reviewChecklist" && (

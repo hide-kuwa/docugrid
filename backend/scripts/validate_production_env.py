@@ -98,22 +98,32 @@ def validate(*, check_stripe: bool) -> int:
         errors.append(f"storage not writable: {exc}")
         _fail(f"storage not writable: {exc}")
 
-    # --- Phase 2: member directory ---
-    print("\n[2] Member directory (Google login allowlist)")
+    # --- Phase 2: login allowlist (member_directory and/or firm_members) ---
+    print("\n[2] Login allowlist (member_directory / firm_members)")
+    from services.firm_members import active_member_count
+
+    active_members = active_member_count() if is_production() else 0
     if is_production():
-        if not MEMBER_DIRECTORY_PATH.is_file():
-            errors.append(
-                "member_directory.json missing - run: "
-                "python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
+        has_directory = MEMBER_DIRECTORY_PATH.is_file()
+        directory_count = member_directory_count() if has_directory else 0
+        if active_members > 0:
+            _ok(f"{active_members} active member(s) in firm_members.db")
+        elif has_directory and directory_count > 0:
+            _ok(f"{directory_count} user(s) in member_directory.json")
+        elif has_directory and directory_count == 0:
+            warnings.append(
+                "member_directory.json is empty - first login via Google registration "
+                "(/register) or: python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
             )
-            _fail("member_directory.json missing")
-        elif member_directory_count() == 0:
-            errors.append("member_directory.json has no emailToStakeholderId entries")
-            _fail("member_directory.json empty")
+            _warn("member_directory.json empty (OK for fresh deploy if using /register)")
         else:
-            _ok(f"{member_directory_count()} user(s) in member_directory.json")
+            warnings.append(
+                "No member_directory.json yet - first login via Google registration "
+                "(/register) or seed scripts before inviting staff"
+            )
+            _warn("fresh deploy: add users via /register or seed_member_directory.py")
     else:
-        _warn("Skipping member_directory requirement (not production)")
+        _warn("Skipping login allowlist requirement (not production)")
 
     # --- Phase 3: frontend URL (Stripe redirects, CORS sanity) ---
     print("\n[3] URLs")
@@ -251,7 +261,7 @@ def validate(*, check_stripe: bool) -> int:
         }
         if MEMBER_DIRECTORY_PATH.is_file():
             try:
-                raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8"))
+                raw = json.loads(MEMBER_DIRECTORY_PATH.read_text(encoding="utf-8-sig"))
                 registered = {
                     e.lower()
                     for e in (raw.get("emailToStakeholderId") or {})

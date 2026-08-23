@@ -38,6 +38,7 @@ type Props = {
   workflowBadge: Badge | null;
   logicalBadge: Badge | null;
   classifyBadge?: Badge | null;
+  agreementBadge?: Badge | null;
   showClientShareStatus?: boolean;
   slotTagsVisibility?: "hover" | "always";
   slotDragActive: boolean;
@@ -68,6 +69,7 @@ export function SortableSlotCard({
   workflowBadge,
   logicalBadge,
   classifyBadge = null,
+  agreementBadge = null,
   showClientShareStatus = false,
   slotTagsVisibility = "hover",
   slotDragActive,
@@ -273,6 +275,14 @@ export function SortableSlotCard({
                   className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${classifyBadge.className}`}
                 >
                   {classifyBadge.label}
+                </span>
+              ) : null}
+              {agreementBadge ? (
+                <span
+                  title={agreementBadge.title}
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${agreementBadge.className}`}
+                >
+                  {agreementBadge.label}
                 </span>
               ) : null}
               {showClientShareStatus && doc ? (

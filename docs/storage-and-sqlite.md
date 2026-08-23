@@ -78,7 +78,10 @@ backend/storage/
 | パス | 用途 |
 |------|------|
 | `storage/firms/{firm_id}/local_authoring_templates.json` | 事務所ローカルテンプレ |
-| `storage/platform/global_authoring_templates.json` | 全体テンプレ |
+| `storage/platform/global_flowchart_templates.json` | 判定フロー公式ひな形 |
+| `storage/firms/{firm_id}/local_flowchart_templates.json` | 判定フロー事務所ひな形 |
+| `storage/firms/{firm_id}/flowchart_instances/{client_id}.json` | 保存した判定（税法期間・frozen_definition 付き。後からひな形を変えても書き換えない） |
+| `storage/firms/{firm_id}/flowchart_drafts/{client_id}/` | 判定の下書き |
 | `storage/member_directory.json` | OAuth 連携時のメンバー辞書 |
 | `storage/stakeholder_master.json` | スコープ上書き（API 契約参照） |
 

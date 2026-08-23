@@ -88,22 +88,21 @@ function runStepPrepare(step: FeatureTourStep) {
 function tooltipPosition(hole: Hole | null, cardW = 320, cardH = 240) {
   const margin = 16;
   const gap = 14;
+  const viewW = typeof window === "undefined" ? 1280 : window.innerWidth;
+  const viewH = typeof window === "undefined" ? 720 : window.innerHeight;
   if (!hole) {
     return {
-      top: Math.max(margin, window.innerHeight / 2 - cardH / 2),
-      left: Math.max(margin, window.innerWidth / 2 - cardW / 2),
+      top: Math.max(margin, viewH / 2 - cardH / 2),
+      left: Math.max(margin, viewW / 2 - cardW / 2),
     };
   }
   const below = hole.top + hole.height + gap;
   const above = hole.top - gap - cardH;
-  const preferBelow = below + cardH < window.innerHeight - margin;
+  const preferBelow = below + cardH < viewH - margin;
   const top = preferBelow
-    ? Math.min(below, window.innerHeight - cardH - margin)
+    ? Math.min(below, viewH - cardH - margin)
     : Math.max(margin, above);
-  const left = Math.min(
-    Math.max(margin, hole.left),
-    window.innerWidth - cardW - margin,
-  );
+  const left = Math.min(Math.max(margin, hole.left), viewW - cardW - margin);
   return { top, left };
 }
 

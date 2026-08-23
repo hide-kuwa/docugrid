@@ -70,6 +70,14 @@ export function PdfViewerShellLayout({ vm }: { vm: PdfViewerViewModel }) {
     setExpandedHistoryIdx,
     isHistoryOpen,
     setIsHistoryOpen,
+    historyTab,
+    setHistoryTab,
+    trail,
+    stampBusy,
+    alreadyAcknowledged,
+    alreadyAgreed,
+    handleAcknowledge,
+    handleAgree,
     recordAction,
     popLastAction,
     handleWorkSave,
@@ -229,6 +237,7 @@ export function PdfViewerShellLayout({ vm }: { vm: PdfViewerViewModel }) {
           isSplitView={isSplitView}
           onClose={onClose}
           onToggleHistory={() => setIsHistoryOpen(!isHistoryOpen)}
+          trailAgreement={trail.agreement}
           onToggleSplitView={handleToggleSplitView}
           splitViewHint={isSplitView ? "2画面照合 ON" : "2画面照合"}
           handleWorkSave={handleWorkSave}
@@ -519,6 +528,14 @@ export function PdfViewerShellLayout({ vm }: { vm: PdfViewerViewModel }) {
           canDeleteVersion={canSoftDeleteDocument}
           onDeleteVersion={handleDeleteVersion}
           versionDeleteBusyId={versionDeleteBusyId}
+          trail={trail}
+          stampBusy={stampBusy}
+          alreadyAcknowledged={alreadyAcknowledged}
+          alreadyAgreed={alreadyAgreed}
+          onAcknowledge={() => void handleAcknowledge()}
+          onAgree={() => void handleAgree()}
+          historyTab={historyTab}
+          onHistoryTabChange={setHistoryTab}
         />
       ) : null}
         </div>

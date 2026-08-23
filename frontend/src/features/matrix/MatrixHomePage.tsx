@@ -41,7 +41,7 @@ import { isDataPeriodIndex, isPermPeriodIndex } from "@/lib/period-nav";
 import type { ExtractionReviewPayload } from "@/features/client-data/lib/extraction-api";
 
 export function MatrixHomePage() {
-  const { authChecked, currentUser, billingMe, billingLoading, reloadBilling } =
+  const { authChecked, currentUser, billingMe, reloadBilling } =
     useMatrixAuthBootstrap();
 
   const [file, setFile] = useState<File | null>(null);
@@ -487,7 +487,7 @@ export function MatrixHomePage() {
     persistFileToSlot,
   });
 
-  if (!authChecked || (billingLoading && billingMe === null)) {
+  if (!authChecked) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 text-slate-500">
         <div

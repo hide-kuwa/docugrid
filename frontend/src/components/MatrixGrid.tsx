@@ -41,6 +41,8 @@ const TIMELINE_EVENT_LABEL: Record<string, string> = {
   page_reorder: "ページ並べ替え",
   audit_start: "監査開始",
   approve: "承認",
+  acknowledge: "確認",
+  agree: "同意",
   remand: "差戻し",
   page_view: "ページ閲覧",
   annotate: "注釈",
@@ -199,7 +201,7 @@ interface MatrixGridProps {
     file: File,
     slotIndex: number,
     slotLabel: string,
-  ) => Promise<{ persisted: boolean }>;
+  ) => Promise<{ persisted: boolean; docId?: string }>;
   matrixPeriods?: { year: string[]; month: string[] };
 }
 
@@ -501,6 +503,7 @@ export default function MatrixGrid({
           clientName={currentClient.name}
           onApplySlotLayout={onSlotLayoutChange}
           onAuthoringSave={onAuthoringSave}
+          timelineEvents={timelineEvents}
         />
 
         {canUpload && onAssignPackageToSlot && onPackageNotice && (

@@ -4,6 +4,8 @@ from api.routers.core import router as core_router
 from api.routers.dev_form_catalog import router as dev_form_catalog_router
 from api.routers.legal_master import router as legal_master_router
 from api.routers.taxx_tools import router as taxx_tools_router
+from api.routers.consumption_taxable import router as consumption_taxable_router
+from api.routers.flowchart_templates import router as flowchart_templates_router
 from api.routers.metric_mappings import router as metric_mappings_router
 from api.routers.integrations import router as integrations_router
 from api.routers.auth import router as auth_router
@@ -37,6 +39,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(dev_form_catalog_router)
     app.include_router(legal_master_router)
     app.include_router(taxx_tools_router)
+    app.include_router(consumption_taxable_router)
+    app.include_router(flowchart_templates_router)
     app.include_router(public_pdf_router)
     app.include_router(metric_mappings_router)
     app.include_router(integrations_router)

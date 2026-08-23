@@ -24,6 +24,8 @@ import {
   type DmWorkspacePayload,
 } from "@/features/workspace/dm-workspace-api";
 import { testMessagingChannel } from "@/features/integrations/messaging-channels-api";
+import { API_ENDPOINTS } from "@/config/api";
+import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 import { parseApiErrorBody } from "@/lib/parse-api-error";
 import { settingsHref } from "@/lib/app-surface";
 
@@ -34,6 +36,7 @@ type Props = {
 
 const CHANNEL_FILTERS = [
   { id: "all", label: "すべて" },
+  { id: "system", label: "システム" },
   { id: "email", label: "メール" },
   { id: "slack", label: "Slack" },
   { id: "line", label: "LINE" },
@@ -168,7 +171,9 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
   const [emailProvider, setEmailProvider] = useState("local");
   const [lineToken, setLineToken] = useState("");
   const [lineMode, setLineMode] = useState("local");
-  const [composeChannel, setComposeChannel] = useState<"email" | "slack" | "line">("slack");
+  const [composeChannel, setComposeChannel] = useState<"system" | "email" | "slack" | "line">(
+    "system",
+  );
   const [composeText, setComposeText] = useState("");
   const [composeTo, setComposeTo] = useState("");
   const [hooks, setHooks] = useState<{
@@ -180,6 +185,7 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
   const allLocalReady = Boolean(
     data?.tools.filter((t) => ["email", "slack", "line"].includes(t.id)).every((t) => t.ready),
   );
+  const canCompose = composeChannel === "system" || anyReady;
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -296,16 +302,30 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
     setBusy(true);
     setMessage("");
     try {
-      const res = await sendDmMessage({
-        channel: composeChannel,
-        text: composeText.trim(),
-        to: composeTo.trim() || undefined,
-        subject: composeChannel === "email" ? "DocuGrid から" : undefined,
-        client_id: clientId,
-      });
-      setSelectedId(res.item.id);
-      setComposeText("");
-      setMessage(`送信しました（${composeChannel}）`);
+      if (composeChannel === "system") {
+        const item = await ingestDmItem({
+          channel: "system",
+          title: "事務所からの連絡",
+          body: composeText.trim(),
+          direction: "outbound",
+          client_id: clientId,
+          participants: "事務所",
+        });
+        setSelectedId(item.id);
+        setComposeText("");
+        setMessage("システム内チャットに送りました");
+      } else {
+        const res = await sendDmMessage({
+          channel: composeChannel,
+          text: composeText.trim(),
+          to: composeTo.trim() || undefined,
+          subject: composeChannel === "email" ? "DocuGrid から" : undefined,
+          client_id: clientId,
+        });
+        setSelectedId(res.item.id);
+        setComposeText("");
+        setMessage(`送信しました（${composeChannel}）`);
+      }
       await reload();
     } catch (e) {
       setMessage(parseApiErrorBody(e) || "送信に失敗しました");
@@ -335,7 +355,7 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
       const res = await enableDmLocalLab({ client_id: clientId, seed: true, count: 1 });
       setData(res.workspace);
       setSelectedId(res.seeded[0]?.id || res.workspace.items[0]?.id || null);
-      setComposeChannel("slack");
+      setComposeChannel("system");
       setSetupOpen(false);
       setMessage("ローカル利用を有効化しました。送信・模擬受信が使えます。");
     } catch (e) {
@@ -505,18 +525,18 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
         )}
 
         <footer className="space-y-2 border-t border-slate-200 bg-white px-3 py-2">
-          {!anyReady ? (
+          {!anyReady && composeChannel !== "system" ? (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
               <p className="flex-1 text-[11px] font-bold text-amber-900">
-                まだ送信できません。ローカル利用を有効にするとすぐ使えます。
+                Slack / メール / LINE は未接続です。システム内チャットならそのまま送れます。
               </p>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void runEnableLocal()}
+                onClick={() => setComposeChannel("system")}
                 className="rounded-lg bg-violet-700 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
               >
-                有効にする
+                システムに切替
               </button>
             </div>
           ) : null}
@@ -527,35 +547,34 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
                 className="mt-0.5 block rounded border border-slate-200 px-2 py-1 text-xs"
                 value={composeChannel}
                 onChange={(e) =>
-                  setComposeChannel(e.target.value as "email" | "slack" | "line")
+                  setComposeChannel(e.target.value as "system" | "email" | "slack" | "line")
                 }
               >
+                <option value="system">システム</option>
                 <option value="slack">Slack</option>
                 <option value="email">メール</option>
                 <option value="line">LINE</option>
               </select>
             </label>
-            <label className="min-w-[10rem] flex-1 text-[10px] font-bold text-slate-500">
-              宛先（メールto / LINE userId / Slack #ch）
-              <input
-                className="mt-0.5 block w-full rounded border border-slate-200 px-2 py-1 text-xs"
-                value={composeTo}
-                onChange={(e) => setComposeTo(e.target.value)}
-                placeholder="local なら空でOK"
-              />
-            </label>
+            {composeChannel !== "system" ? (
+              <label className="min-w-[10rem] flex-1 text-[10px] font-bold text-slate-500">
+                宛先（メールto / LINE userId / Slack #ch）
+                <input
+                  className="mt-0.5 block w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                  value={composeTo}
+                  onChange={(e) => setComposeTo(e.target.value)}
+                  placeholder="local なら空でOK"
+                />
+              </label>
+            ) : null}
             <label className="min-w-[14rem] flex-[2] text-[10px] font-bold text-slate-500">
               本文
               <input
                 className="mt-0.5 block w-full rounded border border-slate-200 px-2 py-1 text-xs"
                 value={composeText}
                 onChange={(e) => setComposeText(e.target.value)}
-                placeholder={
-                  anyReady
-                    ? "メッセージを入力して送信"
-                    : "先にローカル利用を有効化してください"
-                }
-                disabled={!anyReady}
+                placeholder="メッセージを入力して送信"
+                disabled={!canCompose}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -566,7 +585,7 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
             </label>
             <button
               type="button"
-              disabled={busy || !anyReady}
+              disabled={busy || !canCompose}
               onClick={() => void runSend()}
               className="rounded-lg bg-violet-700 px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
             >
@@ -594,8 +613,11 @@ export function WorkspaceDmMain({ clientId, clientName }: Props) {
             ) : null}
             <button
               type="button"
-              disabled={busy || !anyReady}
-              onClick={() => void runSimulate(composeChannel)}
+              disabled={busy || !anyReady || composeChannel === "system"}
+              onClick={() => {
+                if (composeChannel === "system") return;
+                void runSimulate(composeChannel);
+              }}
               className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 disabled:opacity-50"
             >
               模擬受信
@@ -624,10 +646,12 @@ function ChannelChip({ channel }: { channel: string }) {
         ? "bg-emerald-100 text-emerald-800"
         : channel === "email"
           ? "bg-sky-100 text-sky-800"
-          : "bg-slate-100 text-slate-600";
+          : channel === "system"
+            ? "bg-indigo-100 text-indigo-800"
+            : "bg-slate-100 text-slate-600";
   return (
     <span className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${tone}`}>
-      {channel}
+      {channel === "system" ? "システム" : channel}
     </span>
   );
 }
@@ -639,6 +663,39 @@ function MessageDetail({
   item: DmInboxItem;
   onOpenSetup: () => void;
 }) {
+  const [dlError, setDlError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const slotDocId =
+    typeof item.meta?.slot_doc_id === "string" ? item.meta.slot_doc_id.trim() : "";
+  const slotLabel = typeof item.meta?.slot_label === "string" ? item.meta.slot_label : "";
+  const filename =
+    (typeof item.meta?.filename === "string" && item.meta.filename) ||
+    (slotLabel ? `${slotLabel}.pdf` : "document.pdf");
+
+  const downloadAttached = async () => {
+    if (!slotDocId || !item.client_id) return;
+    setDownloading(true);
+    setDlError("");
+    try {
+      const res = await authFetch(API_ENDPOINTS.SLOT_FILE(slotDocId), {
+        method: "GET",
+        headers: buildAuthHeaders(item.client_id),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setDlError("資料を開けませんでした。Doc の枠から確認してください。");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
       <div className="flex items-start justify-between gap-3">
@@ -664,6 +721,22 @@ function MessageDetail({
       <div className="mt-4 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-sm">
         {item.body || "（本文なし）"}
       </div>
+      {slotDocId ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+          <p className="flex-1 text-[11px] font-bold text-indigo-900">
+            添付: {slotLabel || filename}
+          </p>
+          <button
+            type="button"
+            disabled={downloading || !item.client_id}
+            onClick={() => void downloadAttached()}
+            className="rounded-lg bg-indigo-700 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50"
+          >
+            {downloading ? "開いています…" : "資料を開く"}
+          </button>
+          {dlError ? <p className="w-full text-[11px] text-red-600">{dlError}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -82,7 +82,7 @@ const CORE_SURFACES: WorkspaceSurface[] = [
 
     shortLabel: "DM",
 
-    description: "メール / Slack / LINE 統合受信箱",
+    description: "システム内チャットとメール / Slack / LINE の受信箱",
 
     status: "live",
 

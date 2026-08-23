@@ -82,7 +82,7 @@ export type UseMatrixPeriodContentPropsInput = {
     slotLabel: string,
     activate: boolean,
     classifyMeta?: import("@/features/docugrid/lib/classify").ClassifyPersistMetadata,
-  ) => Promise<{ persisted: boolean }>;
+  ) => Promise<{ persisted: boolean; docId?: string }>;
 };
 
 export function useMatrixPeriodContentProps(

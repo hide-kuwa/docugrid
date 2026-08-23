@@ -38,6 +38,8 @@ export const REVIEW_EVENT_LABEL: Record<string, string> = {
   audit_link_create: "監査リンク",
   client_share: "クライアント共有",
   client_unshare: "共有解除",
+  acknowledge: "確認した",
+  agree: "同意した",
 };
 
 export const AUDIT_ACTION_LABEL: Record<string, string> = {

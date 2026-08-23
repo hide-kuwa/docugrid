@@ -29,7 +29,7 @@ type PersistFileToSlot = (
   slotLabel: string,
   showAlertOnFail: boolean,
   classifyMeta?: ClassifyPersistMetadata,
-) => Promise<{ persisted: boolean }>;
+) => Promise<{ persisted: boolean; docId?: string }>;
 
 type ActivateDoc = (
   file: File,

@@ -32,6 +32,7 @@ CSRF_EXEMPT_PREFIXES = (
     "/api/integrations/moneytree/callback",
     "/api/public/pdf",
     "/api/public/tools",
+    "/api/check-taxable-status",
     "/api/public/messaging",
     "/docs",
     "/openapi.json",
@@ -307,14 +308,13 @@ def validate_auth_config(*, strict: bool | None = None) -> list[str]:
                 raise RuntimeError(msg)
             warnings.append(msg)
         from services.member_directory import member_directory_count
+        from services.firm_members import active_member_count
 
-        if member_directory_count() < 1:
+        if active_member_count() < 1 and member_directory_count() < 1:
             msg = (
-                "member_directory.json must list at least one email for Google login - "
-                "run: python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
+                "No login users yet - add via /register (Google) or "
+                "python scripts/seed_member_directory.py add user@firm.co.jp actor-s1"
             )
-            if strict:
-                raise RuntimeError(msg)
             warnings.append(msg)
         if get_cors_origins() is None:
             msg = "DOCUGRID_CORS_ORIGINS must be set in production (comma-separated frontend URLs)"

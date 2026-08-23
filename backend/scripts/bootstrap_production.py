@@ -72,7 +72,7 @@ def _seed_member_directory(*, include_dev_defaults: bool, strip_dev_emails: bool
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     if MEMBER_PATH.is_file():
-        data = json.loads(MEMBER_PATH.read_text(encoding="utf-8"))
+        data = json.loads(MEMBER_PATH.read_text(encoding="utf-8-sig"))
         mapping = dict(data.get("emailToStakeholderId") or {})
     else:
         mapping = {}

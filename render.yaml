@@ -1,0 +1,46 @@
+# Render Blueprint — DocuGrid API (FastAPI + persistent /app/storage)
+#
+# Frontend: deploy frontend/ separately on Vercel (see docs/production-deployment.md).
+# After linking this blueprint, set secrets in the Render dashboard:
+#   DOCUGRID_JWT_SECRET, DOCUGRID_SECRET_ENCRYPTION_KEY, GOOGLE_OAUTH_CLIENT_ID,
+#   DOCUGRID_CORS_ORIGINS, DOCUGRID_FRONTEND_URL
+#
+# Pre-flight (local):
+#   cd backend && python scripts/validate_production_env.py --env-file .env.production
+
+services:
+  - type: web
+    name: docugrid-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    region: singapore
+    healthCheckPath: /health
+    disk:
+      name: docugrid-storage
+      mountPath: /app/storage
+      sizeGB: 10
+    envVars:
+      - key: DOCUGRID_ENV
+        value: production
+      - key: DOCUGRID_ALLOW_HEADER_AUTH
+        value: "false"
+      - key: DOCUGRID_ALLOW_PASSWORD_LOGIN
+        value: "false"
+      - key: DOCUGRID_ALLOW_LOGIN_STAKEHOLDER_PICK
+        value: "false"
+      - key: DOCUGRID_CSRF
+        value: "true"
+      - key: DOCUGRID_SESSION_COOKIE_SECURE
+        value: "true"
+      - key: DOCUGRID_JWT_SECRET
+        sync: false
+      - key: DOCUGRID_SECRET_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: DOCUGRID_CORS_ORIGINS
+        sync: false
+      - key: DOCUGRID_FRONTEND_URL
+        sync: false

@@ -81,6 +81,8 @@ export const FIELD_RELATED_DOCUMENTS: Record<string, RelatedDocumentRef[]> = {
   tax_office: [PERM_REGISTRY, CORP_TAX],
   tax_returns: [CORP_TAX, CONSUMPTION_TAX],
   consumption_tax: [CONSUMPTION_TAX],
+  invoice_registration_application: [CONSUMPTION_TAX],
+  consumption_tax_election_notice: [CONSUMPTION_TAX],
   officer_compensation: [FINANCIAL_REPORT, CORP_TAX],
   director1_monthly_salary: [FINANCIAL_REPORT, PAYROLL_LEDGER],
   director2_monthly_salary: [FINANCIAL_REPORT, PAYROLL_LEDGER],

@@ -55,6 +55,7 @@ export async function ingestDmItem(body: {
   direction?: string;
   client_id?: string;
   participants?: string;
+  meta?: Record<string, unknown>;
 }): Promise<DmInboxItem> {
   const res = await authFetch(`${API_BASE}/dm/inbox`, {
     method: "POST",
@@ -66,6 +67,32 @@ export async function ingestDmItem(body: {
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as DmInboxItem;
+}
+
+/** In-app handoff (no Slack / mail). References a slot PDF already saved for the client. */
+export async function sendSystemHandoff(opts: {
+  clientId: string;
+  clientName: string;
+  title: string;
+  slotLabel: string;
+  docId?: string;
+  filename?: string;
+}): Promise<DmInboxItem> {
+  const docTitle = opts.title.replace(/（.+）/, "").trim() || "書類";
+  return ingestDmItem({
+    channel: "system",
+    title: `${docTitle}をお渡し`,
+    body: `${opts.clientName} 向け「${opts.slotLabel}」の資料です。このスレッドから開けます。`,
+    direction: "outbound",
+    client_id: opts.clientId,
+    participants: "事務所",
+    meta: {
+      event: "authoring_handoff",
+      slot_doc_id: opts.docId || "",
+      slot_label: opts.slotLabel,
+      filename: opts.filename || "",
+    },
+  });
 }
 
 export async function saveDmTools(

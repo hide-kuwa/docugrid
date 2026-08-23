@@ -16,9 +16,47 @@ from api.route_helpers import *  # noqa: F403
 
 router = APIRouter()
 
+_REVIEW_EVENT_TYPES = frozenset(
+    {
+        "upload",
+        "page_view",
+        "page_reorder",
+        "annotate",
+        "export_pdf",
+        "viewer_open_preview",
+        "viewer_open_edit",
+        "viewer_close",
+        "work_save",
+        "request_review",
+        "audit_start",
+        "audit_suspend",
+        "approve",
+        "remand",
+        "audit_link_create",
+        "client_share",
+        "client_unshare",
+        "document_delete",
+        "document_soft_delete",
+        "document_restore",
+        "version_delete",
+        "acknowledge",
+        "agree",
+    }
+)
+_REVIEW_EVENT_TYPES_NEED_APPROVE = frozenset({"approve", "remand", "audit_start"})
+
+
+def _authorize_review_event_write(request: Request, client_id: str, event_type: str) -> str:
+    if event_type not in _REVIEW_EVENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid event_type")
+    if event_type in _REVIEW_EVENT_TYPES_NEED_APPROVE:
+        return _require_client_permission(request, "audit.approve", client_id)
+    return _require_client_permission(request, "document.view", client_id)
+
+
 @router.post("/api/review-events", response_model=ReviewEventItem)
 async def create_review_event(request: Request, payload: ReviewEventCreate):
-    role = _require_client_permission(request, "document.view", payload.client_id)
+    role = _authorize_review_event_write(request, payload.client_id, payload.event_type)
     # 差戻しは理由必須（監査要件）
     if payload.event_type == "remand" and not (payload.reason and payload.reason.strip()):
         raise HTTPException(status_code=400, detail="remand requires a reason")
@@ -154,7 +192,6 @@ def _query_review_timeline(
 
 @router.post("/api/review-events/batch", response_model=List[ReviewEventItem])
 async def create_review_events_batch(request: Request, payload: ReviewEventBatchCreate):
-    role = _require_permission(request, "document.view")
     if not payload.events:
         raise HTTPException(status_code=400, detail="events must not be empty")
     if len(payload.events) > 100:
@@ -163,12 +200,12 @@ async def create_review_events_batch(request: Request, payload: ReviewEventBatch
     if len(client_ids) != 1:
         raise HTTPException(status_code=400, detail="all events must share client_id")
     client_id = next(iter(client_ids))
-    _require_client_access(request, role, client_id, required_permission="document.view")
     identity = resolve_identity(request)
     items: List[ReviewEventItem] = []
     for event in payload.events:
         if event.client_id != client_id:
             raise HTTPException(status_code=400, detail="client_id mismatch in batch")
+        role = _authorize_review_event_write(request, event.client_id, event.event_type)
         if event.event_type == "remand" and not (event.reason and event.reason.strip()):
             raise HTTPException(status_code=400, detail="remand requires a reason")
         item = _append_review_event(

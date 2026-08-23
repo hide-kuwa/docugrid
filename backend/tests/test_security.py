@@ -548,3 +548,17 @@ def test_super_admin_auth_me_returns_permissions(monkeypatch: pytest.MonkeyPatch
     assert body["role"] == "platform_admin"
     assert "settings.platform" in body["permissions"]
     assert "document.upload" in body["permissions"]
+
+
+def test_authoring_render_rejects_cross_firm_party(beta_client_master, monkeypatch) -> None:
+    monkeypatch.setenv("DOCUGRID_ALLOW_HEADER_AUTH", "true")
+    r = client.post(
+        "/api/authoring-templates/render-body",
+        headers=_admin_headers("c1"),
+        json={
+            "client_id": "c1",
+            "body": "【法人名２】",
+            "parties": [{"slot": 2, "client_id": "c_beta_1"}],
+        },
+    )
+    assert r.status_code in (403, 404), r.text

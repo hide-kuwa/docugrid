@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileText,
   Files,
+  GitBranch,
   LayoutTemplate,
   ListTodo,
   Menu,
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 import { AuthNavButtons } from "@/components/AuthNavButtons";
 import { loadCurrentUser } from "@/lib/auth";
-import { settingsHref } from "@/lib/app-surface";
 import { canShowDevConsoleNav, canShowFirmSettingsNav, canShowTasksNav } from "@/lib/nav-policy";
 import { DATA_WORKSPACE_TABS } from "@/features/client-data/data-workspace-tabs";
 import {
@@ -59,18 +59,12 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [onTemplatesPage, setOnTemplatesPage] = useState(false);
-  const onSettingsPage = pathname.startsWith("/settings") && !onTemplatesPage;
+  const [onFlowchartPage, setOnFlowchartPage] = useState(false);
+  const onSettingsPage = pathname.startsWith("/settings");
 
   useEffect(() => {
-    if (!pathname.startsWith("/settings")) {
-      setOnTemplatesPage(false);
-      return;
-    }
-    try {
-      setOnTemplatesPage(new URLSearchParams(window.location.search).get("tab") === "templates");
-    } catch {
-      setOnTemplatesPage(false);
-    }
+    setOnTemplatesPage(pathname.startsWith("/templates"));
+    setOnFlowchartPage(pathname.startsWith("/flowchart"));
   }, [pathname]);
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -347,10 +341,18 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
                 label: "ひな形",
                 active: onTemplatesPage,
                 activeClass: "bg-indigo-950/50 text-indigo-300 ring-1 ring-indigo-500/40",
-                onClick: () => go(settingsHref("firm", "templates")),
+                onClick: () => go("/templates"),
                 children: <LayoutTemplate className="h-4 w-4" />,
               })
             : null}
+          {utilBtn({
+            title: "判定フロー",
+            label: "判定",
+            active: onFlowchartPage,
+            activeClass: "bg-violet-950/50 text-violet-300 ring-1 ring-violet-500/40",
+            onClick: () => go("/flowchart"),
+            children: <GitBranch className="h-4 w-4" />,
+          })}
           {showFirmSettingsNav
             ? utilBtn({
                 title: "事務所設定",

@@ -461,6 +461,45 @@ Requires authentication for read; dev CRUD requires `settings.platform`. DB: `ba
 
 - Dev UI: `/dev/metric-mappings`. Updates `auto_vouch_fields.refresh_metric_index()` on write.
 
+### `POST /api/check-taxable-status`
+
+Public consumption-tax **簡易** checker (no auth, no tenant data). CSRF-exempt.
+
+- Body (all optional; defaults `false` / `0` / omitted `entity_type`):
+  - `entity_type`: `"individual"` | `"corporate"`
+  - `base_period_sales`, `specified_period_sales`, `specified_period_salaries`, `initial_capital` (yen, `>= 0`)
+  - `is_invoice_registered`, `has_voluntary_election`, `is_special_new_corporate`, `has_high_value_asset_restriction`, `has_taxable_inheritance`
+- Response: `{ is_taxable, matched_conditions[], message }`
+- `is_taxable` if **any** of: invoice registration, voluntary election, base-period sales **>** 10M, specified-period sales **and** salaries both **>** 10M, corporate capital **>=** 10M, special new corp, high-value asset restriction, taxable inheritance/merger.
+- Extra: `conditions[]` (facts + document refs), `result_override` (`auto` \| `taxable` \| `exempt`, **manual wins**), `result_source`.
+
+### `GET` / `PUT /api/clients/{client_id}/consumption-taxable-status`
+
+Client-scoped (JWT `firm_id` + `authorize_client_access`). GET `client.view`, PUT `client.edit`.
+
+- GET gathers auto inputs from profile/metrics, then applies saved manual overrides (manual wins).
+- PUT body: `{ result_override, input_overrides? }`. Stored under `storage/firms/{firm_id}/consumption_taxable/`.
+
+### `GET /api/flowchart-templates`
+
+Global + local decision-flow templates (same 2-layer model as authoring templates). `document.view`. Each edition has `family_id`, `valid_from`, `valid_to`, `law_label` (tax-law period).
+
+### `POST /api/flowchart-templates` · `PUT` / `DELETE /api/flowchart-templates/{id}`
+
+Local CRUD: `settings.manage`. Global mutate: `settings.platform`. Body may include `family_id`, `valid_from`, `valid_to`, `law_label`.
+
+### `POST /api/flowchart-templates/{id}/run`
+
+Body `{ client_id, result_override, input_overrides, persist_draft, as_of?, family_id? }`. Resolves the edition that covers `as_of` (default today) within the family. PUT-like draft save when `persist_draft` (`client.edit`).
+
+### `GET /api/clients/{id}/flowchart-run` · instances `GET/POST/DELETE`
+
+Query `template_id` / `family_id` / `as_of`. Named snapshots under `storage/firms/{firm_id}/flowchart_instances/` store `frozen_definition` + evaluated `snapshot` and are not re-run when templates change.
+
+### `GET /api/clients/{id}/flowchart-instances/{instance_id}/pdf`
+
+Frozen PDF of the saved snapshot only (`client.view`). Does not re-evaluate against the current template.
+
 ## Frontend Integration Notes
 
 Current frontend should assume:

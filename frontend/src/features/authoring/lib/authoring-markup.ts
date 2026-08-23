@@ -32,21 +32,40 @@ export function serializeAuthoringLines(lines: AuthoringLine[]): string {
     .join("\n");
 }
 
-const UNRESOLVED_VAR = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const UNRESOLVED_FIELD = /【[^】]+】|\{\{\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}/g;
 
-export function splitLineWithVariables(text: string): Array<{ kind: "text" | "var"; value: string }> {
+export function splitLineWithVariables(
+  text: string,
+): Array<{ kind: "text" | "var"; value: string }> {
   const parts: Array<{ kind: "text" | "var"; value: string }> = [];
   let last = 0;
-  for (const match of text.matchAll(UNRESOLVED_VAR)) {
+  for (const match of text.matchAll(UNRESOLVED_FIELD)) {
     const index = match.index ?? 0;
     if (index > last) {
       parts.push({ kind: "text", value: text.slice(last, index) });
     }
-    parts.push({ kind: "var", value: match[1] ?? match[0] });
+    parts.push({ kind: "var", value: match[0] });
     last = index + match[0].length;
   }
   if (last < text.length) {
     parts.push({ kind: "text", value: text.slice(last) });
   }
   return parts.length > 0 ? parts : [{ kind: "text", value: text }];
+}
+
+const IDEOGRAPHIC_SPACE = "　";
+
+export function indentLineText(text: string, delta: 1 | -1): string {
+  if (delta === 1) return `${IDEOGRAPHIC_SPACE}${text}`;
+  if (text.startsWith(IDEOGRAPHIC_SPACE)) return text.slice(IDEOGRAPHIC_SPACE.length);
+  if (text.startsWith("  ")) return text.slice(2);
+  return text;
+}
+
+export function nextArticleNumber(body: string): number {
+  let max = 0;
+  for (const match of (body || "").matchAll(/第(\d+)条/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
 }

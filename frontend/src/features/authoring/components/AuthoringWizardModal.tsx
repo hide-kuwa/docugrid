@@ -1,18 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileText, Loader2, Search, X } from "lucide-react";
-import { AuthoringPageEditor } from "@/features/authoring/components/AuthoringPageEditor";
+import {
+  AuthoringPageEditor,
+  type AuthoringPageEditorHandle,
+} from "@/features/authoring/components/AuthoringPageEditor";
+import { MergeFieldPalette } from "@/features/authoring/components/MergeFieldPalette";
+import { PartyBinder } from "@/features/authoring/components/PartyBinder";
 import {
   exportAuthoringPdf,
   listAuthoringTemplates,
+  renderAuthoringBody,
   renderAuthoringTemplate,
+  type AuthoringPartyBinding,
 } from "@/features/authoring/api";
 import { targetSlotLabelForTemplate } from "@/features/authoring/lib/authoring-slot-target";
+import {
+  BLANK_AGREEMENT_BODY,
+  countUnresolvedMergeFields,
+  maxPartySlotFromBody,
+} from "@/features/authoring/lib/merge-fields";
 import { resolveAuthoringSlot } from "@/features/authoring/lib/resolve-slot";
 import type { AuthoringTemplate } from "@/features/authoring/types";
 import { isBuiltinVariable, labelForVariable } from "@/features/authoring/types";
+import type { OrgClient } from "@/config/organization";
+import { fetchClientMaster } from "@/lib/client-master-api";
+import { DocumentShareMenu } from "@/features/workspace/DocumentShareMenu";
 import type { SlotLayout } from "@/lib/slot-layout-storage";
 
 type Props = {
@@ -27,10 +42,42 @@ type Props = {
     file: File,
     slotIndex: number,
     slotLabel: string,
-  ) => Promise<{ persisted: boolean }>;
+  ) => Promise<{ persisted: boolean; docId?: string }>;
+  canShareWithClient?: boolean;
 };
 
-type Step = "pick" | "edit";
+type Step = "pick" | "edit" | "done";
+
+const BLANK_TEMPLATE: AuthoringTemplate = {
+  id: "__blank__",
+  scope: "local",
+  title: "白紙から作成（甲乙の契約書）",
+  description: "自由に書いて、顧問先マスタから【法人名１】などを差し込みます。",
+  category: "contracts",
+  body: BLANK_AGREEMENT_BODY,
+  variables: ["party1_name", "party2_name"],
+  version: "1.0.0",
+  targetSlotLabel: "契約書",
+};
+
+function partiesFromBindings(
+  bindings: Record<number, string>,
+  fallbackClientId: string,
+): AuthoringPartyBinding[] {
+  const slots = new Set<number>([
+    1,
+    ...Object.keys(bindings)
+      .map((k) => Number(k))
+      .filter((n) => n >= 1 && n <= 9),
+  ]);
+  return [...slots]
+    .sort((a, b) => a - b)
+    .map((slot) => ({
+      slot,
+      client_id: (bindings[slot] || (slot === 1 ? fallbackClientId : "")).trim(),
+    }))
+    .filter((row) => row.client_id);
+}
 
 export function AuthoringWizardModal({
   open,
@@ -41,23 +88,35 @@ export function AuthoringWizardModal({
   displayOrder,
   onApplySlotLayout,
   onSaveToSlot,
+  canShareWithClient = false,
 }: Props) {
+  const editorRef = useRef<AuthoringPageEditorHandle>(null);
   const [step, setStep] = useState<Step>("pick");
   const [templates, setTemplates] = useState<AuthoringTemplate[]>([]);
+  const [masterClients, setMasterClients] = useState<OrgClient[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<AuthoringTemplate | null>(null);
   const [editorText, setEditorText] = useState("");
+  const [partyBindings, setPartyBindings] = useState<Record<number, string>>({});
   const [slotIndex, setSlotIndex] = useState(0);
   const [saveSlotLabel, setSaveSlotLabel] = useState("");
   const [slotLocked, setSlotLocked] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [listError, setListError] = useState("");
   const [openError, setOpenError] = useState("");
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
+  const [showFields, setShowFields] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [doneSlotLabel, setDoneSlotLabel] = useState("");
+  const [doneShared, setDoneShared] = useState(false);
+  const [doneDocId, setDoneDocId] = useState("");
+  const [donePersisted, setDonePersisted] = useState(false);
+  const [doneTitle, setDoneTitle] = useState("");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -70,11 +129,15 @@ export function AuthoringWizardModal({
     );
   }, [templates, query]);
 
+  const partyCount = Math.max(2, maxPartySlotFromBody(editorText));
+  const unresolved = countUnresolvedMergeFields(editorText);
+
   const reset = useCallback(() => {
     setStep("pick");
     setQuery("");
     setSelected(null);
     setEditorText("");
+    setPartyBindings({ 1: clientId });
     setSlotIndex(0);
     setSaveSlotLabel("");
     setSlotLocked(false);
@@ -83,7 +146,14 @@ export function AuthoringWizardModal({
     setOpenError("");
     setActionError("");
     setMessage("");
-  }, []);
+    setShowFields(false);
+    setPdfFile(null);
+    setDoneSlotLabel("");
+    setDoneShared(false);
+    setDoneDocId("");
+    setDonePersisted(false);
+    setDoneTitle("");
+  }, [clientId]);
 
   useEffect(() => {
     if (!open) {
@@ -95,11 +165,16 @@ export function AuthoringWizardModal({
       setListError("");
       setOpenError("");
       try {
-        const data = await listAuthoringTemplates(clientId);
+        const [data, master] = await Promise.all([
+          listAuthoringTemplates(clientId),
+          fetchClientMaster(),
+        ]);
         setTemplates([...data.global, ...data.local]);
+        setMasterClients(master.clients);
+        setPartyBindings({ 1: clientId });
       } catch {
         setTemplates([]);
-        setListError("ひな形一覧の読み込みに失敗しました。");
+        setListError("ひな形の読み込みに失敗しました。");
       } finally {
         setListLoading(false);
       }
@@ -107,10 +182,7 @@ export function AuthoringWizardModal({
   }, [open, clientId, reset]);
 
   const applySlotTarget = useCallback(
-    (
-      template: AuthoringTemplate,
-      renderTargetSlotLabel?: string,
-    ) => {
+    (template: AuthoringTemplate, renderTargetSlotLabel?: string) => {
       const target = targetSlotLabelForTemplate(template, renderTargetSlotLabel);
       const slot = resolveAuthoringSlot(
         template,
@@ -128,12 +200,24 @@ export function AuthoringWizardModal({
     [slotLabels, displayOrder, onApplySlotLayout],
   );
 
+  const currentParties = useCallback(
+    (bindings: Record<number, string> = partyBindings) =>
+      partiesFromBindings(bindings, clientId),
+    [partyBindings, clientId],
+  );
+
   const loadTemplate = async (template: AuthoringTemplate) => {
     setLoading(true);
     setOpenError("");
     setSelected(template);
+    const bindings = { 1: clientId, ...partyBindings };
+    setPartyBindings(bindings);
     try {
-      const result = await renderAuthoringTemplate(template.id, clientId, {});
+      const parties = partiesFromBindings(bindings, clientId);
+      const result =
+        template.id === BLANK_TEMPLATE.id
+          ? await renderAuthoringBody(clientId, template.body, {}, parties)
+          : await renderAuthoringTemplate(template.id, clientId, {}, parties);
       setEditorText(result.renderedBody);
       setMissing(result.missingVariables);
       applySlotTarget(template, result.targetSlotLabel);
@@ -146,34 +230,57 @@ export function AuthoringWizardModal({
     }
   };
 
+  const handleMerge = async () => {
+    if (!editorText.trim()) return;
+    setMerging(true);
+    setActionError("");
+    try {
+      const result = await renderAuthoringBody(clientId, editorText, {}, currentParties());
+      setEditorText(result.renderedBody);
+      setMissing(result.missingVariables);
+    } catch {
+      setActionError("マスタの差し込みに失敗しました。");
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const handlePartyChange = (slot: number, nextClientId: string) => {
+    setPartyBindings((prev) => ({ ...prev, [slot]: nextClientId }));
+  };
+
   const handleSave = async () => {
     if (!selected || !editorText.trim()) return;
     setSaving(true);
     setActionError("");
     setMessage("");
     try {
-      const title = selected.title.replace(/（.+）/, "").trim();
+      let bodyText = editorText;
+      if (countUnresolvedMergeFields(bodyText) > 0) {
+        const merged = await renderAuthoringBody(clientId, bodyText, {}, currentParties());
+        bodyText = merged.renderedBody;
+        setEditorText(bodyText);
+        setMissing(merged.missingVariables);
+      }
+      const title = selected.title.replace(/（.+）/, "").trim() || "文書";
       const blob = await exportAuthoringPdf({
         clientId,
         title: "",
-        body: editorText,
+        body: bodyText,
       });
       const safeName = `${clientName}_${title}.pdf`.replace(/[\\/:*?"<>|]+/g, "_");
       const file = new File([blob], safeName, { type: "application/pdf" });
+      setPdfFile(file);
 
-      const label =
-        saveSlotLabel ||
-        slotLabels[slotIndex] ||
-        `枠 ${slotIndex + 1}`;
-      const { persisted } = await onSaveToSlot(file, slotIndex, label);
-      setMessage(
-        persisted
-          ? `「${label}」に PDF を保存しました。`
-          : `PDF を生成しましたが、サーバー保存に失敗しました（ローカルのみ）。`,
-      );
-      setTimeout(() => {
-        onClose();
-      }, 1200);
+      const label = saveSlotLabel || slotLabels[slotIndex] || `枠 ${slotIndex + 1}`;
+      const { persisted, docId } = await onSaveToSlot(file, slotIndex, label);
+      setDoneSlotLabel(label);
+      setDoneDocId(docId ?? "");
+      setDoneShared(false);
+      setDonePersisted(persisted);
+      setDoneTitle(title);
+      setStep("done");
+      setMessage("");
     } catch {
       setActionError("PDF の生成または保存に失敗しました。");
     } finally {
@@ -216,6 +323,20 @@ export function AuthoringWizardModal({
               />
             </div>
             <ul className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
+              <li>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void loadTemplate(BLANK_TEMPLATE)}
+                  className="w-full rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 px-4 py-3 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 shrink-0 text-indigo-500" />
+                    <span className="text-sm font-bold text-slate-800">{BLANK_TEMPLATE.title}</span>
+                  </div>
+                  <p className="mt-1 pl-6 text-[11px] text-slate-500">{BLANK_TEMPLATE.description}</p>
+                </button>
+              </li>
               {listLoading && templates.length === 0 && (
                 <li className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -284,24 +405,53 @@ export function AuthoringWizardModal({
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              顧客マスタ・顧客詳細から基本情報を自動入力済みです。A4 の完成イメージのまま編集できます。
+              甲・乙を選んで保存すれば、正しい枠に入ります。送るときは保存後のシェアから。
             </p>
+            <div className="mt-3 space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+              <PartyBinder
+                clients={masterClients}
+                partyCount={partyCount}
+                bindings={partyBindings}
+                onChange={handlePartyChange}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={merging || unresolved === 0}
+                  onClick={() => void handleMerge()}
+                  className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  {merging ? "差し込み中…" : "マスタを差し込み"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFields((v) => !v)}
+                  className="text-[11px] font-bold text-slate-500 hover:underline"
+                >
+                  {showFields ? "項目リストを隠す" : "項目を足す"}
+                </button>
+                <span className="text-[10px] text-slate-500">
+                  {unresolved > 0 ? `未差し込み ${unresolved} 件` : "差し込み済み"}
+                </span>
+              </div>
+              {showFields ? (
+                <MergeFieldPalette onInsert={(token) => editorRef.current?.insertText(token)} />
+              ) : null}
+            </div>
             {missing.length > 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                未入力の項目: {missing.map((v) => labelForVariable(v)).join("、")}
-                {!isBuiltinVariable(missing[0] ?? "") && " — 本文内で直接追記してください"}
+                マスタに無い項目: {missing.map((v) => labelForVariable(v)).join("、")}
+                {!isBuiltinVariable(missing[0] ?? "") && " — 本文内で直接追記するか、カルテのマスタを埋めてください"}
               </p>
             )}
-            <AuthoringPageEditor value={editorText} onChange={setEditorText} />
+            <AuthoringPageEditor ref={editorRef} value={editorText} onChange={setEditorText} />
             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
               <div className="text-xs text-slate-600">
                 保存先の枠
                 {slotLocked ? (
                   <p className="mt-1 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-sm font-bold text-indigo-900">
                     {saveSlotLabel}
-                    <span className="ml-2 text-[10px] font-normal text-indigo-600">
-                      自動
-                    </span>
+                    <span className="ml-2 text-[10px] font-normal text-indigo-600">自動</span>
                   </p>
                 ) : (
                   <select
@@ -335,9 +485,48 @@ export function AuthoringWizardModal({
                   onClick={() => void handleSave()}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {saving ? "PDF 化・保存中…" : "PDF 化して枠に保存"}
+                  {saving ? "保存中…" : "枠に保存"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {step === "done" && (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+            <p className="text-sm font-black text-slate-800">
+              {donePersisted ? `「${doneSlotLabel}」に保存しました` : "PDF はできました（枠への保存は失敗）"}
+            </p>
+            <p className="max-w-md text-[12px] text-slate-600">
+              送るときだけシェアしてください。DM・ポータル・接続済みの Slack / メール / LINE から選べます。
+              {doneShared ? " お客さんのポータルに共有済みです。" : ""}
+            </p>
+            <div className="flex flex-col items-center gap-2">
+              <DocumentShareMenu
+                clientId={clientId}
+                clientName={clientName}
+                title={doneTitle || selected?.title || "書類"}
+                slotLabel={doneSlotLabel}
+                docId={doneDocId || undefined}
+                filename={pdfFile?.name}
+                pdfFile={pdfFile}
+                canShareWithClient={canShareWithClient}
+                portalShared={doneShared}
+                onPortalShared={() => setDoneShared(true)}
+                onNavigateToDm={onClose}
+                onStatus={(ok, err) => {
+                  setActionError(err || "");
+                  setMessage(ok);
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+                >
+                  閉じる
+                </button>
+              </DocumentShareMenu>
             </div>
           </div>
         )}

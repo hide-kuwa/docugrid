@@ -1443,9 +1443,22 @@ class AuthoringTemplateParseBody(BaseModel):
 
 
 
+class AuthoringPartyBinding(BaseModel):
+    slot: int = Field(default=1, ge=1, le=9)
+    client_id: str
+
+
 class AuthoringTemplateRenderBody(BaseModel):
     client_id: str
     values: Optional[Dict[str, str]] = None
+    parties: Optional[List[AuthoringPartyBinding]] = None
+
+
+class AuthoringTemplateRenderAdhocBody(BaseModel):
+    client_id: str
+    body: str
+    values: Optional[Dict[str, str]] = None
+    parties: Optional[List[AuthoringPartyBinding]] = None
 
 
 
@@ -1535,8 +1548,10 @@ __all__ = [
     "AiPromptTestResultPayload",
     "AiPromptUpdateBody",
     "AuthoringExportPdfBody",
+    "AuthoringPartyBinding",
     "AuthoringTemplateCreateBody",
     "AuthoringTemplateParseBody",
+    "AuthoringTemplateRenderAdhocBody",
     "AuthoringTemplateRenderBody",
     "AuthoringTemplateUpdateBody",
     "AutoLinkMatchedCoordinate",

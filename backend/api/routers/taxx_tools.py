@@ -51,6 +51,13 @@ _TOOLS_CATALOG = [
         "source_url": "https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/ichiran.html",
     },
     {
+        "id": "consumption-taxable",
+        "title": "消費税 課税事業者判定",
+        "summary": "基準期間・特定期間・インボイス等から課税事業者かをフローチャートで簡易判定。",
+        "category": "消費税",
+        "source_url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6501.htm",
+    },
+    {
         "id": "association-health",
         "title": "協会けんぽ 保険料額表",
         "summary": "都道府県別の健康・介護・支援金・厚生年金の料率と、報酬月額から等級・保険料額を試算。",

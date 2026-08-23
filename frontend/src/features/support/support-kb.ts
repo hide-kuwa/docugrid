@@ -16,6 +16,8 @@ const KEYWORD_HINTS: Array<{ id: string; words: string[] }> = [
   { id: "doc-matrix", words: ["マトリクス", "スロット", "r8", "r7", "期", "doc"] },
   { id: "workspace", words: ["レール", "メニュー", "切り替え", "≡"] },
   { id: "tax-progress", words: ["税務進捗", "tax", "中間", "源泉", "決算"] },
+  { id: "karte-progress", words: ["進捗", "課税事業者", "免税", "インボイス"] },
+  { id: "flowchart-templates", words: ["判定フロー", "判定", "フローチャート", "ノーコード"] },
   { id: "audit-flow", words: ["承認", "監査", "作業保存", "差戻"] },
   { id: "dm", words: ["dm", "チャット", "メール", "連絡"] },
   { id: "support", words: ["電話", "cs", "サポート", "不具合", "バグ", "壊"] },

@@ -13,15 +13,15 @@ API:      VPS + Docker（永続 storage）→ https://api.YOUR_DOMAIN
 DNS:      app → Vercel / api → VPS の A レコード（または CNAME）
 ```
 
-### 記入例（あなたのドメインに書き換え）
+### 記入例（taxx.jp）
 
 | 項目 | 決定内容 | メモ |
 |------|----------|------|
-| ルートドメイン | `YOUR_DOMAIN` | 例: `taxx.jp` |
-| フロント URL | `https://app.YOUR_DOMAIN` | Vercel にデプロイ |
-| API URL | `https://api.YOUR_DOMAIN` | VPS 上の Docker |
-| VPS 候補 | （未決 / ConoHa / さくら / DO 等） | 月 1,000〜3,000 円程度の 1 台で可 |
-| TLS | Vercel 自動 + VPS は Caddy | [`deploy/Caddyfile.example`](../deploy/Caddyfile.example) |
+| ルートドメイン | `taxx.jp` | 取得済み |
+| フロント URL | `https://app.taxx.jp` | Vercel にデプロイ |
+| API URL | `https://api.taxx.jp` | Render または VPS + Docker |
+| VPS 候補 | Render（`render.yaml`）または ConoHa / さくら 等 | API は永続 disk 必須 |
+| TLS | Vercel 自動 + Render 自動（または VPS は Caddy） | |
 
 ---
 
@@ -54,16 +54,16 @@ Vercel でカスタムドメインを追加すると、DNS の設定値が表示
 ドメインが決まったら:
 
 ```bash
-npm run bootstrap:production -- --domain app.YOUR_DOMAIN --api-domain api.YOUR_DOMAIN
+npm run bootstrap:production -- --domain app.taxx.jp --api-domain api.taxx.jp --strip-dev-emails
 npm run validate:production
 ```
 
 生成される主な値:
 
-- `DOCUGRID_CORS_ORIGINS=https://app.YOUR_DOMAIN`
-- `DOCUGRID_FRONTEND_URL=https://app.YOUR_DOMAIN`
-- `NEXT_PUBLIC_API_BASE=https://api.YOUR_DOMAIN/api`
-- Google OAuth「承認済み JavaScript 生成元」に `https://app.YOUR_DOMAIN`
+- `DOCUGRID_CORS_ORIGINS=https://app.taxx.jp`
+- `DOCUGRID_FRONTEND_URL=https://app.taxx.jp`
+- `NEXT_PUBLIC_API_BASE=https://api.taxx.jp/api`
+- Google OAuth「承認済み JavaScript 生成元」に `https://app.taxx.jp`
 
 Moneytree 本番連携時は追加:
 

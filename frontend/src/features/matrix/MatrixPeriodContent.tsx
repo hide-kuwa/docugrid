@@ -88,7 +88,7 @@ export type MatrixPeriodContentProps = {
   timelineLoading: boolean;
   onAssignPackageToSlot: (file: File, slotId: string, label: string) => Promise<void>;
   onPackageNotice: (msg: string | null) => void;
-  onAuthoringSave: (file: File, slotIndex: number, slotLabel: string) => Promise<{ persisted: boolean }>;
+  onAuthoringSave: (file: File, slotIndex: number, slotLabel: string) => Promise<{ persisted: boolean; docId?: string }>;
 };
 
 export function MatrixPeriodContent({

@@ -95,6 +95,16 @@ def member_count() -> int:
     return int(row[0]) if row else 0
 
 
+def active_member_count() -> int:
+    init_firm_members_db()
+    with sqlite3.connect(MEMBERS_DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM firm_members WHERE status=?",
+            (MEMBER_STATUS_ACTIVE,),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def _row_to_member(row: tuple) -> FirmMember:
     persona = str(row[7]) if len(row) > 7 and row[7] else None
     return FirmMember(

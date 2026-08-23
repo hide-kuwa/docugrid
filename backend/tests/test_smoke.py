@@ -812,6 +812,62 @@ def test_review_event_approve_and_list() -> None:
     assert any(e["id"] == item["id"] for e in listed.json())
 
 
+def test_review_event_agree_allowed_for_client() -> None:
+    headers = {
+        "X-Docugrid-Role": "client_uploader",
+        "X-Docugrid-User": "c1@client.example",
+        "X-Docugrid-Stakeholder": "actor-c1",
+        "X-Docugrid-Client": "c1",
+        "X-Docugrid-Firm": DEFAULT_FIRM_ID,
+    }
+    body = {
+        "client_id": "c1",
+        "period_key": "year:3",
+        "slot_id": "9",
+        "event_type": "agree",
+        "action_title": "契約に同意した",
+        "is_major": True,
+    }
+    r = client.post("/api/review-events", headers=headers, json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["event_type"] == "agree"
+    assert r.json()["actor_role"] == "client_uploader"
+
+
+def test_review_event_client_cannot_approve() -> None:
+    headers = {
+        "X-Docugrid-Role": "client_uploader",
+        "X-Docugrid-User": "c1@client.example",
+        "X-Docugrid-Stakeholder": "actor-c1",
+        "X-Docugrid-Client": "c1",
+        "X-Docugrid-Firm": DEFAULT_FIRM_ID,
+    }
+    body = {
+        "client_id": "c1",
+        "period_key": "year:3",
+        "slot_id": "9",
+        "event_type": "approve",
+        "status": "done",
+        "action_title": "承認完了",
+    }
+    r = client.post("/api/review-events", headers=headers, json=body)
+    assert r.status_code == 403
+
+
+def test_review_event_rejects_unknown_type() -> None:
+    r = client.post(
+        "/api/review-events",
+        headers=_admin_headers(),
+        json={
+            "client_id": "c1",
+            "period_key": "year:3",
+            "slot_id": "9",
+            "event_type": "not_a_real_event",
+        },
+    )
+    assert r.status_code == 400
+
+
 def test_review_event_remand_requires_reason() -> None:
     body = {
         "client_id": "c1",

@@ -30,6 +30,8 @@ import { SortableSlotCard } from "./SortableSlotCard";
 import { SlotLayoutScopeBar } from "./SlotLayoutScopeBar";
 import { SlotAddPanel } from "./SlotAddPanel";
 import { slotPresetGroupsForPeriod } from "@/lib/slot-layout-presets";
+import type { ReviewTimelineItem } from "@/features/pdf-viewer/lib/review-events";
+import { summarizeDocumentTrail } from "@/features/pdf-viewer/lib/document-trail";
 
 const WORKFLOW_STATUS_BADGE: Record<string, { label: string; className: string }> = {
   draft: { label: "未チェック", className: "bg-slate-100 text-slate-600" },
@@ -110,7 +112,8 @@ type Props = {
     file: File,
     slotIndex: number,
     slotLabel: string,
-  ) => Promise<{ persisted: boolean }>;
+  ) => Promise<{ persisted: boolean; docId?: string }>;
+  timelineEvents?: ReviewTimelineItem[];
 };
 
 const LONG_PRESS_MS = 480;
@@ -157,6 +160,7 @@ export function MatrixSlotGrid({
   clientName = "",
   onApplySlotLayout,
   onAuthoringSave,
+  timelineEvents = [],
 }: Props) {
   const [slotEditMode, setSlotEditMode] = useState(false);
   const [authoringOpen, setAuthoringOpen] = useState(false);
@@ -309,6 +313,7 @@ export function MatrixSlotGrid({
           displayOrder={displayOrder}
           onApplySlotLayout={onApplySlotLayout ?? (() => {})}
           onSaveToSlot={onAuthoringSave}
+          canShareWithClient={canShareWithClient}
         />
       )}
 
@@ -346,6 +351,26 @@ export function MatrixSlotGrid({
                       title: `分類: ${doc.classifyMeta.best?.label ?? "—"} (${doc.classifyMeta.engine})`,
                     }
                   : null;
+                const slotEvents = timelineEvents.filter(
+                  (ev) =>
+                    ev.slot_id === String(slotIndex) ||
+                    ev.slot_label === title,
+                );
+                const trail = summarizeDocumentTrail(slotEvents, title);
+                const agreementBadge =
+                  trail.agreement === "unsigned"
+                    ? {
+                        label: "未契約",
+                        className: "bg-amber-100 text-amber-900",
+                        title: "事務所とクライアント双方の同意がまだ揃っていません",
+                      }
+                    : trail.agreement === "agreed"
+                      ? {
+                          label: "契約済",
+                          className: "bg-emerald-100 text-emerald-800",
+                          title: "双方が同意した記録があります",
+                        }
+                      : null;
                 const showAudit =
                   Boolean(
                     canApproveAudit &&
@@ -373,6 +398,7 @@ export function MatrixSlotGrid({
                     workflowBadge={workflowBadge}
                     logicalBadge={logicalBadge}
                     classifyBadge={classifyBadge}
+                    agreementBadge={agreementBadge}
                     showClientShareStatus={canShareWithClient}
                     slotTagsVisibility={slotTagsVisibility}
                     slotDragActive={dragOverSlot === slotIndex}

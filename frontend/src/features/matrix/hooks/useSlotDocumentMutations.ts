@@ -363,7 +363,7 @@ export function useSlotDocumentMutations(
       slotLabel: string,
       activate: boolean,
       classifyMeta?: ClassifyPersistMetadata,
-    ): Promise<{ persisted: boolean }> => {
+    ): Promise<{ persisted: boolean; docId?: string }> => {
       const slotKey = slotKeyFor(slotIndex);
       const replacing = !!slotDocs[slotKey]?.docId;
       if (replacing) {
@@ -431,7 +431,7 @@ export function useSlotDocumentMutations(
         }
         if (activate) void activateDoc(selectedFile, n, slotKey);
         setStatusNonce((v) => v + 1);
-        return { persisted: true };
+        return { persisted: true, docId: item.id };
       } catch (error) {
         console.error("Slot persist failed:", error);
         const { pageCount: n } = await uploadFile(selectedFile);

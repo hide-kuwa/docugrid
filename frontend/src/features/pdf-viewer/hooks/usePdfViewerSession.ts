@@ -25,6 +25,10 @@ import {
   type ReviewEventItem,
 } from "../lib/review-events";
 import { buildPaneMarkers, sortAuditLinksChronological } from "../lib/audit-link-markers";
+import {
+  actorAlreadyStamped,
+  summarizeDocumentTrail,
+} from "../lib/document-trail";
 import { sha256HexFromFile } from "@/lib/sha256";
 import type { AutoVouchMatchedCoordinate } from "../lib/auto-vouch-api";
 import {
@@ -92,6 +96,9 @@ export function usePdfViewerSession({
   clientProfileMeta,
 }: ViewerModalProps) {
   const [currentUser, setCurrentUser] = useState("demo-user");
+  const [reviewEvents, setReviewEvents] = useState<ReviewEventItem[]>([]);
+  const [stampBusy, setStampBusy] = useState(false);
+  const [historyTab, setHistoryTab] = useState<"trail" | "versions">("trail");
   const [persistedHistory, setPersistedHistory] = useState<EnhancedDocVersion[] | null>(null);
   const [historyFile, setHistoryFile] = useState<File | null>(null);
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
@@ -595,6 +602,7 @@ export function usePdfViewerSession({
   useEffect(() => {
     if (!isOpen || !slotIdentity) {
       setPersistedHistory(null);
+      setReviewEvents([]);
       return;
     }
     const controller = new AbortController();
@@ -606,6 +614,7 @@ export function usePdfViewerSession({
           listDocumentVersions(slotIdentity, controller.signal),
         ]);
         if (!active) return;
+        setReviewEvents(events);
         if (versions.length > 0) {
           setPersistedHistory(buildHistoryFromVersions(versions, events));
         } else if (events.length > 0) {
@@ -1029,6 +1038,51 @@ export function usePdfViewerSession({
     URL.revokeObjectURL(url);
   };
 
+  const trail = useMemo(
+    () => summarizeDocumentTrail(reviewEvents, slotLabel),
+    [reviewEvents, slotLabel],
+  );
+  const alreadyAcknowledged = actorAlreadyStamped(reviewEvents, "acknowledge", currentUser);
+  const alreadyAgreed = actorAlreadyStamped(reviewEvents, "agree", currentUser);
+
+  const handleAcknowledge = useCallback(async () => {
+    if (!slotIdentity || stampBusy) return;
+    setStampBusy(true);
+    try {
+      await createReviewEvent(slotIdentity, {
+        event_type: "acknowledge",
+        status: currentStatus,
+        action_title: "確認した",
+        is_major: false,
+      });
+      setHistoryRefreshKey((k) => k + 1);
+      onAuditStateChange?.();
+    } catch (err) {
+      console.warn("acknowledge failed:", err);
+    } finally {
+      setStampBusy(false);
+    }
+  }, [slotIdentity, stampBusy, currentStatus, onAuditStateChange]);
+
+  const handleAgree = useCallback(async () => {
+    if (!slotIdentity || stampBusy) return;
+    setStampBusy(true);
+    try {
+      await createReviewEvent(slotIdentity, {
+        event_type: "agree",
+        status: currentStatus,
+        action_title: trail.isContract ? "契約に同意した" : "同意した",
+        is_major: true,
+      });
+      setHistoryRefreshKey((k) => k + 1);
+      onAuditStateChange?.();
+    } catch (err) {
+      console.warn("agree failed:", err);
+    } finally {
+      setStampBusy(false);
+    }
+  }, [slotIdentity, stampBusy, currentStatus, trail.isContract, onAuditStateChange]);
+
   return {
     isOpen,
     onClose,
@@ -1080,6 +1134,14 @@ export function usePdfViewerSession({
     setExpandedHistoryIdx,
     isHistoryOpen,
     setIsHistoryOpen,
+    historyTab,
+    setHistoryTab,
+    trail,
+    stampBusy,
+    alreadyAcknowledged,
+    alreadyAgreed,
+    handleAcknowledge,
+    handleAgree,
     recordAction,
     popLastAction,
     handleWorkSave,

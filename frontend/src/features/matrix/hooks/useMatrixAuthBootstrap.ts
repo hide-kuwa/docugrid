@@ -58,11 +58,14 @@ export function useMatrixAuthBootstrap() {
   const reloadBilling = useCallback(async () => {
     if (!hasPermission(currentUser, "dashboard.view")) return;
     setBillingLoading(true);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 8_000);
     try {
-      setBillingMe(await fetchBillingMe());
+      setBillingMe(await fetchBillingMe(controller.signal));
     } catch {
       setBillingMe(null);
     } finally {
+      window.clearTimeout(timer);
       setBillingLoading(false);
     }
   }, [currentUser]);

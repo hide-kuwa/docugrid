@@ -67,17 +67,39 @@ export async function parseAuthoringBody(body: string): Promise<string[]> {
   return data.variables;
 }
 
+export type AuthoringPartyBinding = { slot: number; client_id: string };
+
+function partyPayload(parties?: AuthoringPartyBinding[]) {
+  return parties && parties.length > 0 ? { parties } : {};
+}
+
 export async function renderAuthoringTemplate(
   templateId: string,
   clientId: string,
   values: Record<string, string>,
+  parties?: AuthoringPartyBinding[],
 ): Promise<AuthoringRenderResult> {
   const res = await authFetch(`${BASE}/${encodeURIComponent(templateId)}/render`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...buildAuthHeaders(clientId) },
-    body: JSON.stringify({ client_id: clientId, values }),
+    body: JSON.stringify({ client_id: clientId, values, ...partyPayload(parties) }),
   });
   if (!res.ok) throw new Error(`render-authoring-template:${res.status}`);
+  return (await res.json()) as AuthoringRenderResult;
+}
+
+export async function renderAuthoringBody(
+  clientId: string,
+  body: string,
+  values: Record<string, string> = {},
+  parties?: AuthoringPartyBinding[],
+): Promise<AuthoringRenderResult> {
+  const res = await authFetch(`${BASE}/render-body`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...buildAuthHeaders(clientId) },
+    body: JSON.stringify({ client_id: clientId, body, values, ...partyPayload(parties) }),
+  });
+  if (!res.ok) throw new Error(`render-authoring-body:${res.status}`);
   return (await res.json()) as AuthoringRenderResult;
 }
 

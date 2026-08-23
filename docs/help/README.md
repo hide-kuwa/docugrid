@@ -1,6 +1,6 @@
 # DocuGrid ヘルプ（ユーザー向け）
 
-最終更新: 2026-08-08
+最終更新: 2026-08-19
 
 エンジニア向け設計・セキュリティ文書（`docs/security-*.md` など）とは別枠。  
 **事務所スタッフ・運用担当が「使い方」を書く／読む場所**。
@@ -47,6 +47,8 @@
 | [overview.md](./overview.md) | DocuGrid でできること・画面の全体像 | draft |
 | [workspace.md](./workspace.md) | レール（Doc / PDF / DM / Tax / カルテ） | draft |
 | [doc-matrix.md](./doc-matrix.md) | 資料マトリクス・期（R8 など）・スロット | draft |
+| [authoring.md](./authoring.md) | 文書ひな形（レール「ひな形」） | draft |
+| [flowchart-templates.md](./flowchart-templates.md) | 判定フロー（レール「判定」・ノーコード） | draft |
 | [crm-perm.md](./crm-perm.md) | 永続の保有／提案／案件（CRM 入口） | stub |
 | [karte.md](./karte.md) | カルテ概要（左縦セクション） | draft |
 | [karte-master.md](./karte-master.md) | カルテ · マスタ | draft |
@@ -61,7 +63,7 @@
 | [auto-sort.md](./auto-sort.md) | 自動振り分け・要確認キュー | draft |
 | [audit-flow.md](./audit-flow.md) | 監査フロー（保存〜承認） | draft |
 | [tax-progress.md](./tax-progress.md) | Tax レール（税務進捗） | draft |
-| [dm.md](./dm.md) | DM（連絡） | draft |
+| [dm.md](./dm.md) | DM（システム内チャット＋外部チャネル） | draft |
 | [saving.md](./saving.md) | どこに保存されるか（サーバー / Drive） | draft |
 | [my-number.md](./my-number.md) | マイナンバー関連書類（SPI） | draft |
 | [go-live.md](./go-live.md) | 本格稼働の最初の2歩（CSV + Drive） | draft |

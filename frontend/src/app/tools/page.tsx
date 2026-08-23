@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2, Wallet, Receipt, Landmark, HeartPulse, ArrowRight } from "lucide-react";
+import { Building2, Wallet, Receipt, Landmark, HeartPulse, BadgeCheck, ArrowRight } from "lucide-react";
 import { ToolsHeader, ToolsFooter } from "@/features/tools/ToolShell";
 
 export const metadata: Metadata = {
@@ -41,6 +41,14 @@ const TOOLS = [
     summary: "課税所得・資本金・従業員数から、法人税、地方法人税、法人住民税、事業税、特別法人事業税をまとめて試算。",
     category: "地方税（法人）",
     Icon: Landmark,
+  },
+  {
+    id: "consumption-taxable",
+    href: "/tools/consumption-taxable",
+    title: "消費税 課税事業者判定",
+    summary: "基準期間・特定期間・インボイス等から課税事業者かをフローチャートで簡易判定。",
+    category: "消費税",
+    Icon: BadgeCheck,
   },
   {
     id: "association-health",

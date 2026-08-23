@@ -1,5 +1,7 @@
 import { AlertTriangle, ChevronDown, ChevronRight, GitCompare, Trash2, X } from "lucide-react";
 import { EnhancedDocVersion, isPersistedDocumentVersionId } from "../types";
+import { DocumentTrailPanel } from "./DocumentTrailPanel";
+import type { DocumentTrailSummary } from "../lib/document-trail";
 
 type HistoryPanelProps = {
   isHistoryOpen: boolean;
@@ -16,6 +18,14 @@ type HistoryPanelProps = {
   canDeleteVersion?: boolean;
   onDeleteVersion?: (versionId: string, versionLabel: string) => void;
   versionDeleteBusyId?: string | null;
+  trail?: DocumentTrailSummary | null;
+  stampBusy?: boolean;
+  alreadyAcknowledged?: boolean;
+  alreadyAgreed?: boolean;
+  onAcknowledge?: () => void;
+  onAgree?: () => void;
+  historyTab?: "trail" | "versions";
+  onHistoryTabChange?: (tab: "trail" | "versions") => void;
 };
 
 export const HistoryPanel = ({
@@ -33,6 +43,14 @@ export const HistoryPanel = ({
   canDeleteVersion = false,
   onDeleteVersion,
   versionDeleteBusyId = null,
+  trail = null,
+  stampBusy = false,
+  alreadyAcknowledged = false,
+  alreadyAgreed = false,
+  onAcknowledge,
+  onAgree,
+  historyTab = "trail",
+  onHistoryTabChange,
 }: HistoryPanelProps) => {
   return (
     <div
@@ -43,14 +61,57 @@ export const HistoryPanel = ({
     >
       <div className="flex h-14 items-center justify-between border-b border-slate-700 bg-slate-900/50 p-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-300">版の履歴</span>
-          <p className="mt-0.5 text-[10px] text-slate-500">最新が上 · 不要な版は個別に削除できます</p>
+          <span className="text-xs font-bold uppercase tracking-widest text-slate-300">
+            {historyTab === "trail" ? "証跡" : "版の履歴"}
+          </span>
+          <p className="mt-0.5 text-[10px] text-slate-500">
+            {historyTab === "trail"
+              ? "閲覧と確認・同意。契約は双方の同意があるまで未契約です"
+              : "最新が上 · 不要な版は個別に削除できます"}
+          </p>
         </div>
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">
           <X className="h-4 w-4" />
         </button>
       </div>
+      {onHistoryTabChange ? (
+        <div className="flex border-b border-slate-700 px-3 pt-2">
+          <button
+            type="button"
+            onClick={() => onHistoryTabChange("trail")}
+            className={`px-3 py-1.5 text-[11px] font-bold ${
+              historyTab === "trail"
+                ? "border-b-2 border-violet-400 text-white"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            証跡
+          </button>
+          <button
+            type="button"
+            onClick={() => onHistoryTabChange("versions")}
+            className={`px-3 py-1.5 text-[11px] font-bold ${
+              historyTab === "versions"
+                ? "border-b-2 border-blue-400 text-white"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            版
+          </button>
+        </div>
+      ) : null}
       <div className="relative flex-1 overflow-y-auto p-6">
+        {historyTab === "trail" && trail && onAcknowledge && onAgree ? (
+          <DocumentTrailPanel
+            trail={trail}
+            stampBusy={stampBusy}
+            alreadyAcknowledged={alreadyAcknowledged}
+            alreadyAgreed={alreadyAgreed}
+            onAcknowledge={onAcknowledge}
+            onAgree={onAgree}
+          />
+        ) : (
+          <>
         <div className="absolute bottom-0 left-[29px] top-0 z-0 w-[2px] bg-slate-700" />
 
         {unsavedActions.length > 0 && (
@@ -218,6 +279,8 @@ export const HistoryPanel = ({
           </div>
         );
         })}
+          </>
+        )}
       </div>
     </div>
   );

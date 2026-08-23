@@ -29,6 +29,7 @@ type ViewerHeaderProps = {
   splitViewHint?: string;
   onClose: () => void;
   onToggleHistory: () => void;
+  trailAgreement?: "agreed" | "unsigned" | null;
   onToggleSplitView: () => void;
   handleWorkSave: () => void;
   handleRequestReview: () => void;
@@ -90,6 +91,7 @@ export const ViewerHeader = ({
   splitViewHint = "2画面照合",
   onClose,
   onToggleHistory,
+  trailAgreement = null,
   onToggleSplitView,
   handleWorkSave,
   handleRequestReview,
@@ -432,6 +434,19 @@ export const ViewerHeader = ({
           </div>
         )}
 
+        {trailAgreement === "unsigned" ? (
+          <div className="ml-2 flex items-center gap-1 rounded-lg border border-amber-700 bg-amber-950/50 px-2.5 py-1.5 text-amber-100">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span className="text-[10px] font-black">未契約</span>
+          </div>
+        ) : null}
+        {trailAgreement === "agreed" ? (
+          <div className="ml-2 flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-950/50 px-2.5 py-1.5 text-emerald-200">
+            <Stamp className="h-3.5 w-3.5" />
+            <span className="text-[10px] font-black">契約済</span>
+          </div>
+        ) : null}
+
         <button
           onClick={onToggleHistory}
           className={`ml-2 flex h-9 items-center gap-1.5 rounded-lg border px-2.5 transition-colors ${
@@ -439,10 +454,10 @@ export const ViewerHeader = ({
               ? "border-blue-500 bg-blue-600 text-white"
               : "border-slate-500 bg-slate-700 text-white hover:bg-slate-600"
           }`}
-          title="版履歴"
+          title="証跡と版履歴"
         >
           <History className="h-4 w-4" />
-          <span className="text-[10px] font-bold">履歴</span>
+          <span className="text-[10px] font-bold">証跡</span>
         </button>
         {showSlotDocumentActions && canShareWithClient && onShareWithClient && !isReadOnly ? (
           <button

@@ -50,7 +50,7 @@ export function useMatrixClientStatus(
     void (async () => {
       try {
         const events = await listReviewTimeline(
-          { clientId, periodKey, limit: 40 },
+          { clientId, periodKey, limit: 200 },
           controller.signal,
         );
         if (active) setTimelineEvents(events);

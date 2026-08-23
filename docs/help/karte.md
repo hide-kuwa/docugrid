@@ -31,7 +31,7 @@
 | **マスタ** | 顧客マスタ・正規化データ | [karte-master.md](./karte-master.md) |
 | **関係** | 家系・出資・紹介の関係図 | [karte-relations.md](./karte-relations.md) |
 | **グラフ** | 売上・利益などのダッシュボード | [karte-charts.md](./karte-charts.md) |
-| **進捗** | 申告進捗・税務アラート・納税カレンダー | [karte-progress.md](./karte-progress.md) |
+| **進捗** | 申告進捗・課税判定フロー・税務アラート・納税カレンダー | [karte-progress.md](./karte-progress.md) |
 | **給与** | 源泉徴収簿・従業員マスタ | [karte-payroll.md](./karte-payroll.md) |
 | **株評** | 自社株評価の試算 | [karte-stock.md](./karte-stock.md) |
 | **特殊** | 対応上の注意・特例 | [karte-special.md](./karte-special.md) |

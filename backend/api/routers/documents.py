@@ -221,6 +221,55 @@ def _client_record_for_render(ctx: AuthContext, client_id: str) -> dict:
     raise HTTPException(status_code=404, detail="Client not found")
 
 
+def _party_clients_for_render(
+    request: Request,
+    ctx: AuthContext,
+    parties: list | None,
+) -> dict[int, dict]:
+    """Authorize each 当事者 client_id and load master rows (max 9)."""
+    out: dict[int, dict] = {}
+    if not parties:
+        return out
+    for binding in parties[:9]:
+        try:
+            slot = int(getattr(binding, "slot", 1))
+        except (TypeError, ValueError):
+            continue
+        if slot < 1 or slot > 9 or slot in out:
+            continue
+        cid = str(getattr(binding, "client_id", "") or "").strip()
+        if not cid:
+            continue
+        _require_client_permission(request, "document.view", cid)
+        out[slot] = _client_record_for_render(ctx, cid)
+    return out
+
+
+def _authoring_render_payload(
+    *,
+    body_text: str,
+    client: dict,
+    party_clients: dict[int, dict],
+    values: dict | None,
+    template_id: str = "",
+    template_title: str = "",
+    target_slot_label: str = "",
+) -> dict:
+    resolved = merge_render_values(client, values or {}, party_clients=party_clients)
+    required = extract_variable_names(body_text)
+    missing = missing_variables(required, resolved)
+    rendered = render_template_body(body_text, resolved)
+    return {
+        "renderedBody": rendered,
+        "resolvedValues": resolved,
+        "missingVariables": missing,
+        "templateId": template_id,
+        "templateTitle": template_title,
+        "templateBody": body_text,
+        "targetSlotLabel": target_slot_label,
+    }
+
+
 @router.get("/api/authoring-templates")
 async def get_authoring_templates(request: Request):
     _require_permission(request, "document.view")
@@ -322,34 +371,57 @@ async def parse_authoring_template_body(request: Request, body: AuthoringTemplat
     return {"variables": variables}
 
 
+@router.post("/api/authoring-templates/render-body")
+async def render_authoring_template_body(
+    request: Request, body: AuthoringTemplateRenderAdhocBody
+):
+    """差し込み印刷: 本文の 【項目】 / {{tag}} を顧問先マスタで埋める。"""
+    _require_client_permission(request, "document.view", body.client_id)
+    ctx = _auth_context(request)
+    client = _client_record_for_render(ctx, body.client_id)
+    party_clients = _party_clients_for_render(request, ctx, body.parties)
+    payload = _authoring_render_payload(
+        body_text=body.body or "",
+        client=client,
+        party_clients=party_clients,
+        values=body.values,
+    )
+    _log_audit_event(
+        request,
+        "authoring_templates.render_body",
+        "success",
+        f"client={body.client_id} parties={len(party_clients)}",
+    )
+    return payload
+
+
 @router.post("/api/authoring-templates/{template_id}/render")
 async def render_authoring_template(
     request: Request, template_id: str, body: AuthoringTemplateRenderBody
 ):
-    role = _require_client_permission(request, "document.view", body.client_id)
+    _require_client_permission(request, "document.view", body.client_id)
     ctx = _auth_context(request)
     template = get_template_by_id(template_id, ctx.firm_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     client = _client_record_for_render(ctx, body.client_id)
-    resolved = merge_render_values(client, body.values or {})
-    missing = missing_variables(template.get("variables") or [], resolved)
-    rendered = render_template_body(template.get("body") or "", resolved)
+    party_clients = _party_clients_for_render(request, ctx, body.parties)
+    payload = _authoring_render_payload(
+        body_text=template.get("body") or "",
+        client=client,
+        party_clients=party_clients,
+        values=body.values,
+        template_id=template_id,
+        template_title=str(template.get("title") or ""),
+        target_slot_label=str(template.get("targetSlotLabel") or ""),
+    )
     _log_audit_event(
         request,
         "authoring_templates.render",
         "success",
         f"template={template_id} client={body.client_id}",
     )
-    return {
-        "renderedBody": rendered,
-        "resolvedValues": resolved,
-        "missingVariables": missing,
-        "templateId": template_id,
-        "templateTitle": template.get("title"),
-        "templateBody": template.get("body"),
-        "targetSlotLabel": template.get("targetSlotLabel") or "",
-    }
+    return payload
 
 
 @router.post("/api/authoring-templates/export-pdf")

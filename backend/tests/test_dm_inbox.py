@@ -134,3 +134,59 @@ def test_dm_workspace_api(dm_paths) -> None:
     listed = client.get("/api/dm/workspace?channel=email", headers=_admin_headers())
     assert listed.status_code == 200
     assert any(i["title"] == "入ってきたメール" for i in listed.json()["items"])
+
+
+def test_ingest_system_handoff_with_meta(dm_paths) -> None:
+    post = client.post(
+        "/api/dm/inbox",
+        headers=_admin_headers(),
+        json={
+            "channel": "system",
+            "title": "契約書をお渡し",
+            "body": "資料を枠に保存しました。",
+            "direction": "outbound",
+            "client_id": "c1",
+            "participants": "事務所",
+            "meta": {
+                "event": "authoring_handoff",
+                "slot_doc_id": "doc_abc",
+                "slot_label": "契約書",
+                "filename": "foo.pdf",
+            },
+        },
+    )
+    assert post.status_code == 200, post.text
+    item = post.json()
+    assert item["channel"] == "system"
+    assert item["direction"] == "outbound"
+    assert item["meta"]["event"] == "authoring_handoff"
+    assert item["meta"]["slot_doc_id"] == "doc_abc"
+    listed = client.get(
+        "/api/dm/workspace?channel=system&client_id=c1",
+        headers=_admin_headers(),
+    )
+    assert listed.status_code == 200
+    assert any(i["title"] == "契約書をお渡し" for i in listed.json()["items"])
+
+
+def test_ingest_rejects_cross_firm_client(dm_paths) -> None:
+    from services.tenancy import FIRM_BETA_ID
+
+    r = client.post(
+        "/api/dm/inbox",
+        headers={
+            "X-Docugrid-Role": "admin",
+            "X-Docugrid-User": "beta-admin@example.com",
+            "X-Docugrid-Stakeholder": "actor-beta-admin",
+            "X-Docugrid-Client": "c_beta_1",
+            "X-Docugrid-Firm": FIRM_BETA_ID,
+        },
+        json={
+            "channel": "system",
+            "title": "leak",
+            "body": "nope",
+            "direction": "outbound",
+            "client_id": "c1",
+        },
+    )
+    assert r.status_code in (403, 404), r.text

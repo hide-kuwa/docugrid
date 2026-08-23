@@ -28,7 +28,7 @@ export type SettingsCategoryId =
   | "appearance";
 
 /** 日々の業務（マトリクス・ワークスペース・撮影・タスク） */
-export const USER_ROUTE_PREFIXES = ["/", "/workspace", "/capture", "/tasks", "/checklist", "/account"] as const;
+export const USER_ROUTE_PREFIXES = ["/", "/workspace", "/capture", "/tasks", "/checklist", "/account", "/templates", "/flowchart"] as const;
 
 /** 開発・設計・横断ツール */
 export const DEV_ROUTE_PREFIXES = ["/dev", "/catalog"] as const;
