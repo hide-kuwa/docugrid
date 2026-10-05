@@ -1,4 +1,8 @@
-"""プレーンテキストから PDF を生成（文書作成の保存用）。契約書向けに明朝・折返し・頁番号。"""
+"""プレーンテキストから PDF を生成（文書作成の保存用）。契約書向けに折返し・頁番号。
+
+CJK は page.insert_font + fontname で埋め込む。
+fontfile だけ渡すと Helvetica に落ちて日本語が · だらけになる。
+"""
 
 from __future__ import annotations
 
@@ -8,24 +12,36 @@ import fitz
 
 CENTER_PREFIX = ">> "
 RIGHT_PREFIX = ">>> "
+_JP_FONTNAME = "docugridjp"
+
+# TTC 優先（Identity-H 埋め込みできるもの）。yumin.ttf の fontfile 直指定は使わない。
+_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/msgothic.ttc",
+    "C:/Windows/Fonts/msmincho.ttc",
+    "C:/Windows/Fonts/meiryo.ttc",
+    "C:/Windows/Fonts/YuGothM.ttc",
+    "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
+    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+)
 
 
 def _japanese_font_path() -> str | None:
-    for candidate in (
-        "C:/Windows/Fonts/yumin.ttf",
-        "C:/Windows/Fonts/YuMincho.ttc",
-        "C:/Windows/Fonts/msmincho.ttc",
-        "C:/Windows/Fonts/meiryo.ttc",
-        "C:/Windows/Fonts/msgothic.ttc",
-        "C:/Windows/Fonts/YuGothM.ttc",
-        "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
-        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    ):
+    for candidate in _FONT_CANDIDATES:
         if Path(candidate).exists():
             return candidate
     return None
+
+
+def _register_jp_font(page: fitz.Page, font_path: str | None) -> str | None:
+    if not font_path:
+        return None
+    try:
+        page.insert_font(fontname=_JP_FONTNAME, fontfile=font_path)
+        return _JP_FONTNAME
+    except Exception:
+        return None
 
 
 def _parse_line(raw_line: str) -> tuple[str, str]:
@@ -38,9 +54,12 @@ def _parse_line(raw_line: str) -> tuple[str, str]:
 
 def _text_width(text: str, *, font_path: str | None, font_size: float) -> float:
     try:
-        return float(fitz.get_text_length(text, fontfile=font_path, fontsize=font_size))
+        if font_path:
+            return float(fitz.get_text_length(text, fontfile=font_path, fontsize=font_size))
+        return float(fitz.get_text_length(text, fontsize=font_size))
     except Exception:
-        return len(text) * font_size * 0.55
+        # CJK 概算（全角幅）
+        return sum(font_size if ord(ch) > 0x2E80 else font_size * 0.5 for ch in text)
 
 
 def _leading_indent(text: str) -> tuple[str, str]:
@@ -51,7 +70,6 @@ def _leading_indent(text: str) -> tuple[str, str]:
 
 
 def _wrap_line(text: str, *, max_width: float, font_path: str | None, font_size: float) -> list[str]:
-    """折返し後も先頭の字下げを維持する（文字間は詰めない）。"""
     if not text:
         return [" "]
     indent, body = _leading_indent(text)
@@ -82,6 +100,7 @@ def _insert_line(
     text: str,
     align: str,
     font_path: str | None,
+    fontname: str | None,
     font_size: float,
     margin_x: float,
     page_width: float,
@@ -94,26 +113,10 @@ def _insert_line(
         x = max(margin_x, page_width - margin_x - text_width)
     else:
         x = margin_x
-    page.insert_text(
-        (x, y),
-        content,
-        fontsize=font_size,
-        fontfile=font_path,
-    )
-
-
-def _add_page_numbers(doc: fitz.Document, *, font_path: str | None, page_width: float, page_height: float) -> None:
-    total = doc.page_count
-    for index in range(total):
-        page = doc[index]
-        label = f"— {index + 1} —" if total == 1 else f"{index + 1} / {total}"
-        width = _text_width(label, font_path=font_path, font_size=9)
-        page.insert_text(
-            ((page_width - width) / 2, page_height - 28),
-            label,
-            fontsize=9,
-            fontfile=font_path,
-        )
+    kwargs: dict = {"fontsize": font_size}
+    if fontname:
+        kwargs["fontname"] = fontname
+    page.insert_text((x, y), content, **kwargs)
 
 
 def text_to_pdf_bytes(text: str, *, title: str = "") -> bytes:
@@ -129,6 +132,7 @@ def text_to_pdf_bytes(text: str, *, title: str = "") -> bytes:
     font_path = _japanese_font_path()
 
     page = doc.new_page(width=width, height=height)
+    fontname = _register_jp_font(page, font_path)
     y = margin_y
 
     if title.strip():
@@ -144,6 +148,7 @@ def text_to_pdf_bytes(text: str, *, title: str = "") -> bytes:
                 text=wrapped,
                 align="center",
                 font_path=font_path,
+                fontname=fontname,
                 font_size=center_font_size,
                 margin_x=margin_x,
                 page_width=width,
@@ -154,15 +159,10 @@ def text_to_pdf_bytes(text: str, *, title: str = "") -> bytes:
     for raw_line in (text or "").splitlines():
         line, align = _parse_line(raw_line)
         font_size = center_font_size if align == "center" else body_font_size
-        wrapped_lines = _wrap_line(
-            line,
-            max_width=max_width,
-            font_path=font_path,
-            font_size=font_size,
-        )
-        for wrapped in wrapped_lines:
+        for wrapped in _wrap_line(line, max_width=max_width, font_path=font_path, font_size=font_size):
             if y > height - margin_y - 12:
                 page = doc.new_page(width=width, height=height)
+                fontname = _register_jp_font(page, font_path)
                 y = margin_y
             _insert_line(
                 page,
@@ -170,13 +170,24 @@ def text_to_pdf_bytes(text: str, *, title: str = "") -> bytes:
                 text=wrapped,
                 align=align,
                 font_path=font_path,
+                fontname=fontname,
                 font_size=font_size,
                 margin_x=margin_x,
                 page_width=width,
             )
             y += line_height
 
-    _add_page_numbers(doc, font_path=font_path, page_width=width, page_height=height)
+    total = doc.page_count
+    for index in range(total):
+        p = doc[index]
+        fname = _register_jp_font(p, font_path)
+        label = f"— {index + 1} —" if total == 1 else f"{index + 1} / {total}"
+        label_w = _text_width(label, font_path=font_path, font_size=9)
+        kwargs: dict = {"fontsize": 9}
+        if fname:
+            kwargs["fontname"] = fname
+        p.insert_text(((width - label_w) / 2, height - 28), label, **kwargs)
+
     pdf_bytes = doc.tobytes()
     doc.close()
     return pdf_bytes

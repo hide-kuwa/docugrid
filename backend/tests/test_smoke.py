@@ -365,6 +365,47 @@ def test_slot_document_detach_and_move() -> None:
     client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
 
 
+def test_slot_document_relocate_period() -> None:
+    pdf = _minimal_pdf_bytes()
+    up = client.post(
+        "/api/slots",
+        data={
+            "client_id": "c1",
+            "period_key": "year:9",
+            "slot_id": "tax_proxy",
+            "slot_label": "税務代理権限証書",
+        },
+        files={"file": ("proxy.pdf", io.BytesIO(pdf), "application/pdf")},
+        headers=_admin_headers(),
+    )
+    assert up.status_code == 200, up.text
+    doc_id = up.json()["id"]
+
+    moved = client.patch(
+        f"/api/slots/{doc_id}",
+        json={
+            "slot_id": "tax_proxy",
+            "slot_label": "税務代理権限証書",
+            "period_key": "year:8",
+        },
+        headers=_admin_headers(),
+    )
+    assert moved.status_code == 200, moved.text
+    body = moved.json()
+    assert body["period_key"] == "year:8"
+    assert body["slot_id"] == "tax_proxy"
+    assert body["client_id"] == "c1"
+
+    listed = client.get(
+        "/api/slots",
+        params={"client_id": "c1", "period_key": "year:8"},
+        headers=_admin_headers(),
+    ).json()
+    assert any(d["id"] == doc_id for d in listed)
+
+    client.delete(f"/api/slots/{doc_id}", headers=_admin_headers())
+
+
 def _firm_admin_headers() -> dict[str, str]:
     return {
         "X-Docugrid-Role": "firm_admin",
@@ -1553,3 +1594,12 @@ def test_authoring_export_pdf_japanese_title() -> None:
     disposition = r.headers.get("content-disposition", "")
     assert "filename*=" in disposition
     assert "UTF-8" in disposition
+
+    import fitz
+
+    doc = fitz.open(stream=r.content, filetype="pdf")
+    text = "".join(page.get_text() for page in doc)
+    doc.close()
+    assert "役員報酬改定議事録" in text
+    assert "株式会社鈴木商店" in text
+    assert "\xb7" not in text  # CJK 欠落時の中黒だらけになっていないこと

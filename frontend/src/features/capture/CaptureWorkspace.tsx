@@ -19,6 +19,7 @@ import { checkSession, loadCurrentUser } from "@/lib/auth";
 import { setClientScope } from "@/lib/api-auth";
 import { resolvePersona } from "@/lib/persona";
 import { FeatureSurfaceSection } from "@/features/feature-surfaces/FeatureSurfaceGate";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 const CATEGORY_OPTIONS: { id: CaptureCategory; label: string }[] = [
   { id: "general", label: "一般" },
@@ -146,20 +147,18 @@ export function CaptureWorkspace() {
           </button>
           <h1 className="text-lg font-bold text-slate-900">撮影・資料ギャラリー</h1>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+            <ClientSearchSelect
+              clients={clients.map(toClientSearchOption)}
               value={clientId}
-              onChange={(e) => {
-                setClientId(e.target.value);
-                setClientScope(e.target.value);
+              onChange={(id) => {
+                setClientId(id);
+                setClientScope(id);
               }}
-            >
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              allowEmpty={false}
+              className="inline-block min-w-[12rem]"
+              selectClassName="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+              searchClassName="mb-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+            />
             <select
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
               value={category}

@@ -8,12 +8,12 @@ import {
   type AuthoringPageEditorHandle,
 } from "@/features/authoring/components/AuthoringPageEditor";
 import { MergeFieldPalette } from "@/features/authoring/components/MergeFieldPalette";
+import { MissingVariablesForm } from "@/features/authoring/components/MissingVariablesForm";
 import { PartyBinder } from "@/features/authoring/components/PartyBinder";
 import {
   exportAuthoringPdf,
   listAuthoringTemplates,
   renderAuthoringBody,
-  renderAuthoringTemplate,
   type AuthoringPartyBinding,
 } from "@/features/authoring/api";
 import { targetSlotLabelForTemplate } from "@/features/authoring/lib/authoring-slot-target";
@@ -24,7 +24,6 @@ import {
 } from "@/features/authoring/lib/merge-fields";
 import { resolveAuthoringSlot } from "@/features/authoring/lib/resolve-slot";
 import type { AuthoringTemplate } from "@/features/authoring/types";
-import { isBuiltinVariable, labelForVariable } from "@/features/authoring/types";
 import type { OrgClient } from "@/config/organization";
 import { fetchClientMaster } from "@/lib/client-master-api";
 import { DocumentShareMenu } from "@/features/workspace/DocumentShareMenu";
@@ -96,12 +95,20 @@ export function AuthoringWizardModal({
   const [masterClients, setMasterClients] = useState<OrgClient[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<AuthoringTemplate | null>(null);
-  const [editorText, setEditorText] = useState("");
+  /** かっこ書きの本文（編集の正） */
+  const [sourceText, setSourceText] = useState("");
+  /** 差し込みプレビュー（source は消さない） */
+  const [mergedPreview, setMergedPreview] = useState("");
+  const [viewMode, setViewMode] = useState<"tokens" | "merged">("tokens");
   const [partyBindings, setPartyBindings] = useState<Record<number, string>>({});
   const [slotIndex, setSlotIndex] = useState(0);
   const [saveSlotLabel, setSaveSlotLabel] = useState("");
   const [slotLocked, setSlotLocked] = useState(false);
-  const [missing, setMissing] = useState<string[]>([]);
+  /** 手入力値（差し込み API の values） */
+  const [manualValues, setManualValues] = useState<Record<string, string>>({});
+  /** フォームに出す項目（欠落＋入力済みを維持） */
+  const [formFields, setFormFields] = useState<string[]>([]);
+  const [manualFormOpen, setManualFormOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [merging, setMerging] = useState(false);
   const [listLoading, setListLoading] = useState(false);
@@ -129,19 +136,24 @@ export function AuthoringWizardModal({
     );
   }, [templates, query]);
 
-  const partyCount = Math.max(2, maxPartySlotFromBody(editorText));
-  const unresolved = countUnresolvedMergeFields(editorText);
+  const partyCount = Math.max(2, maxPartySlotFromBody(sourceText));
+  const unresolved = countUnresolvedMergeFields(sourceText);
+  const displayText = viewMode === "merged" ? mergedPreview : sourceText;
 
   const reset = useCallback(() => {
     setStep("pick");
     setQuery("");
     setSelected(null);
-    setEditorText("");
+    setSourceText("");
+    setMergedPreview("");
+    setViewMode("tokens");
     setPartyBindings({ 1: clientId });
     setSlotIndex(0);
     setSaveSlotLabel("");
     setSlotLocked(false);
-    setMissing([]);
+    setManualValues({});
+    setFormFields([]);
+    setManualFormOpen(false);
     setListError("");
     setOpenError("");
     setActionError("");
@@ -206,6 +218,43 @@ export function AuthoringWizardModal({
     [partyBindings, clientId],
   );
 
+  const applyMissingToForm = useCallback((nextMissing: string[], values: Record<string, string>) => {
+    setFormFields((prev) => {
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      for (const name of [...prev, ...nextMissing]) {
+        if (seen.has(name)) continue;
+        const kept = nextMissing.includes(name) || (values[name] ?? "").trim() !== "";
+        if (!kept) continue;
+        seen.add(name);
+        ordered.push(name);
+      }
+      return ordered;
+    });
+  }, []);
+
+  const probeMissing = useCallback(
+    async (body: string, bindings: Record<number, string>, values: Record<string, string>) => {
+      if (!body.trim()) {
+        applyMissingToForm([], values);
+        return null;
+      }
+      try {
+        const result = await renderAuthoringBody(
+          clientId,
+          body,
+          values,
+          partiesFromBindings(bindings, clientId),
+        );
+        applyMissingToForm(result.missingVariables, values);
+        return result;
+      } catch {
+        return null;
+      }
+    },
+    [applyMissingToForm, clientId],
+  );
+
   const loadTemplate = async (template: AuthoringTemplate) => {
     setLoading(true);
     setOpenError("");
@@ -213,59 +262,100 @@ export function AuthoringWizardModal({
     const bindings = { 1: clientId, ...partyBindings };
     setPartyBindings(bindings);
     try {
-      const parties = partiesFromBindings(bindings, clientId);
-      const result =
-        template.id === BLANK_TEMPLATE.id
-          ? await renderAuthoringBody(clientId, template.body, {}, parties)
-          : await renderAuthoringTemplate(template.id, clientId, {}, parties);
-      setEditorText(result.renderedBody);
-      setMissing(result.missingVariables);
-      applySlotTarget(template, result.targetSlotLabel);
+      const body = template.body || "";
+      setSourceText(body);
+      setMergedPreview("");
+      setViewMode("tokens");
+      setManualValues({});
+      setFormFields([]);
+      applySlotTarget(template, template.targetSlotLabel);
       setStep("edit");
+      await probeMissing(body, bindings, {});
     } catch {
-      setOpenError("このひな形を開けませんでした。基本情報の取得に失敗した可能性があります。");
+      setOpenError("このひな形を開けませんでした。");
       setSelected(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMerge = async () => {
-    if (!editorText.trim()) return;
+  const showMergedPreview = async () => {
+    if (!sourceText.trim()) return;
     setMerging(true);
     setActionError("");
     try {
-      const result = await renderAuthoringBody(clientId, editorText, {}, currentParties());
-      setEditorText(result.renderedBody);
-      setMissing(result.missingVariables);
+      const result = await renderAuthoringBody(
+        clientId,
+        sourceText,
+        manualValues,
+        currentParties(),
+      );
+      setMergedPreview(result.renderedBody);
+      applyMissingToForm(result.missingVariables, manualValues);
+      setViewMode("merged");
     } catch {
-      setActionError("マスタの差し込みに失敗しました。");
+      setActionError("差し込みプレビューに失敗しました。");
     } finally {
       setMerging(false);
     }
   };
 
+  const backToTokens = () => {
+    setViewMode("tokens");
+    setActionError("");
+  };
+
   const handlePartyChange = (slot: number, nextClientId: string) => {
-    setPartyBindings((prev) => ({ ...prev, [slot]: nextClientId }));
+    setPartyBindings((prev) => {
+      const next = { ...prev, [slot]: nextClientId };
+      void probeMissing(sourceText, next, manualValues);
+      return next;
+    });
+    if (viewMode === "merged") {
+      setMergedPreview("");
+      setViewMode("tokens");
+    }
+  };
+
+  const handleManualValueChange = (name: string, value: string) => {
+    setManualValues((prev) => ({ ...prev, [name]: value }));
+    if (viewMode === "merged") {
+      setMergedPreview("");
+      setViewMode("tokens");
+    }
   };
 
   const handleSave = async () => {
-    if (!selected || !editorText.trim()) return;
+    if (!selected || !sourceText.trim()) return;
     setSaving(true);
     setActionError("");
     setMessage("");
     try {
-      let bodyText = editorText;
+      let bodyText = sourceText;
       if (countUnresolvedMergeFields(bodyText) > 0) {
-        const merged = await renderAuthoringBody(clientId, bodyText, {}, currentParties());
+        const merged = await renderAuthoringBody(
+          clientId,
+          bodyText,
+          manualValues,
+          currentParties(),
+        );
         bodyText = merged.renderedBody;
-        setEditorText(bodyText);
-        setMissing(merged.missingVariables);
+        setMergedPreview(bodyText);
+        applyMissingToForm(merged.missingVariables, manualValues);
+        if (merged.missingVariables.length > 0) {
+          setActionError(
+            `未入力が ${merged.missingVariables.length} 件あります。左の手入力を埋めてから保存してください。`,
+          );
+          setViewMode("tokens");
+          setManualFormOpen(true);
+          setSaving(false);
+          return;
+        }
       }
       const title = selected.title.replace(/（.+）/, "").trim() || "文書";
       const blob = await exportAuthoringPdf({
         clientId,
-        title: "",
+        title,
         body: bodyText,
       });
       const safeName = `${clientName}_${title}.pdf`.replace(/[\\/:*?"<>|]+/g, "_");
@@ -291,9 +381,9 @@ export function AuthoringWizardModal({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-2 backdrop-blur-sm md:p-4">
-      <div className="flex max-h-[96vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+    <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-slate-900/60 p-1 backdrop-blur-sm sm:p-2">
+      <div className="flex h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[100rem] flex-col overflow-hidden rounded-xl bg-white shadow-2xl sm:h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-2.5 sm:px-5">
           <div>
             <h2 className="text-sm font-black text-slate-800">文書作成</h2>
             <p className="text-[11px] text-slate-500">{clientName}</p>
@@ -383,69 +473,131 @@ export function AuthoringWizardModal({
             {loading && (
               <p className="mt-2 flex items-center justify-center gap-2 text-xs text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                基本情報を読み込み中…
+                ひな形を開いています…
               </p>
             )}
           </div>
         )}
 
         {step === "edit" && selected && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-slate-800">{selected.title}</h3>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 sm:px-5">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-bold text-slate-800">{selected.title}</h3>
+                <p className="text-[10px] text-slate-500">
+                  左で当事者・差し込み、右で書類。Ctrl+ホイールで拡大縮小
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setOpenError("");
                   setStep("pick");
                 }}
-                className="text-[11px] font-bold text-indigo-600 hover:underline"
+                className="shrink-0 text-[11px] font-bold text-indigo-600 hover:underline"
               >
                 ひな形を選び直す
               </button>
             </div>
-            <p className="text-[11px] text-slate-500">
-              甲・乙を選んで保存すれば、正しい枠に入ります。送るときは保存後のシェアから。
-            </p>
-            <div className="mt-3 space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-              <PartyBinder
-                clients={masterClients}
-                partyCount={partyCount}
-                bindings={partyBindings}
-                onChange={handlePartyChange}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={merging || unresolved === 0}
-                  onClick={() => void handleMerge()}
-                  className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-                >
-                  {merging ? "差し込み中…" : "マスタを差し込み"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowFields((v) => !v)}
-                  className="text-[11px] font-bold text-slate-500 hover:underline"
-                >
-                  {showFields ? "項目リストを隠す" : "項目を足す"}
-                </button>
-                <span className="text-[10px] text-slate-500">
-                  {unresolved > 0 ? `未差し込み ${unresolved} 件` : "差し込み済み"}
-                </span>
+
+            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+              {/* 左サイド: 当事者・モード・手入力 */}
+              <aside className="flex max-h-[42vh] w-full shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-slate-50/90 md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r lg:w-[19rem]">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3">
+                  <div className="inline-flex w-full rounded-lg border border-slate-200 bg-white p-0.5 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={backToTokens}
+                      className={`flex-1 rounded-md px-2 py-1.5 ${
+                        viewMode === "tokens"
+                          ? "bg-indigo-600 text-white"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      かっこ書き
+                    </button>
+                    <button
+                      type="button"
+                      disabled={merging || !sourceText.trim()}
+                      onClick={() => void showMergedPreview()}
+                      className={`flex-1 rounded-md px-2 py-1.5 disabled:opacity-50 ${
+                        viewMode === "merged"
+                          ? "bg-indigo-600 text-white"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {merging ? "差し込み中…" : "差し込み版"}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    {viewMode === "merged"
+                      ? "プレビュー中（元のかっこ書きは保持）"
+                      : unresolved > 0
+                        ? `未差し込み ${unresolved} 件`
+                        : "項目なし／差し込み済み"}
+                  </p>
+
+                  <PartyBinder
+                    clients={masterClients}
+                    partyCount={partyCount}
+                    bindings={partyBindings}
+                    primaryClientId={clientId}
+                    layout="stack"
+                    onChange={handlePartyChange}
+                  />
+
+                  {formFields.length > 0 ? (
+                    <div>
+                      <MissingVariablesForm
+                        fields={formFields}
+                        values={manualValues}
+                        onChange={handleManualValueChange}
+                        open={manualFormOpen}
+                        onOpenChange={setManualFormOpen}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold text-slate-500 hover:underline"
+                      onClick={() => void probeMissing(sourceText, partyBindings, manualValues)}
+                    >
+                      マスタ欠落を再検出
+                    </button>
+                  )}
+
+                  <div>
+                    <button
+                      type="button"
+                      disabled={viewMode === "merged"}
+                      onClick={() => setShowFields((v) => !v)}
+                      className="text-[11px] font-bold text-slate-500 hover:underline disabled:opacity-40"
+                    >
+                      {showFields ? "項目リストを隠す" : "項目を足す"}
+                    </button>
+                    {showFields && viewMode === "tokens" ? (
+                      <div className="mt-2">
+                        <MergeFieldPalette
+                          onInsert={(token) => editorRef.current?.insertText(token)}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </aside>
+
+              {/* 右: 書類 */}
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2 sm:p-3">
+                <AuthoringPageEditor
+                  ref={editorRef}
+                  value={displayText}
+                  onChange={viewMode === "merged" ? () => undefined : setSourceText}
+                  readOnly={viewMode === "merged"}
+                />
               </div>
-              {showFields ? (
-                <MergeFieldPalette onInsert={(token) => editorRef.current?.insertText(token)} />
-              ) : null}
             </div>
-            {missing.length > 0 && (
-              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                マスタに無い項目: {missing.map((v) => labelForVariable(v)).join("、")}
-                {!isBuiltinVariable(missing[0] ?? "") && " — 本文内で直接追記するか、カルテのマスタを埋めてください"}
-              </p>
-            )}
-            <AuthoringPageEditor ref={editorRef} value={editorText} onChange={setEditorText} />
-            <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+
+            <div className="flex shrink-0 flex-wrap items-end gap-3 border-t border-slate-100 px-4 py-3 sm:px-5">
               <div className="text-xs text-slate-600">
                 保存先の枠
                 {slotLocked ? (
@@ -481,7 +633,7 @@ export function AuthoringWizardModal({
                 </button>
                 <button
                   type="button"
-                  disabled={saving || !editorText.trim()}
+                  disabled={saving || !sourceText.trim()}
                   onClick={() => void handleSave()}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >

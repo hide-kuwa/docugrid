@@ -18,7 +18,9 @@ import { ReviewChecklistWidget } from "@/features/review-checklist/ReviewCheckli
 import { checkSession, loadCurrentUser } from "@/lib/auth";
 import { setClientScope } from "@/lib/api-auth";
 import { canAccessClient, resolveStakeholder } from "@/lib/authorization";
+import { canShowTasksNav } from "@/lib/nav-policy";
 import { resolvePersonaId } from "@/lib/persona";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 const REVIEW_PERIOD_OPTIONS = CLIENT_PERIOD_OPTIONS.filter((p) => p.key.startsWith("year"));
 
@@ -48,6 +50,10 @@ export default function TasksPage() {
       const session = await checkSession();
       if (session !== "ok") {
         router.replace(session === "offline" ? "/login?reason=offline" : "/login?reason=session");
+        return;
+      }
+      if (!canShowTasksNav(loadCurrentUser())) {
+        router.replace("/");
         return;
       }
       setAuthChecked(true);
@@ -180,17 +186,15 @@ export default function TasksPage() {
                   : "担当顧問先の不足資料・承認待ち"}
             </p>
           </div>
-          <select
-            className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+          <ClientSearchSelect
+            clients={scopedClients.map(toClientSearchOption)}
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          >
-            {scopedClients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={setClientId}
+            allowEmpty={false}
+            className="min-w-[10rem]"
+            selectClassName="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+            searchClassName="mb-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
+          />
           <AuthNavButtons variant="light" />
         </div>
       </header>

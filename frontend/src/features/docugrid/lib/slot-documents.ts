@@ -1,6 +1,7 @@
 import { API_ENDPOINTS } from "@/config/api";
 import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 import type { ClassifyPersistMetadata } from "./classify";
+import { guessSlotMime, isConvertibleImageName, isPdfSlotName } from "./slot-file-kinds";
 
 export type NormalizeFieldApplied = {
   field_id: string;
@@ -52,6 +53,9 @@ export type SlotDocumentItem = {
   deleted_from_slot_label?: string | null;
   client_shared_at?: string | null;
   client_shared_by?: string | null;
+  content_type?: string | null;
+  is_pdf?: boolean;
+  is_convertible_image?: boolean;
 };
 
 export type PersistSlotArgs = {
@@ -122,7 +126,7 @@ export async function listSlotDocuments(
   return (await res.json()) as SlotDocumentItem[];
 }
 
-/** Download the stored PDF bytes and rebuild a File for the viewer/editor. */
+/** Download stored bytes and rebuild a File (PDF or other allowlisted type). */
 export async function fetchSlotDocumentFile(
   item: SlotDocumentItem,
   signal?: AbortSignal,
@@ -136,9 +140,56 @@ export async function fetchSlotDocumentFile(
     throw new Error(`fetch-slot-file-failed:${res.status}`);
   }
   const blob = await res.blob();
-  return new File([blob], item.original_name || "document.pdf", {
-    type: "application/pdf",
+  const name = item.original_name || "document.bin";
+  const type =
+    item.content_type ||
+    blob.type ||
+    guessSlotMime(name, isPdfSlotName(name) ? "application/pdf" : "application/octet-stream");
+  return new File([blob], name, { type });
+}
+
+/** Trigger browser download of the current slot file. */
+export async function downloadSlotDocumentFile(item: SlotDocumentItem): Promise<void> {
+  const file = await fetchSlotDocumentFile(item);
+  const url = URL.createObjectURL(file);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Convert current image version to PDF (new version; original stays in history). */
+export async function convertSlotDocumentToPdf(
+  docId: string,
+  clientId?: string,
+): Promise<SlotDocumentItem> {
+  const res = await authFetch(`${API_ENDPOINTS.SLOTS}/${encodeURIComponent(docId)}/convert-to-pdf`, {
+    method: "POST",
+    headers: buildAuthHeaders(clientId),
   });
+  if (!res.ok) {
+    throw new Error(`convert-slot-to-pdf-failed:${res.status}`);
+  }
+  return (await res.json()) as SlotDocumentItem;
+}
+
+export function slotItemIsPdf(item: Pick<SlotDocumentItem, "original_name" | "is_pdf">): boolean {
+  if (typeof item.is_pdf === "boolean") return item.is_pdf;
+  return isPdfSlotName(item.original_name);
+}
+
+export function slotItemIsConvertibleImage(
+  item: Pick<SlotDocumentItem, "original_name" | "is_convertible_image">,
+): boolean {
+  if (typeof item.is_convertible_image === "boolean") return item.is_convertible_image;
+  return isConvertibleImageName(item.original_name);
 }
 
 export async function detachSlotDocument(docId: string, clientId?: string): Promise<void> {
@@ -153,21 +204,59 @@ export async function detachSlotDocument(docId: string, clientId?: string): Prom
   }
 }
 
+export type MoveSlotDocumentArgs = {
+  docId: string;
+  slotId: string;
+  slotLabel?: string;
+  /** 移動元の認可ヘッダ用（省略可） */
+  sourceClientId?: string;
+  /** 行き先の期（省略時は現状維持） */
+  periodKey?: string;
+  /** 行き先の顧問先（省略時は現状維持） */
+  clientId?: string;
+};
+
 export async function moveSlotDocument(
-  docId: string,
-  slotId: string,
-  slotLabel: string,
+  args: MoveSlotDocumentArgs | string,
+  slotId?: string,
+  slotLabel?: string,
   clientId?: string,
 ): Promise<SlotDocumentItem> {
-  const res = await authFetch(API_ENDPOINTS.SLOT_FILE(docId).replace(/\/file$/, ""), {
-    method: "PATCH",
-    headers: {
-      ...buildAuthHeaders(clientId),
-      "Content-Type": "application/json",
+  // 旧シグネチャ互換: moveSlotDocument(docId, slotId, slotLabel, clientId)
+  const normalized: MoveSlotDocumentArgs =
+    typeof args === "string"
+      ? {
+          docId: args,
+          slotId: slotId ?? "",
+          slotLabel,
+          sourceClientId: clientId,
+        }
+      : args;
+
+  const body: Record<string, string> = {
+    slot_id: normalized.slotId,
+  };
+  if (normalized.slotLabel != null && normalized.slotLabel !== "") {
+    body.slot_label = normalized.slotLabel;
+  }
+  if (normalized.periodKey) body.period_key = normalized.periodKey;
+  if (normalized.clientId) body.client_id = normalized.clientId;
+
+  const res = await authFetch(
+    API_ENDPOINTS.SLOT_FILE(normalized.docId).replace(/\/file$/, ""),
+    {
+      method: "PATCH",
+      headers: {
+        ...buildAuthHeaders(normalized.sourceClientId ?? normalized.clientId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify({ slot_id: slotId, slot_label: slotLabel }),
-  });
+  );
   if (!res.ok) {
+    if (res.status === 409) {
+      throw new Error("move-slot-occupied");
+    }
     throw new Error(`move-slot-failed:${res.status}`);
   }
   return (await res.json()) as SlotDocumentItem;

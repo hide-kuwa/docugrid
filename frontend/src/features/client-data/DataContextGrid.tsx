@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { DATA_WORKSPACE_TABS, type DataWorkspaceTabId } from "@/features/client-data/data-workspace-tabs";
+import { DATA_WORKSPACE_TABS, isDataWorkspaceTabLive, type DataWorkspaceTabId } from "@/features/client-data/data-workspace-tabs";
 
 type Props = {
   activeTab: DataWorkspaceTabId;
@@ -77,20 +77,27 @@ export function DataContextGrid({ activeTab, onTabChange }: Props) {
         {DATA_WORKSPACE_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = tab.id === activeTab;
+          const planned = !isDataWorkspaceTabLive(tab);
           return (
             <button
               key={tab.id}
               type="button"
               onClick={() => onTabChange(tab.id)}
               className={`data-context-item ${isActive ? "active" : ""}`}
-              title={tab.description}
+              title={planned ? `${tab.description}（工事中）` : tab.description}
             >
               <Icon
-                className={`mx-auto h-4 w-4 ${isActive ? "text-violet-300" : "text-slate-500"}`}
+                className={`mx-auto h-4 w-4 ${
+                  isActive ? "text-violet-300" : planned ? "text-amber-500/80" : "text-slate-500"
+                }`}
               />
               <span className="data-context-item-label mt-1 block">{tab.label}</span>
-              <span className="mt-0.5 block text-[8px] font-bold tracking-widest text-slate-500">
-                {tab.subLabel}
+              <span
+                className={`mt-0.5 block text-[8px] font-bold tracking-widest ${
+                  planned ? "text-amber-400" : "text-slate-500"
+                }`}
+              >
+                {planned ? "工事中" : tab.subLabel}
               </span>
             </button>
           );

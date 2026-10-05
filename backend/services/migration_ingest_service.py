@@ -349,8 +349,25 @@ def count_pdfs_in_zip(zip_bytes: bytes) -> int:
         return 0
 
 
+def count_allowlisted_in_zip(zip_bytes: bytes) -> int:
+    from services.upload_file_kinds import is_allowed_extension
+
+    try:
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            return sum(
+                1
+                for info in zf.infolist()
+                if not info.is_dir()
+                and is_allowed_extension(info.filename)
+                and info.file_size > 0
+            )
+    except zipfile.BadZipFile:
+        return 0
+
+
 def estimate_zip_ingest(firm_id: str, zip_bytes: bytes) -> dict[str, Any]:
     pdf_count = count_pdfs_in_zip(zip_bytes)
+    file_count = count_allowlisted_in_zip(zip_bytes)
     per_pdf = migration_estimate_tokens_per_pdf()
     vision = _vision_capable(firm_id)
     low = 0
@@ -362,6 +379,7 @@ def estimate_zip_ingest(firm_id: str, zip_bytes: bytes) -> dict[str, Any]:
     budget = check_migration_budget(firm_id, estimated_tokens=estimated_tokens)
     return {
         "pdfCount": pdf_count,
+        "fileCount": file_count,
         "visionCapable": vision,
         "estimatedTokens": estimated_tokens,
         "estimatedTokensLow": low,
@@ -506,14 +524,16 @@ def run_migration_job(
     slot_candidates = _default_slot_candidates()
     clients = clients_for_firm(firm_id)
 
-    pdf_entries: list[tuple[str, bytes]] = []
+    from services.upload_file_kinds import UploadKindError, is_allowed_extension, is_pdf_name, validate_upload_bytes
+
+    file_entries: list[tuple[str, bytes]] = []
     try:
         with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
             for info in zf.infolist():
                 if info.is_dir():
                     continue
                 name = info.filename
-                if not name.lower().endswith(".pdf"):
+                if not is_allowed_extension(name):
                     continue
                 if info.file_size <= 0:
                     continue
@@ -522,7 +542,7 @@ def run_migration_job(
                 except (zipfile.BadZipFile, RuntimeError, OSError):
                     continue
                 if data:
-                    pdf_entries.append((name, data))
+                    file_entries.append((name, data))
     except zipfile.BadZipFile:
         _update_job(
             job_id,
@@ -532,7 +552,7 @@ def run_migration_job(
         )
         return {"ok": False, "jobId": job_id, "reason": "invalid_zip"}
 
-    total = len(pdf_entries)
+    total = len(file_entries)
     processed = 0
     auto_placed = 0
     pending_count = 0
@@ -541,58 +561,28 @@ def run_migration_job(
 
     _update_job(job_id, total_files=total)
 
-    for source_path, content in pdf_entries:
+    for source_path, content in file_entries:
         processed += 1
         file_name = Path(source_path.replace("\\", "/")).name
         try:
+            try:
+                validate_upload_bytes(content, file_name)
+            except UploadKindError:
+                failed += 1
+                _update_job(
+                    job_id,
+                    processed=processed,
+                    auto_placed=auto_placed,
+                    pending_count=pending_count,
+                    failed=failed,
+                    tokens_used=tokens_used,
+                )
+                continue
             client_id, client_conf = match_client_from_path(source_path, firm_id, clients)
             period_key, period_conf = parse_period_from_path(source_path)
-            classify = classify_migration_pdf(
-                firm_id,
-                content,
-                file_name,
-                slot_candidates=slot_candidates,
-                cfg=cfg,
-                openai_key=openai_key,
-                gemini_key=gemini_key,
-                vision_prompt_tpl=vision_prompt_tpl,
-                source_path=source_path,
-                vision_mode=vision_mode,
-            )
-            tokens_used += int(classify.get("tokensCharged") or 0)
-            slot_id = str(classify.get("slotId") or "")
-            doc_type = str(classify.get("identifiedType") or "UNKNOWN")
-            confidence = float(classify.get("confidence") or 0)
-            slot_label = label_for_type(doc_type)
-            classify_meta = {
-                "identifiedType": doc_type,
-                "confidence": confidence,
-                "engine": classify.get("engine"),
-                "reason": classify.get("reason"),
-                "source": "migration",
-                "sourcePath": source_path,
-            }
 
-            can_auto = (
-                client_id
-                and period_key
-                and slot_id
-                and confidence >= AUTO_PLACE_THRESHOLD
-            )
-            if can_auto:
-                persist_pdf_to_slot(
-                    client_id=client_id,
-                    period_key=period_key,
-                    slot_id=slot_id,
-                    slot_label=slot_label,
-                    content=content,
-                    filename=file_name,
-                    uploaded_by=created_by or "migration",
-                    classify_metadata=classify_meta,
-                )
-                _learn_from_path(firm_id, source_path, client_id, slot_id, doc_type)
-                auto_placed += 1
-            else:
+            if not is_pdf_name(file_name):
+                # 非 PDF: 分類なし・自動配置なし → 要確認（顧問先・期間のパス推定のみ）
                 _create_pending(
                     firm_id=firm_id,
                     job_id=job_id,
@@ -604,16 +594,91 @@ def run_migration_job(
                         "clientMatchConfidence": client_conf,
                         "suggestedPeriodKey": period_key,
                         "periodMatchConfidence": period_conf,
-                        "suggestedSlotId": slot_id,
-                        "suggestedType": doc_type,
-                        "slotLabel": slot_label,
-                        "confidence": confidence,
-                        "engine": classify.get("engine"),
-                        "classifyMetadata": classify_meta,
+                        "suggestedSlotId": None,
+                        "suggestedType": "ATTACHMENT",
+                        "slotLabel": None,
+                        "confidence": 0.0,
+                        "engine": "path_only",
+                        "classifyMetadata": {
+                            "identifiedType": "ATTACHMENT",
+                            "confidence": 0.0,
+                            "engine": "path_only",
+                            "source": "migration",
+                            "sourcePath": source_path,
+                            "nonPdf": True,
+                        },
                     },
                     created_by=created_by,
                 )
                 pending_count += 1
+            else:
+                classify = classify_migration_pdf(
+                    firm_id,
+                    content,
+                    file_name,
+                    slot_candidates=slot_candidates,
+                    cfg=cfg,
+                    openai_key=openai_key,
+                    gemini_key=gemini_key,
+                    vision_prompt_tpl=vision_prompt_tpl,
+                    source_path=source_path,
+                    vision_mode=vision_mode,
+                )
+                tokens_used += int(classify.get("tokensCharged") or 0)
+                slot_id = str(classify.get("slotId") or "")
+                doc_type = str(classify.get("identifiedType") or "UNKNOWN")
+                confidence = float(classify.get("confidence") or 0)
+                slot_label = label_for_type(doc_type)
+                classify_meta = {
+                    "identifiedType": doc_type,
+                    "confidence": confidence,
+                    "engine": classify.get("engine"),
+                    "reason": classify.get("reason"),
+                    "source": "migration",
+                    "sourcePath": source_path,
+                }
+
+                can_auto = (
+                    client_id
+                    and period_key
+                    and slot_id
+                    and confidence >= AUTO_PLACE_THRESHOLD
+                )
+                if can_auto:
+                    persist_pdf_to_slot(
+                        client_id=client_id,
+                        period_key=period_key,
+                        slot_id=slot_id,
+                        slot_label=slot_label,
+                        content=content,
+                        filename=file_name,
+                        uploaded_by=created_by or "migration",
+                        classify_metadata=classify_meta,
+                    )
+                    _learn_from_path(firm_id, source_path, client_id, slot_id, doc_type)
+                    auto_placed += 1
+                else:
+                    _create_pending(
+                        firm_id=firm_id,
+                        job_id=job_id,
+                        source_path=source_path,
+                        file_name=file_name,
+                        content=content,
+                        suggestions={
+                            "suggestedClientId": client_id,
+                            "clientMatchConfidence": client_conf,
+                            "suggestedPeriodKey": period_key,
+                            "periodMatchConfidence": period_conf,
+                            "suggestedSlotId": slot_id,
+                            "suggestedType": doc_type,
+                            "slotLabel": slot_label,
+                            "confidence": confidence,
+                            "engine": classify.get("engine"),
+                            "classifyMetadata": classify_meta,
+                        },
+                        created_by=created_by,
+                    )
+                    pending_count += 1
         except Exception:
             failed += 1
 

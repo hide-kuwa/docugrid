@@ -22,6 +22,8 @@ type SlotDocView = {
   workflowStatus?: string;
   logicalStatus?: string;
   clientSharedAt?: string | null;
+  isPdf?: boolean;
+  isConvertibleImage?: boolean;
 };
 
 type Badge = { label: string; className: string; title?: string };
@@ -55,6 +57,8 @@ type Props = {
   onDragEnter: () => void;
   onDragLeave: () => void;
   onDragOver: (e: React.DragEvent) => void;
+  /** 右クリックで移動メニュー（資料あり・アップロード可のとき） */
+  onContextMenuSlot?: (e: React.MouseEvent) => void;
 };
 
 export function SortableSlotCard({
@@ -86,6 +90,7 @@ export function SortableSlotCard({
   onDragEnter,
   onDragLeave,
   onDragOver,
+  onContextMenuSlot,
 }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: sortableId,
@@ -134,7 +139,7 @@ export function SortableSlotCard({
         {...(slotEditMode ? { ...attributes, ...listeners } : {})}
       >
         <div
-          className={`group/slot-card h-full ${jiggleClass} ${uploadedCardClass} ${accentBorder} justify-between shadow-md ring-2 ${accentRing} transition-shadow ${
+          className={`group/slot-card h-full ${jiggleClass} ${uploadedCardClass} ${accentBorder} justify-between shadow-sm ring-1 ring-slate-100 md:shadow-md md:ring-2 ${accentRing} transition-shadow ${
             slotEditMode
               ? "cursor-grab active:cursor-grabbing ring-amber-200"
               : canView
@@ -146,6 +151,12 @@ export function SortableSlotCard({
           onClick={() => {
             if (slotEditMode || editingTitle) return;
             if (canView) onOpenSlot();
+          }}
+          onContextMenu={(e) => {
+            if (slotEditMode || !onContextMenuSlot) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onContextMenuSlot(e);
           }}
           onKeyDown={(e) => {
             if (slotEditMode || !canView) return;
@@ -236,6 +247,23 @@ export function SortableSlotCard({
               <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
                 収納済み
               </span>
+              {(() => {
+                const name = doc!.file.name || "";
+                const ext = name.includes(".") ? name.split(".").pop()!.toUpperCase() : "";
+                if (!ext || ext === "PDF") return null;
+                return (
+                  <span
+                    className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700"
+                    title={
+                      doc!.isConvertibleImage
+                        ? "クリックで PDF 化して開きます"
+                        : "クリックでダウンロード（ビューワーなし）"
+                    }
+                  >
+                    {ext}
+                  </span>
+                );
+              })()}
               {doc!.logicalStatus === "processing" ? (
                 <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
                   <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden />

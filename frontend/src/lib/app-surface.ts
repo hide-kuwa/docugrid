@@ -33,20 +33,25 @@ export const USER_ROUTE_PREFIXES = ["/", "/workspace", "/capture", "/tasks", "/c
 /** 開発・設計・横断ツール */
 export const DEV_ROUTE_PREFIXES = ["/dev", "/catalog"] as const;
 
-/** 事務所運用の設定（顧客・担当・ひな形など） */
-export const FIRM_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
+/** 事務所向けに出す設定タブ（未完成は開発コンソール側） */
+const FIRM_SHIPPED_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
   "clients",
   "clientProfile",
   "stakeholders",
-  "templates",
-  "reviewChecklist",
   "billing",
   "audit",
-  "mcp",
   "messaging",
   "drive",
   "shortcuts",
   "appearance",
+];
+
+/** 事務所運用の設定（顧客・担当・ひな形など） */
+export const FIRM_SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
+  ...FIRM_SHIPPED_SETTINGS_CATEGORY_IDS,
+  "templates",
+  "reviewChecklist",
+  "mcp",
   "featureSurfaces",
   "addons",
 ];
@@ -90,20 +95,17 @@ function canViewSettingsCategoryById(user: DocugridUser | null, categoryId: Sett
   return hasPermission(user, "settings.manage");
 }
 
-export function canAccessDevConsole(user: DocugridUser | null): boolean {
-  if (!user) return false;
-  if (user.appRoleId === "platform_admin" || user.appRoleId === "admin") return true;
-  if (resolvePersonaId(user) === "platform_admin") return true;
-  if (hasPermission(user, "settings.platform")) return true;
-  return DEV_SETTINGS_CATEGORY_IDS.some((id) => canViewSettingsCategoryById(user, id));
-}
-
-/** 連携ポートカタログなど — settings.platform のみ（一般 dev より厳格） */
+/** 連携ポートカタログなど — settings.platform のみ */
 export function canAccessPlatformSettings(user: DocugridUser | null): boolean {
   if (!user) return false;
-  if (user.appRoleId === "platform_admin" || user.appRoleId === "admin") return true;
+  if (user.appRoleId === "platform_admin") return true;
   if (resolvePersonaId(user) === "platform_admin") return true;
   return hasPermission(user, "settings.platform");
+}
+
+/** 開発コンソール（/dev）と開発タブ。事務所管理者では開けない。 */
+export function canAccessDevConsole(user: DocugridUser | null): boolean {
+  return canAccessPlatformSettings(user);
 }
 
 export function canAccessFirmSettings(user: DocugridUser | null): boolean {
@@ -116,10 +118,14 @@ export function canAccessAnySettings(user: DocugridUser | null): boolean {
 }
 
 export function visibleFirmSettingsCategories(user: DocugridUser | null): SettingsCategoryId[] {
-  return FIRM_SETTINGS_CATEGORY_IDS.filter((id) => canViewSettingsCategoryById(user, id));
+  const ids = canAccessDevConsole(user)
+    ? FIRM_SETTINGS_CATEGORY_IDS
+    : FIRM_SHIPPED_SETTINGS_CATEGORY_IDS;
+  return ids.filter((id) => canViewSettingsCategoryById(user, id));
 }
 
 export function visibleDevSettingsCategories(user: DocugridUser | null): SettingsCategoryId[] {
+  if (!canAccessDevConsole(user)) return [];
   return DEV_SETTINGS_CATEGORY_IDS.filter((id) => canViewSettingsCategoryById(user, id));
 }
 

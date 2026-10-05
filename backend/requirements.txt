@@ -1,4 +1,5 @@
 fastapi
+python-multipart
 uvicorn
 PyJWT
 PyMuPDF
@@ -7,7 +8,7 @@ google-auth
 google-auth-httplib2
 google-auth-oauthlib
 sqlalchemy
-sqlmodel
+sqlmodel==0.0.22
 requests
 reportlab
 PyYAML

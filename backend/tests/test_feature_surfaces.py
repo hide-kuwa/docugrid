@@ -39,10 +39,10 @@ def test_catalog_loads_and_defaults(feature_surface_paths) -> None:
     by_id = resolved["modes_by_id"]
     assert by_id.get("persona.home") == "planned"
     assert by_id.get("capture.invoice_verify") == "preview"
-    assert by_id.get("rag.mcp_search") == "preview"
+    assert by_id.get("rag.mcp_search") == "live"
     assert writes_allowed("persona.home", "firm_default") is False
     assert writes_allowed("capture.invoice_verify", "firm_default") is False
-    assert writes_allowed("rag.mcp_search", "firm_default") is False
+    assert writes_allowed("rag.mcp_search", "firm_default") is True
 
 
 def test_firm_override_beats_platform(feature_surface_paths) -> None:

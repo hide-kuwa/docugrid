@@ -4,7 +4,7 @@
 
 税理士事務所ごとに Google Drive を「正式保管庫」として使い、DocuGrid は認可付きの索引・キャッシュ層とする方針の整理。実装の中心は `backend/services/slot_drive_sync.py`、`drive.py`、`drive_context.py`。
 
-関連: [`security-status.md`](security-status.md)、[`storage-and-sqlite.md`](storage-and-sqlite.md)、[`roadmap.md`](roadmap.md)
+関連: [`security-status.md`](security-status.md)、[`storage-and-sqlite.md`](storage-and-sqlite.md)、[`roadmap.md`](roadmap.md)、[`client-transfer-next.md`](client-transfer-next.md)
 
 ---
 
@@ -72,6 +72,9 @@
 | **Hot** | ローカル `storage/{firm_id}/` — プレビュー・版管理・OCR | 主アクセス経路 |
 | **Canonical** | 事務所の Google Drive — 正式保管・DR・所内 Drive UI からの閲覧 | ミラー + フォールバック |
 | **Cold** | 古い版は Drive のみ、ローカル TTL 削除 | 未実装（将来） |
+
+**顧問先移管との関係:** v1 の移管コードは Drive ミラーを付け替えない。claim 後の新事務所 Drive へのコピー／旧側解除は今後の課題 — [`client-transfer-next.md`](client-transfer-next.md) §2。
+
 
 **原則:** DocuGrid の SQLite / JSON が **索引と認可の正**。Drive はバイナリ実体の置き場。
 
@@ -160,4 +163,5 @@
 
 | 日付 | 内容 |
 |------|------|
+| 2026-09-25 | 顧問先移管時の Drive 付け替えを今後課題としてリンク |
 | 2026-07-04 | 初版（事務所別 Drive 戦略・現実装・将来パターン） |

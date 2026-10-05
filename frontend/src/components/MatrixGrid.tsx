@@ -8,7 +8,6 @@ import {
   ClipboardCheck,
   Clock,
   CheckCircle,
-  Eye,
   Loader2,
   X,
 } from "lucide-react";
@@ -27,13 +26,17 @@ import {
   periodKeyFromIndex,
   periodIndexFromKey,
   periodLabelFromIndex,
+  periodHeadingLabel,
 } from "@/lib/period-nav";
+import { adjacentFiscalPeriodIndex, fiscalPeriodDateRangeLabel, parseReiwaFromDrumLabel } from "@/lib/fiscal-year-drum";
 import { PERIODS } from "./mockData";
 import type { DocumentStatusSummary } from "@/features/docugrid/lib/document-status";
 import { TaxPackagePanel } from "@/features/docugrid/components/TaxPackagePanel";
-import { ClassifyEngineBadge } from "@/features/docugrid/components/ClassifyFeedback";
+import { MatrixSortTray } from "@/features/matrix/components/MatrixSortTray";
 import { PermCrmPanel } from "@/features/crm/PermCrmPanel";
 import { usePermCrmUiStore } from "@/features/crm/perm-crm-ui-store";
+
+const SHOW_MATRIX_STATUS_CHROME = false;
 
 const TIMELINE_EVENT_LABEL: Record<string, string> = {
   upload: "アップロード",
@@ -152,6 +155,8 @@ interface MatrixGridProps {
     {
       file: File;
       pageCount: number | null;
+      docId?: string;
+      persisted?: boolean;
       currentVersionLabel?: string;
       versionCount?: number;
       workflowStatus?: string;
@@ -202,7 +207,21 @@ interface MatrixGridProps {
     slotIndex: number,
     slotLabel: string,
   ) => Promise<{ persisted: boolean; docId?: string }>;
-  matrixPeriods?: { year: string[]; month: string[] };
+  matrixPeriods?: { year: string[]; month: string[]; monthCalendarYears?: number[] };
+  onPeriodChange?: (idx: number) => void;
+  onRelocateDocument?: (
+    sourceSlotIndex: number,
+    target: {
+      slotId: string;
+      slotLabel: string;
+      periodKey?: string;
+      clientId?: string;
+      destinationLabel: string;
+    },
+  ) => void | Promise<void>;
+  onDeleteDocument?: (sourceSlotIndex: number) => void | Promise<void>;
+  relocatePeriodOptions?: Array<{ periodKey: string; label: string; isCurrent: boolean }>;
+  relocateClientOptions?: Array<{ id: string; name: string; isCurrent: boolean }>;
 }
 
 const periodLabel = (
@@ -275,12 +294,52 @@ export default function MatrixGrid({
   onPackageNotice,
   onAuthoringSave,
   matrixPeriods = PERIODS,
+  onPeriodChange,
+  onRelocateDocument,
+  relocatePeriodOptions = [],
+  relocateClientOptions = [],
+  onDeleteDocument,
 }: MatrixGridProps) {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const permCrmTab = usePermCrmUiStore((s) => s.tab);
   const showPermCrm = isPermPeriodIndex(activePeriodIdx);
   const showPermDocs = !showPermCrm || permCrmTab === "docs";
+  const previousFyIdx = adjacentFiscalPeriodIndex(
+    activePeriodIdx,
+    activeMode,
+    matrixPeriods,
+    "previous",
+  );
+  const nextFyIdx = adjacentFiscalPeriodIndex(
+    activePeriodIdx,
+    activeMode,
+    matrixPeriods,
+    "next",
+  );
+  const showFyNav =
+    Boolean(onPeriodChange) &&
+    !isDataPeriodIndex(activePeriodIdx) &&
+    !isPermPeriodIndex(activePeriodIdx);
+
+  const yearDrumLabel =
+    activeMode === "year" && !isDataPeriodIndex(activePeriodIdx) && !isPermPeriodIndex(activePeriodIdx)
+      ? periodLabelFromIndex(activePeriodIdx, activeMode, matrixPeriods)
+      : null;
+  const yearReiwa = yearDrumLabel ? parseReiwaFromDrumLabel(yearDrumLabel) : null;
+  const fiscalDateRangeLabel =
+    yearReiwa != null ? fiscalPeriodDateRangeLabel(yearReiwa, currentClient.fiscal) : null;
+  const establishedDate =
+    "establishedDate" in currentClient
+      ? (currentClient as { establishedDate?: string }).establishedDate
+      : undefined;
+  const yearPeriodHeading =
+    activeMode === "year" && !isDataPeriodIndex(activePeriodIdx) && !isPermPeriodIndex(activePeriodIdx)
+      ? periodHeadingLabel(activePeriodIdx, activeMode, matrixPeriods, {
+          fiscalMonth: currentClient.fiscal,
+          establishedDate,
+        })
+      : null;
 
   const slotCount = slotLabels.length;
 
@@ -373,10 +432,12 @@ export default function MatrixGrid({
         );
       })() : null}
 
-      <header className="z-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white/80 px-4 py-2 backdrop-blur md:px-6">
+      <header className="z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white/90 px-3 py-2 backdrop-blur-sm md:gap-x-4 md:gap-y-2 md:px-6">
         <div className="min-w-0 flex-1 basis-[min(100%,14rem)]">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-400">CLIENT</div>
+            <div className="hidden shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:block">
+              CLIENT
+            </div>
             <span
               className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-bold ${
                 currentClient.fiscal === 3
@@ -386,28 +447,69 @@ export default function MatrixGrid({
             >
               {currentClient.fiscal}月決算
             </span>
+            <span className="tabular-nums text-[11px] font-black text-brand-600 sm:hidden">
+              {progressPercent}%
+            </span>
           </div>
-          <div className="text-lg font-bold leading-snug text-slate-800">
+          <div className="mt-0.5 text-base font-bold leading-snug text-slate-800 md:text-lg">
             {isDataPeriodIndex(activePeriodIdx) ? (
               <span className="text-violet-600">顧客データ（正規化一覧）</span>
             ) : isPermPeriodIndex(activePeriodIdx) ? (
               <span className="text-yellow-600">永久保存ドキュメント</span>
             ) : (
-              <span>
-                <span
-                  className={`mr-2 inline ${
-                    activeMode === "year" ? "text-blue-600" : "text-green-500"
-                  }`}
-                >
-                  {periodLabelFromIndex(activePeriodIdx, activeMode, matrixPeriods) ?? "—"}
+              <span className="inline-flex flex-wrap items-center gap-1.5 md:gap-2">
+                <span className="min-w-0">
+                  <span
+                    className={`mr-1.5 inline md:mr-2 ${
+                      activeMode === "year" ? "text-brand-600" : "text-emerald-600"
+                    }`}
+                  >
+                    {yearPeriodHeading ??
+                      periodHeadingLabel(activePeriodIdx, activeMode, matrixPeriods, {
+                        fiscalMonth: currentClient.fiscal,
+                        establishedDate,
+                      }) ??
+                      "—"}
+                  </span>
+                  <span className="text-slate-800">
+                    {activeMode === "year" ? "決算資料" : "月次監査"}
+                  </span>
+                  {fiscalDateRangeLabel ? (
+                    <span className="ml-1.5 hidden text-[0.72em] font-medium tracking-tight text-slate-500 sm:inline">
+                      {fiscalDateRangeLabel}
+                    </span>
+                  ) : null}
                 </span>
-                {activeMode === "year" ? "決算資料" : "月次監査"}
+                {showFyNav ? (
+                  <span
+                    data-tour="period-fy-nav"
+                    className="inline-flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={nextFyIdx == null}
+                      onClick={() => nextFyIdx != null && onPeriodChange?.(nextFyIdx)}
+                    >
+                      次期
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={previousFyIdx == null}
+                      onClick={() => previousFyIdx != null && onPeriodChange?.(previousFyIdx)}
+                    >
+                      前期
+                    </button>
+                  </span>
+                ) : null}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <div className="hidden shrink-0 flex-wrap items-center gap-3 sm:flex">
           {relatedClients.length > 0 && (
             <div className="flex max-w-[min(100%,28rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-1.5">
               <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -451,11 +553,24 @@ export default function MatrixGrid({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-3 md:p-6">
+      <div className="flex-1 overflow-y-auto p-3 pb-24 md:p-6 md:pb-6">
         {showPermCrm && permCrmTab !== "docs" ? (
           <PermCrmPanel tab={permCrmTab} clientName={currentClient.name} />
         ) : (
           <>
+        {showPermDocs && (pendingReview.length > 0 || (unassignedDocs?.length ?? 0) > 0) ? (
+          <MatrixSortTray
+            slotLabels={slotLabels}
+            pendingReview={pendingReview}
+            unassignedDocs={unassignedDocs ?? []}
+            onConfirmPending={onConfirmPending}
+            onDismissPending={onDismissPending}
+            onOpenPendingPdf={onOpenPendingPdf}
+            onAssignUnassigned={onAssignUnassigned ?? (() => {})}
+            onOpenUnassigned={onOpenUnassigned}
+            onDeleteUnassigned={onDeleteUnassigned}
+          />
+        ) : null}
         <MatrixSlotGrid
           displayOrder={displayOrder}
           slotLabels={slotLabels}
@@ -482,15 +597,11 @@ export default function MatrixGrid({
           onAddCustomSlot={onAddCustomSlot}
           onAddPresetSlots={onAddPresetSlots}
           periodKey={currentPeriodKey}
-          unassignedDocs={unassignedDocs}
-          onOpenUnassigned={onOpenUnassigned}
-          onAssignUnassigned={onAssignUnassigned}
-          onDeleteUnassigned={onDeleteUnassigned}
           deletedDocs={deletedDocs}
           onOpenDeleted={onOpenDeleted}
           onRestoreDeleted={onRestoreDeleted}
           onPurgeDeleted={onPurgeDeleted}
-          canAutoSort={canUpload}
+          canAutoSort={false /* まとめて自動振り分け UI は当面非表示 */}
           isClassifying={isClassifying}
           classifyHint={classifyHint}
           onAutoSortFiles={acceptAutoSortFiles}
@@ -504,9 +615,14 @@ export default function MatrixGrid({
           onApplySlotLayout={onSlotLayoutChange}
           onAuthoringSave={onAuthoringSave}
           timelineEvents={timelineEvents}
+          layoutSlotIds={slotIds}
+          relocatePeriodOptions={relocatePeriodOptions}
+          relocateClientOptions={relocateClientOptions}
+          onRelocateDocument={onRelocateDocument}
+          onDeleteDocument={onDeleteDocument}
         />
 
-        {canUpload && onAssignPackageToSlot && onPackageNotice && (
+        {SHOW_MATRIX_STATUS_CHROME && canUpload && onAssignPackageToSlot && onPackageNotice && (
           <TaxPackagePanel
             canUpload={canUpload}
             clientId={currentClient.id}
@@ -518,7 +634,7 @@ export default function MatrixGrid({
           </>
         )}
 
-        {showPermDocs ? (
+        {showPermDocs && SHOW_MATRIX_STATUS_CHROME ? (
         <div className="mt-10 space-y-5 border-t border-slate-200 pt-8">
           <h2 className="text-sm font-bold text-slate-600">ステータス・タスク</h2>
 
@@ -553,7 +669,7 @@ export default function MatrixGrid({
                 )}
                 {pendingReview.length > 0 && (
                   <li>
-                    · 自動振り分けの要確認: <strong>{pendingReview.length} 件</strong>
+                    · 自動振り分けの要確認: <strong>{pendingReview.length} 件</strong>（上部の整理トレイ）
                   </li>
                 )}
                 {remandedSlots.length > 0 && (
@@ -578,6 +694,7 @@ export default function MatrixGrid({
             </section>
           )}
 
+          <>
           <div
             className={`flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 ${
               missingCurrent.length === 0
@@ -623,87 +740,7 @@ export default function MatrixGrid({
               <span className="text-xs text-amber-700">{currentPendingApproval.join("、")}</span>
             </div>
           )}
-
-          <div
-            data-tour="pending-review"
-            className={
-              pendingReview.length > 0
-                ? "rounded-xl border border-amber-200 bg-amber-50/70 p-4"
-                : "rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-3 py-1.5"
-            }
-          >
-            {pendingReview.length === 0 ? (
-              <p className="text-[10px] font-medium text-slate-400">
-                要確認キュー（いま空）— 自動振り分けで迷った PDF がここに並びます
-              </p>
-            ) : (
-              <>
-              <div className="mb-3 flex items-center gap-2 text-sm font-black text-amber-800">
-                <AlertTriangle className="h-4 w-4" aria-hidden />
-                要確認（{pendingReview.length}件） — 振り分け先を選んでください
-              </div>
-              <div className="space-y-3">
-                {pendingReview.map((p) => (
-                  <div
-                    key={p.id}
-                    className="rounded-lg border border-amber-200 bg-white p-3 shadow-sm"
-                  >
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="line-clamp-1 text-sm font-bold text-slate-800">{p.fileName}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <ClassifyEngineBadge engine={p.engine} />
-                          <span className="text-[11px] text-slate-500">
-                            確信度 {Math.round(p.confidence * 100)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onOpenPendingPdf?.(p.id)}
-                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                          aria-label="PDFを表示"
-                          title="PDFを表示"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDismissPending(p.id)}
-                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                          aria-label="このファイルを破棄"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {slotLabels.map((label, idx) => {
-                        const isSuggested = p.suggestedIndex === idx;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => onConfirmPending(p.id, idx)}
-                            className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                              isSuggested
-                                ? "border-indigo-400 bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                                : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                            }`}
-                          >
-                            {isSuggested ? "★ " : ""}
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              </>
-            )}
-          </div>
+            </>
 
           {canView && (
             <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -771,7 +808,7 @@ export default function MatrixGrid({
             </section>
           )}
 
-          {canView && docStatus && (
+          {SHOW_MATRIX_STATUS_CHROME && canView && docStatus && (
             <section className="rounded-xl border border-slate-200 bg-white/90">
               <button
                 type="button"

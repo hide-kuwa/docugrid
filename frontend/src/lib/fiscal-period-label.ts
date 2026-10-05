@@ -7,6 +7,7 @@ import {
   isOldPeriodKey,
   reiwaFromYearPeriodKey,
   YEAR_OLD_LABEL,
+  type PeriodLists,
   type YearDrumMeta,
 } from "@/lib/fiscal-year-drum";
 
@@ -14,8 +15,6 @@ export type FiscalPeriodDisplay = {
   headline: string;
   subline?: string;
 };
-
-type PeriodLists = { year: string[]; month: string[] };
 
 export type HistorySlotItem = {
   id: string;
@@ -208,10 +207,9 @@ export function formatFiscalPeriodDisplay(
       return headlineFromRLabel(rOrMonth, fiscalMonth);
     }
     if (resolved.mode === "month" && rOrMonth) {
-      const currentReiwa =
-        yearMeta?.latestReiwa ?? reiwaYearFromRLabel(periods.year[0] ?? "") ?? 7;
+      const year = periods.monthCalendarYears?.[resolved.index - 2];
       return {
-        headline: `令和${currentReiwa}年 ${rOrMonth}`,
+        headline: typeof year === "number" ? `${year}年${rOrMonth}` : rOrMonth,
         subline: "月次",
       };
     }

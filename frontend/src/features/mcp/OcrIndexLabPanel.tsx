@@ -39,6 +39,7 @@ import {
 } from "@/features/mcp/accuracy-lab-api";
 import { fetchClientMaster } from "@/lib/client-master-api";
 import { parseApiErrorBody } from "@/lib/parse-api-error";
+import { ClientSearchSelect } from "@/components/ClientSearchSelect";
 
 const FEATURE_ID = "rag.mcp_search";
 
@@ -532,18 +533,16 @@ export function OcrIndexLabPanel() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-xs text-slate-600">
           顧問先
-          <select
-            className="mt-1 block min-w-[12rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+          <ClientSearchSelect
+            clients={clients}
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          >
-            {clients.length === 0 ? <option value="">（顧客なし）</option> : null}
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.id})
-              </option>
-            ))}
-          </select>
+            onChange={setClientId}
+            emptyLabel={clients.length === 0 ? "（顧客なし）" : undefined}
+            allowEmpty={clients.length === 0}
+            formatOption={(c) => `${c.name} (${c.id})`}
+            selectClassName="mt-1 block min-w-[12rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            searchClassName="mt-1 block min-w-[12rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+          />
         </label>
         <label className="text-xs text-slate-600">
           状態フィルタ

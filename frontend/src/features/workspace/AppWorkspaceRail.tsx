@@ -4,12 +4,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ClipboardList,
+  Construction,
   FileText,
   Files,
   GitBranch,
   LayoutTemplate,
   ListTodo,
-  Menu,
   MessageSquare,
   Pin,
   PinOff,
@@ -18,8 +18,13 @@ import {
   Wrench,
 } from "lucide-react";
 import { AuthNavButtons } from "@/components/AuthNavButtons";
-import { loadCurrentUser } from "@/lib/auth";
-import { canShowDevConsoleNav, canShowFirmSettingsNav, canShowTasksNav } from "@/lib/nav-policy";
+import { checkSession, loadCurrentUser } from "@/lib/auth";
+import {
+  canShowDevConsoleNav,
+  canShowFirmSettingsNav,
+  canShowPreviewWorkspaceNav,
+  canShowTasksNav,
+} from "@/lib/nav-policy";
 import { DATA_WORKSPACE_TABS } from "@/features/client-data/data-workspace-tabs";
 import {
   WORKSPACE_SURFACES,
@@ -70,9 +75,11 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
   const [pinned, setPinned] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [helpAssistOpen, setHelpAssistOpen] = useState(false);
+  const [previewMenuOpen, setPreviewMenuOpen] = useState(false);
   const [showTasksNav, setShowTasksNav] = useState(false);
   const [showDevConsoleNav, setShowDevConsoleNav] = useState(false);
   const [showFirmSettingsNav, setShowFirmSettingsNav] = useState(false);
+  const [showPreviewWorkspaceNav, setShowPreviewWorkspaceNav] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,10 +113,20 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
   }, []);
 
   useEffect(() => {
-    const user = loadCurrentUser();
-    setShowTasksNav(canShowTasksNav(user));
-    setShowDevConsoleNav(canShowDevConsoleNav(user));
-    setShowFirmSettingsNav(canShowFirmSettingsNav(user));
+    let active = true;
+    void (async () => {
+      // Wait for /auth/me sync so stale localStorage permissions do not flash nav.
+      await checkSession();
+      if (!active) return;
+      const user = loadCurrentUser();
+      setShowTasksNav(canShowTasksNav(user));
+      setShowDevConsoleNav(canShowDevConsoleNav(user));
+      setShowFirmSettingsNav(canShowFirmSettingsNav(user));
+      setShowPreviewWorkspaceNav(canShowPreviewWorkspaceNav(user));
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -118,7 +135,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
     return () => clearTimeout(t);
   }, [searchOpen]);
 
-  const open = hovered || pinned || searchOpen || helpAssistOpen;
+  const open = hovered || pinned || searchOpen || helpAssistOpen || previewMenuOpen;
 
   const clearCloseTimer = () => {
     if (closeTimer.current) {
@@ -133,7 +150,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
   };
 
   const handleLeave = () => {
-    if (searchOpen || helpAssistOpen) return;
+    if (searchOpen || helpAssistOpen || previewMenuOpen || pinned) return;
     clearCloseTimer();
     closeTimer.current = setTimeout(() => setHovered(false), CLOSE_DELAY_MS);
   };
@@ -146,13 +163,29 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
       } catch {
         /* ignore */
       }
+      if (next) setHovered(true);
       return next;
     });
   };
 
   const go = (href: string) => {
     router.push(href);
+    setPreviewMenuOpen(false);
+    if (!pinned) setHovered(false);
   };
+
+  const selectSurface = (id: WorkspaceSurfaceId) => {
+    onChange(id);
+    setPreviewMenuOpen(false);
+    if (!pinned) setHovered(false);
+  };
+
+  const onPreviewPage =
+    onTemplatesPage ||
+    onFlowchartPage ||
+    pathname.startsWith("/tasks") ||
+    active === "dm" ||
+    active === "tax";
 
   const ActiveIcon = surfaceIcon(active);
   const activeLabel = WORKSPACE_SURFACES.find((s) => s.id === active)?.shortLabel ?? "";
@@ -195,24 +228,34 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
         }
       }}
     >
-      <div className="flex h-full w-10 flex-col items-center border-r border-slate-800 bg-slate-950 py-2">
+      {open ? (
         <button
           type="button"
-          onClick={togglePin}
-          title={pinned ? "メニュー固定を解除" : "ホバーで開く / クリックで固定"}
-          aria-label="ワークスペースメニュー"
+          className="fixed inset-0 z-30 bg-slate-950/40 md:hidden"
+          aria-label="メニューを閉じる"
+          onClick={() => {
+            if (!pinned) setHovered(false);
+            setSearchOpen(false);
+          }}
+        />
+      ) : null}
+      <div className="relative z-40 flex h-full w-10 flex-col items-center border-r border-slate-800 bg-slate-950 py-2">
+        <button
+          type="button"
+          className="absolute inset-0 z-10 md:hidden"
+          aria-label={open ? "メニューを閉じる" : "メニューを開く"}
           aria-expanded={open}
-          aria-pressed={pinned}
-          data-tour="workspace-menu"
-          className="mt-1 rounded-lg p-2 text-slate-300 transition-colors duration-300 hover:bg-slate-800 hover:text-white"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+          onClick={() => {
+            clearCloseTimer();
+            setHovered((prev) => !prev);
+          }}
+        />
         <div
           className={[
-            "mt-4 flex flex-col items-center gap-1 transition-opacity duration-500",
+            "pointer-events-none mt-2 flex flex-col items-center gap-1 transition-opacity duration-500",
             open ? "opacity-0" : "opacity-100",
           ].join(" ")}
+          aria-hidden={open}
         >
           <ActiveIcon className="h-4 w-4 text-slate-500" />
           <span className="text-[8px] font-bold uppercase tracking-wide text-slate-500">
@@ -225,7 +268,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
         aria-label="ワークスペース"
         aria-hidden={!open}
         className={[
-          "absolute left-0 top-0 flex h-full w-[3.5rem] flex-col items-center border-r border-slate-800 bg-slate-950/98 py-3 shadow-[8px_0_24px_rgba(0,0,0,0.25)] backdrop-blur-[2px]",
+          "absolute left-0 top-0 z-40 flex h-full w-[3.5rem] flex-col items-center border-r border-slate-800 bg-slate-950/98 py-3 shadow-[8px_0_24px_rgba(0,0,0,0.25)] backdrop-blur-[2px]",
           "transition-[opacity,transform] ease-[cubic-bezier(0.22,1,0.36,1)]",
           open
             ? "pointer-events-auto translate-x-0 opacity-100"
@@ -253,7 +296,9 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto no-scrollbar">
-          {WORKSPACE_SURFACES.filter((s) => s.group === "core").map((surface) => {
+          {WORKSPACE_SURFACES.filter(
+            (s) => s.group === "core" && (s.id === "doc" || s.id === "pdf"),
+          ).map((surface) => {
             const Icon = surfaceIcon(surface.id);
             const isActive = active === surface.id;
             const planned = surface.status === "planned";
@@ -264,7 +309,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
                 title={`${surface.label} — ${surface.description}`}
                 aria-current={isActive ? "page" : undefined}
                 data-tour={`workspace-${surface.id}`}
-                onClick={() => onChange(surface.id)}
+                onClick={() => selectSurface(surface.id)}
                 className={[
                   "group relative flex w-11 shrink-0 flex-col items-center gap-0.5 rounded-xl px-1 py-2 transition-colors duration-300",
                   isActive
@@ -301,7 +346,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
                 title={`${surface.label} — ${surface.description}`}
                 aria-current={isActive ? "page" : undefined}
                 data-tour={`workspace-${surface.id}`}
-                onClick={() => onChange(surface.id)}
+                onClick={() => selectSurface(surface.id)}
                 className={[
                   "group relative flex w-11 shrink-0 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors duration-300",
                   isActive
@@ -335,24 +380,102 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
                 children: <Wrench className="h-4 w-4" />,
               })
             : null}
-          {showFirmSettingsNav
-            ? utilBtn({
-                title: "文書ひな形",
-                label: "ひな形",
-                active: onTemplatesPage,
-                activeClass: "bg-indigo-950/50 text-indigo-300 ring-1 ring-indigo-500/40",
-                onClick: () => go("/templates"),
-                children: <LayoutTemplate className="h-4 w-4" />,
-              })
-            : null}
-          {utilBtn({
-            title: "判定フロー",
-            label: "判定",
-            active: onFlowchartPage,
-            activeClass: "bg-violet-950/50 text-violet-300 ring-1 ring-violet-500/40",
-            onClick: () => go("/flowchart"),
-            children: <GitBranch className="h-4 w-4" />,
-          })}
+          <div className="relative">
+            {utilBtn({
+              title: "開発中の画面",
+              label: "開発中",
+              active: onPreviewPage || previewMenuOpen,
+              activeClass: "bg-amber-950/40 text-amber-200 ring-1 ring-amber-500/35",
+              onClick: () => setPreviewMenuOpen((v) => !v),
+              children: <Construction className="h-4 w-4" />,
+            })}
+            {previewMenuOpen ? (
+              <div
+                className="absolute bottom-0 left-[3.25rem] z-50 w-40 rounded-xl border border-slate-700 bg-slate-900 p-1.5 shadow-2xl"
+                onMouseEnter={handleEnter}
+              >
+                <p className="px-2 pb-1 pt-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                  開発中
+                </p>
+                <button
+                  type="button"
+                  data-tour="workspace-dm"
+                  onClick={() => selectSurface("dm")}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] font-bold transition-colors ${
+                    active === "dm"
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                  DM
+                </button>
+                <button
+                  type="button"
+                  data-tour="workspace-tax"
+                  onClick={() => selectSurface("tax")}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] font-bold transition-colors ${
+                    active === "tax"
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                  Tax
+                </button>
+                {showPreviewWorkspaceNav ? (
+                  <button
+                    type="button"
+                    onClick={() => go("/templates")}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] font-bold transition-colors ${
+                      onTemplatesPage
+                        ? "bg-indigo-950/60 text-indigo-200"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    <LayoutTemplate className="h-3.5 w-3.5 shrink-0" />
+                    ひな形
+                  </button>
+                ) : null}
+                {showPreviewWorkspaceNav ? (
+                  <button
+                    type="button"
+                    onClick={() => go("/flowchart")}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] font-bold transition-colors ${
+                      onFlowchartPage
+                        ? "bg-violet-950/60 text-violet-200"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    <GitBranch className="h-3.5 w-3.5 shrink-0" />
+                    判定
+                  </button>
+                ) : null}
+                {showTasksNav ? (
+                  <button
+                    type="button"
+                    data-tour="tasks-nav"
+                    onClick={() => go("/tasks")}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] font-bold transition-colors ${
+                      pathname.startsWith("/tasks")
+                        ? "bg-slate-800 text-white"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    <ListTodo className="h-3.5 w-3.5 shrink-0" />
+                    タスク
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-0.5 w-full rounded-lg px-2 py-1 text-right text-[9px] font-bold text-slate-500 hover:text-slate-300"
+                  onClick={() => setPreviewMenuOpen(false)}
+                >
+                  閉じる
+                </button>
+              </div>
+            ) : null}
+          </div>
           {showFirmSettingsNav
             ? utilBtn({
                 title: "事務所設定",
@@ -361,16 +484,6 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
                 activeClass: "bg-slate-800 text-white ring-1 ring-slate-500",
                 onClick: () => go("/settings"),
                 children: <Settings className="h-4 w-4" />,
-              })
-            : null}
-          {showTasksNav
-            ? utilBtn({
-                title: "今日やること",
-                label: "タスク",
-                active: pathname.startsWith("/tasks"),
-                onClick: () => go("/tasks"),
-                dataTour: "tasks-nav",
-                children: <ListTodo className="h-4 w-4" />,
               })
             : null}
           {utilBtn({
@@ -390,7 +503,7 @@ export function AppWorkspaceRail({ active, onChange }: Props) {
 
       {searchOpen ? (
         <div
-          className="absolute left-[3.5rem] top-24 z-50 w-64 rounded-r-xl border border-slate-700 border-l-0 bg-slate-900 p-3 shadow-2xl"
+          className="absolute left-[3.5rem] top-24 z-50 w-[min(16rem,calc(100vw-4rem))] rounded-r-xl border border-slate-700 border-l-0 bg-slate-900 p-3 shadow-2xl"
           onMouseEnter={handleEnter}
         >
           <div className="relative">

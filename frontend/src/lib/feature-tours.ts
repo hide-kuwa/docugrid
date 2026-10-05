@@ -49,6 +49,8 @@ export type FeatureTourDefinition = {
   personaIds?: PersonaId[];
   /** 未読時に自動起動（初回ワークスペースのみ推奨） */
   autoStart?: boolean;
+  /** false ならガイド一覧にも出さない（UI 一時非表示など） */
+  enabled?: boolean;
 };
 
 const STORAGE_PREFIX = "docugrid.tour.";
@@ -120,14 +122,14 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
       },
       {
         title: "上の顧問先ドラム",
-        body: "上の帯で顧問先を切り替えます。ダブルクリックで書類別表示に切り替わる場合もあります。",
+        body: "上の帯は担当分の顧問先です（デモ顧客は出ません）。右上で名前・ID検索。ダブルクリックで書類別表示に切り替わる場合もあります。",
         target: '[data-tour="client-nav"]',
         workspace: "doc",
         helpId: "doc-matrix",
       },
       {
         title: "左の期リスト",
-        body: "左の縦ドラムで 永続 / R8・R7 … など期を選びます。サイドバーをダブルクリックや横スワイプ相当で年↔月を切り替えられることがあります。",
+        body: "左上のラベルは YEAR（年次・R8）と MONTH（月次）が切り替わります。ダブルクリックや横スワイプで入れ替わります。月次は下へスクロールすると前期に入れます。",
         target: '[data-tour="sidebar-drum"]',
         workspace: "doc",
         helpId: "doc-matrix",
@@ -146,6 +148,7 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
     id: "auto_sort",
     label: "自動振り分け",
     summary: "まとめて投入 → 高信頼は自動、低信頼は要確認",
+    enabled: false, // まとめて自動振り分け UI を当面非表示
     permission: "document.upload",
     personaIds: ["firm_director", "firm_staff_main", "firm_staff_support"],
     steps: [
@@ -174,9 +177,9 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
         helpId: "auto-sort",
       },
       {
-        title: "要確認キュー",
-        body: "推定が弱い書類はここに並びます（空のときは細い帯だけ）。正しいスロットを選んで確定。放置すると資料が枠に載らないので、定期的に空にする運用がおすすめです。",
-        target: '[data-tour="pending-review"]',
+        title: "整理トレイ",
+        body: "推定が弱い書類（要確認）と未割当はスロット直上の整理トレイに並びます。提案どおり確定、または枠を検索して振り分け。↑↓と Enter も使えます。",
+        target: '[data-tour="matrix-sort-tray"]',
         fallbackTarget: '[data-tour="doc-matrix"]',
         workspace: "doc",
         helpId: "auto-sort",
@@ -185,15 +188,15 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
   },
   {
     id: "pending_review",
-    label: "要確認キュー",
-    summary: "AI が迷った書類を正しい枠へ確定する",
+    label: "整理トレイ",
+    summary: "要確認・未割当を正しい枠へ確定する",
     permission: "document.upload",
     personaIds: ["firm_director", "firm_staff_main", "firm_staff_support"],
     steps: [
       {
-        title: "要確認キュー",
-        body: "AI の推定が不確かな書類はここに並びます。空の帯のときは待ちゼロです。件があるときは正しいスロットを選んで確定してください。",
-        target: '[data-tour="pending-review"]',
+        title: "整理トレイ",
+        body: "要確認と未割当はスロット直上の整理トレイに出ます。提案どおり、または枠検索で振り分け。件がないときはトレイ自体が隠れます。",
+        target: '[data-tour="matrix-sort-tray"]',
         fallbackTarget: '[data-tour="doc-matrix"]',
         workspace: "doc",
         helpId: "auto-sort",
@@ -203,7 +206,7 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
   {
     id: "karte_hub",
     label: "カルテの見方",
-    summary: "左縦リストでメモ／マスタ／グラフ…を切替",
+    summary: "左縦リストでマスタ（他は工事中）を切替",
     permission: "dashboard.view",
     personaIds: ["firm_director", "firm_staff_main", "firm_staff_support"],
     steps: [
@@ -217,26 +220,26 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
       },
       {
         title: "左のセクション縦リスト",
-        body: "Doc では R8・R7 があった場所に、メモ／マスタ／グラフ／進捗／給与／株評／特殊などが縦に並びます。",
+        body: "Doc では R8・R7 があった場所に、マスタ／メモ／グラフなどが縦に並びます。いま使えるのはマスタのみで、他は工事中です。",
         target: '[data-tour="sidebar-drum"]',
         workspace: "karte",
         helpId: "karte",
       },
       {
-        title: "メモ",
-        body: "打合せ宿題・期末メモ・ずっと残す注意点など。期が必要な区分では、Doc で選んでいる期が初期値になることがあります。",
-        target: '[data-tour="karte-section-karte"]',
-        workspace: "karte",
-        karteSection: "karte",
-        helpId: "karte",
-      },
-      {
-        title: "マスタなど",
-        body: "マスタ・グラフ・給与などは同じ縦リストから切り替えます。内容の詳細はヘルプの各ページを正とします。",
+        title: "マスタ",
+        body: "顧客マスタ・正規化データ。カルテでいま本番利用できるのはこのセクションです。",
         target: '[data-tour="karte-section-master"]',
         workspace: "karte",
         karteSection: "master",
         helpId: "karte-master",
+      },
+      {
+        title: "ほかの項目",
+        body: "メモ・グラフ・給与などは工事中です。開くと準備中の案内だけ出ます。",
+        target: '[data-tour="karte-section-karte"]',
+        workspace: "karte",
+        karteSection: "karte",
+        helpId: "karte",
       },
     ],
   },
@@ -330,8 +333,8 @@ export const FEATURE_TOURS: FeatureTourDefinition[] = [
     id: "tasks_nav",
     label: "今日やること",
     summary: "事務所全体の不足資料・承認待ち",
-    permission: "dashboard.view",
-    personaIds: ["firm_director", "firm_staff_main", "firm_staff_support"],
+    permission: "settings.platform",
+    personaIds: ["firm_director", "firm_staff_main", "firm_staff_support", "platform_admin"],
     steps: [
       {
         title: "タスクボタン",
@@ -430,6 +433,7 @@ export const canUserSeeTour = (
   tour: FeatureTourDefinition,
 ): boolean => {
   if (!user) return false;
+  if (tour.enabled === false) return false;
   if (tour.permission && !hasPermission(user, tour.permission)) return false;
   if (tour.personaIds?.length) {
     const personaId = resolvePersonaId(user);

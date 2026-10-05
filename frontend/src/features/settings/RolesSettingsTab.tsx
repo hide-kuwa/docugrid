@@ -55,8 +55,8 @@ export function RolesSettingsTab({
       ) : (
         <RolePermissionMatrix
           roles={editableRoles}
-          editable
-          onTogglePermission={onTogglePermission}
+          editable={canEditPlatformSettings}
+          onTogglePermission={canEditPlatformSettings ? onTogglePermission : undefined}
         />
       )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

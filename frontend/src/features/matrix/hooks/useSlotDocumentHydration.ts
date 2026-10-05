@@ -101,6 +101,11 @@ export function useSlotDocumentHydration(
                 docugridDocumentId: item.docugrid_document_id ?? undefined,
                 classifyMeta: item.classify_metadata ?? undefined,
                 clientSharedAt: item.client_shared_at ?? null,
+                contentType: item.content_type ?? restored.type,
+                isPdf: item.is_pdf ?? /\.pdf$/i.test(item.original_name || restored.name),
+                isConvertibleImage:
+                  item.is_convertible_image ??
+                  /\.(png|jpe?g|webp|gif)$/i.test(item.original_name || restored.name),
               };
               if (item.deleted_at || isDeletedSlotId(item.slot_id)) {
                 return {

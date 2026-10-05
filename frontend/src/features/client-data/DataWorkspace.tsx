@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Construction } from "lucide-react";
 import type { RelatedDocumentRef } from "@/config/client-field-sources";
 import type { OrgClient } from "@/config/organization";
 import { ClientChartsPanel } from "@/features/client-data/ClientChartsPanel";
@@ -15,7 +16,13 @@ import { ClientKartePanel } from "@/features/client-data/ClientKartePanel";
 import { ClientPayrollPanel } from "@/features/payroll/ClientPayrollPanel";
 import { ClientRelationsPanel } from "@/features/client-data/ClientRelationsPanel";
 import { DataContextGrid } from "@/features/client-data/DataContextGrid";
-import type { DataWorkspaceTabId } from "@/features/client-data/data-workspace-tabs";
+import { KarteSectionWipPanel } from "@/features/client-data/KarteSectionWipPanel";
+import {
+  KARTE_SECTION_TABS,
+  isKarteSectionLive,
+  type DataWorkspaceTab,
+  type DataWorkspaceTabId,
+} from "@/features/client-data/data-workspace-tabs";
 import {
   ssotHasAnyChanges,
   useSsotPropagateReload,
@@ -43,6 +50,15 @@ type Props = {
   onSelectRelatedClient?: (clientId: string) => void;
 };
 
+const FALLBACK_WIP_TAB: DataWorkspaceTab = {
+  id: "karte",
+  label: "セクション",
+  subLabel: "WIP",
+  description: "準備中のセクションです。",
+  icon: Construction,
+  status: "planned",
+};
+
 export function DataWorkspace({
   client: clientFromOrg,
   canEdit,
@@ -58,7 +74,7 @@ export function DataWorkspace({
   hideTabDrum = false,
   onSelectRelatedClient,
 }: Props) {
-  const [uncontrolledTab, setUncontrolledTab] = useState<DataWorkspaceTabId>("karte");
+  const [uncontrolledTab, setUncontrolledTab] = useState<DataWorkspaceTabId>("master");
   const [client, setClient] = useState(clientFromOrg);
   const activeTab = controlledTab ?? uncontrolledTab;
 
@@ -75,7 +91,7 @@ export function DataWorkspace({
   }, [clientFromOrg]);
 
   useEffect(() => {
-    if (controlledTab == null) setUncontrolledTab("karte");
+    if (controlledTab == null) setUncontrolledTab("master");
   }, [client.id, controlledTab]);
 
   const refreshClient = useCallback(async () => {
@@ -85,13 +101,17 @@ export function DataWorkspace({
 
   useSsotPropagateReload(clientFromOrg.id, () => void refreshClient(), ssotHasAnyChanges);
 
+  const showLive = isKarteSectionLive(activeTab);
+  const wipTab = KARTE_SECTION_TABS.find((t) => t.id === activeTab) ?? FALLBACK_WIP_TAB;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {hideTabDrum ? null : (
         <DataContextGrid activeTab={activeTab} onTabChange={setActiveTab} />
       )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {activeTab === "master" ? (
+        {!showLive ? <KarteSectionWipPanel tab={wipTab} /> : null}
+        {showLive && activeTab === "master" ? (
           <ClientDataOverview
             client={client}
             canEdit={canEdit}
@@ -100,21 +120,21 @@ export function DataWorkspace({
             onOpenRelatedDocument={onOpenRelatedDocument}
           />
         ) : null}
-        {activeTab === "relations" ? (
+        {showLive && activeTab === "relations" ? (
           <ClientRelationsPanel
             client={client}
             canEdit={canEdit}
             onFocusClient={onSelectRelatedClient}
           />
         ) : null}
-        {activeTab === "charts" ? (
+        {showLive && activeTab === "charts" ? (
           <ClientChartsPanel
             client={client}
             canEdit={canEdit}
             onOpenMetricVouch={onOpenMetricVouch}
           />
         ) : null}
-        {activeTab === "progress" ? (
+        {showLive && activeTab === "progress" ? (
           <ClientProgressPanel
             client={client}
             canEdit={canEdit}
@@ -122,22 +142,22 @@ export function DataWorkspace({
             docStatusLoading={docStatusLoading}
           />
         ) : null}
-        {activeTab === "payroll" ? (
+        {showLive && activeTab === "payroll" ? (
           <ClientPayrollPanel client={client} canEdit={canEdit} />
         ) : null}
-        {activeTab === "stockValuation" ? (
+        {showLive && activeTab === "stockValuation" ? (
           <ClientStockValuationPanel client={client} canEdit={canEdit} />
         ) : null}
-        {activeTab === "communications" ? (
+        {showLive && activeTab === "communications" ? (
           <ClientCommunicationsPanel client={client} canEdit={canEdit} />
         ) : null}
-        {activeTab === "investigations" ? (
+        {showLive && activeTab === "investigations" ? (
           <ClientInvestigationsPanel client={client} canEdit={canEdit} />
         ) : null}
-        {activeTab === "special" ? (
+        {showLive && activeTab === "special" ? (
           <ClientSpecialNotesPanel client={client} canEdit={canEdit} />
         ) : null}
-        {activeTab === "karte" ? (
+        {showLive && activeTab === "karte" ? (
           <ClientKartePanel
             client={client}
             canEdit={canEdit}

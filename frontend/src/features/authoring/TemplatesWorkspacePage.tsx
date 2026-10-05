@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AuthoringTemplatesPanel } from "@/features/authoring/components/AuthoringTemplatesPanel";
 import { AuthoringWorkspaceChrome } from "@/features/workspace/AuthoringWorkspaceChrome";
 import { checkSession, loadCurrentUser, type DocugridUser } from "@/lib/auth";
+import { canShowPreviewWorkspaceNav } from "@/lib/nav-policy";
 
 export function TemplatesWorkspacePage() {
   const router = useRouter();
@@ -18,7 +19,12 @@ export function TemplatesWorkspacePage() {
         router.replace(session === "offline" ? "/login?reason=offline" : "/login?reason=session");
         return;
       }
-      setUser(loadCurrentUser());
+      const current = loadCurrentUser();
+      if (!canShowPreviewWorkspaceNav(current)) {
+        router.replace("/");
+        return;
+      }
+      setUser(current);
       setReady(true);
     })();
   }, [router]);

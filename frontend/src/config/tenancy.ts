@@ -2,6 +2,7 @@
 export const FIRM_LABELS: Record<string, string> = {
   firm_default: "デフォルト事務所",
   firm_beta: "ベータ事務所",
+  firm_prolext: "PROLEXT税理士法人",
 };
 
 export function firmLabel(firmId: string | undefined | null): string {

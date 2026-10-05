@@ -36,7 +36,7 @@ PDF / 画像アップロード時の脅威と対策、AV スキャン方針。�
 
 ### 保存パス
 
-- `storage_key` はサーバー生成: `{firm_id}/versions/{uuid}.pdf`
+- `storage_key` はサーバー生成: `{firm_id}/versions/{uuid}{ext}`（許可拡張子。従来 PDF は `.pdf`）
 - `resolve_storage_path()` で `..` および storage 外パスを拒否
 
 ### アップロード検証
@@ -44,7 +44,8 @@ PDF / 画像アップロード時の脅威と対策、AV スキャン方針。�
 | チェック | 対象 API |
 |----------|----------|
 | 空ファイル拒否 | スロット・版・分類待ち・キャプチャ |
-| PDF パース（`fitz.open`） | スロット・版・分類待ち |
+| PDF パース（`fitz.open`） | PDF スロット・版・分類待ち |
+| 拡張子ホワイトリスト + マジックバイト | スロット（PDF・画像・Office 等）。`upload_file_kinds.py` |
 | MIME ホワイトリスト | キャプチャ（画像 + PDF） |
 | サイズ上限 | 全 `_read_upload_content()` 経由 |
 

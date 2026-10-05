@@ -19,6 +19,8 @@ import { TaxPaymentCalendarSection } from "@/features/client-data/TaxPaymentCale
 import { ClientCalendarEventsSection } from "@/features/client-data/ClientCalendarEventsSection";
 import { ClientTaxAlertsSection } from "@/features/client-data/ClientTaxAlertsSection";
 import type { ClientRecordItem } from "@/features/client-data/lib/client-records-api";
+import { loadCurrentUser } from "@/lib/auth";
+import { canShowPreviewWorkspaceNav } from "@/lib/nav-policy";
 
 type TaxAlert = {
   id: string;
@@ -255,21 +257,23 @@ export function ClientProgressPanel({
             ) : null}
           </section>
 
-          <section className="rounded-2xl border border-violet-100 bg-violet-50/70 p-5">
-            <h3 className="flex items-center gap-2 text-xs font-bold text-violet-800">
-              <GitBranch className="h-4 w-4" />
-              判定フロー
-            </h3>
-            <p className="mt-2 text-sm text-violet-900">
-              課税事業者判定などのフローチャートは、専用ページに移しました。
-            </p>
-            <Link
-              href="/flowchart"
-              className="mt-3 inline-flex rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white"
-            >
-              判定ページを開く
-            </Link>
-          </section>
+          {canShowPreviewWorkspaceNav(loadCurrentUser()) ? (
+            <section className="rounded-2xl border border-violet-100 bg-violet-50/70 p-5">
+              <h3 className="flex items-center gap-2 text-xs font-bold text-violet-800">
+                <GitBranch className="h-4 w-4" />
+                判定フロー
+              </h3>
+              <p className="mt-2 text-sm text-violet-900">
+                課税事業者判定などのフローチャートは、専用ページに移しました。
+              </p>
+              <Link
+                href="/flowchart"
+                className="mt-3 inline-flex rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white"
+              >
+                判定ページを開く
+              </Link>
+            </section>
+          ) : null}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-700">

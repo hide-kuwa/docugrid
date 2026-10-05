@@ -48,6 +48,19 @@ export type MatrixPeriodContentProps = {
   unassignedDocsView: { docId: string; label: string; fileName: string }[];
   onOpenUnassigned: (docId: string) => void;
   onAssignUnassigned: (docId: string, slotIndex: number) => void;
+  onRelocateDocument?: (
+    sourceSlotIndex: number,
+    target: {
+      slotId: string;
+      slotLabel: string;
+      periodKey?: string;
+      clientId?: string;
+      destinationLabel: string;
+    },
+  ) => void | Promise<void>;
+  onDeleteDocument?: (sourceSlotIndex: number) => void | Promise<void>;
+  relocatePeriodOptions?: { periodKey: string; label: string; isCurrent: boolean }[];
+  relocateClientOptions?: { id: string; name: string; isCurrent: boolean }[];
   onDeleteUnassigned?: (docId: string) => void;
   deletedDocsView?: { docId: string; label: string; fileName: string }[];
   onOpenDeleted?: (docId: string) => void;
@@ -89,6 +102,7 @@ export type MatrixPeriodContentProps = {
   onAssignPackageToSlot: (file: File, slotId: string, label: string) => Promise<void>;
   onPackageNotice: (msg: string | null) => void;
   onAuthoringSave: (file: File, slotIndex: number, slotLabel: string) => Promise<{ persisted: boolean; docId?: string }>;
+  onPeriodChange: (idx: number) => void;
 };
 
 export function MatrixPeriodContent({
@@ -107,6 +121,9 @@ export function MatrixPeriodContent({
   extractionReviewCtx,
   onDismissExtractionReview,
   onExtractionApplied,
+  unassignedDocsView,
+  deletedDocsView,
+  layoutSlotIds,
   ...gridProps
 }: MatrixPeriodContentProps) {
   if (matrixViewMode === "document-client") {
@@ -168,6 +185,9 @@ export function MatrixPeriodContent({
         activePeriodIdx={activePeriodIdx}
         activeMode={activeMode}
         {...gridProps}
+        slotIds={layoutSlotIds}
+        unassignedDocs={unassignedDocsView}
+        deletedDocs={deletedDocsView}
         matrixPeriods={matrixPeriods}
       />
     </>

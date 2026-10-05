@@ -15,6 +15,9 @@ export type DocumentVersionItem = {
   created_by_stakeholder_id: string | null;
   created_by_email: string | null;
   created_at: string;
+  content_type?: string | null;
+  is_pdf?: boolean;
+  is_convertible_image?: boolean;
 };
 
 export type VersionBump = "minor" | "major" | "audit_start";
@@ -43,7 +46,11 @@ export async function fetchDocumentVersionFile(
   });
   if (!res.ok) throw new Error(`fetch-version-file-failed:${res.status}`);
   const blob = await res.blob();
-  return new File([blob], fileName || "document.pdf", { type: "application/pdf" });
+  const { guessSlotMime } = await import("@/features/docugrid/lib/slot-file-kinds");
+  const name = fileName || "document.bin";
+  return new File([blob], name, {
+    type: blob.type || guessSlotMime(name),
+  });
 }
 
 /** 作業保存・監査開始・承認時に immutable 新版 PDF をサーバーへ保存する。 */

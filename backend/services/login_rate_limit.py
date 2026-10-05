@@ -72,3 +72,26 @@ def mcp_token_rate_limit_exceeded(actor_key: str) -> bool:
 
 def reset_mcp_token_rate_limits() -> None:
     _mcp_attempts.clear()
+
+
+_TRANSFER_PUBLIC_WINDOW_SEC = 60
+_TRANSFER_PUBLIC_MAX = 30
+_transfer_public_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def transfer_public_rate_limit_exceeded(client_ip: str) -> bool:
+    """Public handoff code lookup limit (default 30/min per IP)."""
+    if not client_ip:
+        return False
+    now = time.time()
+    bucket = [t for t in _transfer_public_attempts[client_ip] if now - t < _TRANSFER_PUBLIC_WINDOW_SEC]
+    if len(bucket) >= _TRANSFER_PUBLIC_MAX:
+        _transfer_public_attempts[client_ip] = bucket
+        return True
+    bucket.append(now)
+    _transfer_public_attempts[client_ip] = bucket
+    return False
+
+
+def reset_transfer_public_rate_limits() -> None:
+    _transfer_public_attempts.clear()

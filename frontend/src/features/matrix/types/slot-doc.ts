@@ -14,6 +14,9 @@ export type SlotDoc = {
   docugridDocumentId?: string;
   classifyMeta?: ClassifyPersistMetadata;
   clientSharedAt?: string | null;
+  contentType?: string | null;
+  isPdf?: boolean;
+  isConvertibleImage?: boolean;
 };
 
 export type UnassignedSlotDoc = SlotDoc & {

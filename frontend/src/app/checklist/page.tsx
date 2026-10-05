@@ -12,6 +12,7 @@ import { checkSession, loadCurrentUser } from "@/lib/auth";
 import { setClientScope } from "@/lib/api-auth";
 import { canAccessClient, resolveStakeholder } from "@/lib/authorization";
 import { getBusinessHomePath, resolvePersona } from "@/lib/persona";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 const YEAR_PERIODS = CLIENT_PERIOD_OPTIONS.filter((p) => p.key.startsWith("year"));
 
@@ -101,17 +102,15 @@ function ChecklistPageContent() {
             </p>
           </div>
           {scopedClients.length > 1 && (
-            <select
-              className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+            <ClientSearchSelect
+              clients={scopedClients.map(toClientSearchOption)}
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              {scopedClients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setClientId}
+              allowEmpty={false}
+              className="min-w-[10rem]"
+              selectClassName="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+              searchClassName="mb-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
+            />
           )}
           <select
             className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"

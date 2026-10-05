@@ -38,16 +38,21 @@ def persist_pdf_to_slot(
     uploaded_by: str = "migration",
     classify_metadata: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    """Persist allowlisted file (PDF or other) into a matrix slot."""
     if not content:
         raise ValueError("empty content")
-    from api.deps import _validate_pdf_bytes
+    from services.upload_file_kinds import UploadKindError, is_pdf_name, validate_upload_bytes
 
-    page_count = _validate_pdf_bytes(content)
+    safe_name = filename or "document.pdf"
+    try:
+        page_count, _ext = validate_upload_bytes(content, safe_name)
+    except UploadKindError as exc:
+        raise ValueError(str(exc)) from exc
     sha = hashlib.sha256(content).hexdigest()
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     title = slot_label or f"slot-{slot_id}"
     metadata_json: Optional[str] = None
-    if classify_metadata:
+    if classify_metadata and is_pdf_name(safe_name):
         meta_obj = enrich_classify_metadata(
             dict(classify_metadata),
             client_id=client_id,
@@ -68,7 +73,7 @@ def persist_pdf_to_slot(
     version = create_document_version(
         logical_id=logical.id,
         content=content,
-        original_name=filename or "document.pdf",
+        original_name=safe_name,
         content_sha256=sha,
         source="migration_import",
         bump="upload",
@@ -103,7 +108,7 @@ def persist_pdf_to_slot(
         period_key=period_key,
         slot_label=slot_label or title,
         content=content,
-        filename=filename or "document.pdf",
+        filename=safe_name,
         existing_file_id=existing_drive_file_id,
     )
 
@@ -125,7 +130,7 @@ def persist_pdf_to_slot(
                 """,
                 (
                     slot_label or title,
-                    filename or "document.pdf",
+                    safe_name,
                     version.storage_key,
                     page_count,
                     sha,
@@ -156,7 +161,7 @@ def persist_pdf_to_slot(
                     period_key,
                     slot_id,
                     slot_label or title,
-                    filename or "document.pdf",
+                    safe_name,
                     version.storage_key,
                     page_count,
                     sha,

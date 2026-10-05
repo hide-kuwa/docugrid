@@ -10,7 +10,7 @@ export type RelationGraphNode = {
   client: OrgClient;
   x: number;
   y: number;
-  ring: "focus" | "group" | "relative" | "share" | "referral" | "other";
+  ring: "focus" | "group" | "relative" | "share" | "officer" | "referral" | "other";
   w: number;
   h: number;
 };
@@ -45,6 +45,7 @@ export type RelationViewMode =
   | "ownership"
   | "family"
   | "group"
+  | "officer"
   | "referral";
 
 export const RELATION_VIEW_MODES: {
@@ -52,9 +53,10 @@ export const RELATION_VIEW_MODES: {
   label: string;
   hint: string;
 }[] = [
-  { id: "all", label: "全体", hint: "すべて（グループは枠、線は出資・親族・紹介）" },
+  { id: "all", label: "全体", hint: "すべて（グループは枠、線は出資・親族・役員・紹介）" },
   { id: "ownership", label: "出資", hint: "出資関係図のみ" },
   { id: "family", label: "家系", hint: "親族の家系図のみ" },
+  { id: "officer", label: "役員", hint: "社長・役員（誰がどの法人の代表か）のみ" },
   { id: "group", label: "グループ", hint: "同一グループの枠のみ" },
   { id: "referral", label: "紹介", hint: "紹介元・被紹介の線のみ" },
 ];
@@ -69,6 +71,8 @@ export function kindsForViewMode(
       return new Set<ClientRelationKind>(["relative"]);
     case "group":
       return new Set<ClientRelationKind>(["group_company"]);
+    case "officer":
+      return new Set<ClientRelationKind>(["officer"]);
     case "referral":
       return new Set<ClientRelationKind>(["referral"]);
     case "all":
@@ -216,11 +220,13 @@ export function layoutClientRelations(
     const ring: RelationGraphNode["ring"] =
       edge.kind === "referral"
         ? "referral"
-        : edge.kind === "shareholding"
-          ? "share"
-          : edge.kind === "relative"
-            ? "relative"
-            : "group";
+        : edge.kind === "officer"
+          ? "officer"
+          : edge.kind === "shareholding"
+            ? "share"
+            : edge.kind === "relative"
+              ? "relative"
+              : "group";
     // 会社グループ枠メンバーは出資があっても枠内。紹介は外側へ。
     if (groupMemberIds.has(other) && ring !== "referral") {
       continue;
@@ -247,9 +253,9 @@ export function layoutClientRelations(
   const buckets: Record<
     Exclude<RelationGraphNode["ring"], "focus" | "other">,
     string[]
-  > = { group: [], relative: [], share: [], referral: [] };
+  > = { group: [], relative: [], share: [], officer: [], referral: [] };
   for (const [id, ring] of neighborByRing) {
-    if (ring === "group" || ring === "relative" || ring === "share" || ring === "referral") {
+    if (ring !== "focus" && ring !== "other") {
       buckets[ring].push(id);
     }
   }
@@ -339,6 +345,20 @@ export function layoutClientRelations(
     });
   }
 
+  // --- 役員・代表: 右の外側（出資・親族の扇と分離） ---
+  {
+    const pts = placeOnArc(
+      buckets.officer.length,
+      330,
+      -Math.PI * 0.1,
+      Math.PI * 0.2,
+    );
+    buckets.officer.forEach((id, i) => {
+      const pt = pts[i];
+      if (pt) pushNode(id, "officer", pt.x, pt.y);
+    });
+  }
+
   // --- 紹介: 真上・外側（グループ枠・他線と分離） ---
   {
     const pts = placeOnArc(
@@ -416,12 +436,14 @@ function ringPriority(ring: RelationGraphNode["ring"]): number {
   switch (ring) {
     case "referral":
       return 0;
-    case "share":
+    case "officer":
       return 1;
-    case "relative":
+    case "share":
       return 2;
-    case "group":
+    case "relative":
       return 3;
+    case "group":
+      return 4;
     default:
       return 9;
   }
@@ -442,7 +464,21 @@ export function edgeStroke(kind: ClientRelationKind): {
       return { stroke: "#0f766e", width: 4, label: "出資" };
     case "referral":
       return { stroke: "#c2410c", dash: "8 5", width: 3.5, label: "紹介" };
+    case "officer":
+      return { stroke: "#a21caf", width: 3.5, label: "代表" };
     default:
       return { stroke: "#64748b", width: 2.5, label: "" };
   }
+}
+
+/** 線上に出す文字。役員はメモの役職名（代表取締役など）を優先 */
+export function relationEdgeLabel(edge: ClientRelationEdge): string {
+  const style = edgeStroke(edge.kind);
+  if (edge.kind === "officer") {
+    return (edge.note ?? "").trim() || style.label;
+  }
+  if (edge.kind === "shareholding" && edge.percent != null) {
+    return `${style.label} ${edge.percent}%`;
+  }
+  return style.label;
 }

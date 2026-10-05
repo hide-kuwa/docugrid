@@ -3,7 +3,10 @@ import { propagateSlotNormalizeResult } from "@/features/org/org-directory-event
 import type { ClassifyPersistMetadata } from "@/features/docugrid/lib/classify";
 import { hydrateDocugridForSlot } from "@/features/docugrid/lib/hydrate-docugrid-slot";
 import {
+  convertSlotDocumentToPdf,
   detachSlotDocument,
+  downloadSlotDocumentFile,
+  fetchSlotDocumentFile,
   moveSlotDocument,
   persistSlotDocument,
   purgeSlotDocument,
@@ -12,6 +15,7 @@ import {
   softDeleteSlotDocument,
   unshareSlotWithClient,
 } from "@/features/docugrid/lib/slot-documents";
+import { isAllowedSlotFile, isPdfSlotName } from "@/features/docugrid/lib/slot-file-kinds";
 import { useViewerUiStore } from "@/features/pdf-viewer/state/viewer-ui-store";
 import { appendCustomSlot, appendPresetSlots, removeSlotAtIndex, slotIdAtIndex } from "@/lib/slot-layout-ops";
 import { flattenPresetsForPeriod } from "@/lib/slot-layout-presets";
@@ -382,6 +386,7 @@ export function useSlotDocumentMutations(
           classifyMetadata: classifyMeta,
         });
         const n = item.page_count ?? null;
+        const isPdf = item.is_pdf ?? isPdfSlotName(item.original_name || selectedFile.name);
         setSlotDocs((prev) => ({
           ...prev,
           [slotKey]: {
@@ -396,6 +401,9 @@ export function useSlotDocumentMutations(
             workflowStatus: item.workflow_status ?? undefined,
             logicalStatus: item.logical_status ?? undefined,
             classifyMeta: item.classify_metadata ?? classifyMeta,
+            contentType: item.content_type ?? selectedFile.type,
+            isPdf,
+            isConvertibleImage: item.is_convertible_image ?? false,
           },
         }));
         if (replacing) {
@@ -429,15 +437,32 @@ export function useSlotDocumentMutations(
         } else {
           setExtractionReviewCtx(null);
         }
-        if (activate) void activateDoc(selectedFile, n, slotKey);
+        if (activate && isPdf) void activateDoc(selectedFile, n, slotKey);
+        else if (activate && !isPdf) {
+          setSlotNotice(
+            (prev) =>
+              prev ||
+              `「${slotLabel}」に保存しました。ビューワーは PDF のみ。画像は枠を開いて PDF 化できます。`,
+          );
+        }
         setStatusNonce((v) => v + 1);
         return { persisted: true, docId: item.id };
       } catch (error) {
         console.error("Slot persist failed:", error);
+        if (!isAllowedSlotFile(selectedFile) || !isPdfSlotName(selectedFile.name)) {
+          setSlotNotice("サーバーへの保存に失敗しました。");
+          return { persisted: false };
+        }
         const { pageCount: n } = await uploadFile(selectedFile);
         setSlotDocs((prev) => ({
           ...prev,
-          [slotKey]: { file: selectedFile, pageCount: n, persisted: false },
+          [slotKey]: {
+            file: selectedFile,
+            pageCount: n,
+            persisted: false,
+            isPdf: true,
+            isConvertibleImage: false,
+          },
         }));
         if (activate) void activateDoc(selectedFile, n, slotKey);
         return { persisted: false };
@@ -487,7 +512,12 @@ export function useSlotDocumentMutations(
       const targetLabel = slotLabels[slotIndex] ?? `枠 ${slotIndex + 1}`;
       const targetSlotId = slotIdAtIndex(currentSlotLayout, periodKey, slotIndex);
       try {
-        await moveSlotDocument(doc.docId, targetSlotId, targetLabel, clientId);
+        await moveSlotDocument({
+          docId: doc.docId,
+          slotId: targetSlotId,
+          slotLabel: targetLabel,
+          sourceClientId: clientId,
+        });
         setSlotDocs((prev) => ({ ...prev, [targetKey]: { ...doc, persisted: true } }));
         setUnassignedDocs((prev) => {
           const next = { ...prev };
@@ -498,10 +528,112 @@ export function useSlotDocumentMutations(
         setStatusNonce((v) => v + 1);
       } catch (err) {
         console.error("Move unassigned failed:", err);
-        setSlotNotice("資料の移動に失敗しました。");
+        setSlotNotice(
+          err instanceof Error && err.message === "move-slot-occupied"
+            ? "移動先の枠に既に資料があります。"
+            : "資料の移動に失敗しました。",
+        );
       }
     },
     [unassignedDocs, slotKeyFor, slotDocs, slotLabels, currentSlotLayout, periodKey, clientId],
+  );
+
+  const handleRelocateDocument = useCallback(
+    async (
+      sourceSlotIndex: number,
+      target: {
+        slotId: string;
+        slotLabel: string;
+        periodKey?: string;
+        clientId?: string;
+        /** 表示用（通知） */
+        destinationLabel: string;
+      },
+    ) => {
+      if (!canUploadDocument) return;
+      const sourceKey = slotKeyFor(sourceSlotIndex);
+      const doc = slotDocs[sourceKey];
+      if (!doc?.docId || !doc.persisted) {
+        setSlotNotice("サーバーに保存されていない資料は移動できません。");
+        return;
+      }
+
+      const destPeriod = target.periodKey ?? periodKey;
+      const destClient = target.clientId ?? clientId;
+      const sourceSlotId = slotIdAtIndex(currentSlotLayout, periodKey, sourceSlotIndex);
+      const samePlace =
+        destClient === clientId &&
+        destPeriod === periodKey &&
+        target.slotId === sourceSlotId;
+      if (samePlace) return;
+
+      try {
+        await moveSlotDocument({
+          docId: doc.docId,
+          slotId: target.slotId,
+          slotLabel: target.slotLabel,
+          sourceClientId: clientId,
+          periodKey: destPeriod !== periodKey ? destPeriod : undefined,
+          clientId: destClient !== clientId ? destClient : undefined,
+        });
+
+        const leavesCurrentView = destClient !== clientId || destPeriod !== periodKey;
+        if (leavesCurrentView) {
+          setSlotDocs((prev) => {
+            const next = { ...prev };
+            delete next[sourceKey];
+            return next;
+          });
+          if (activeSlotKey === sourceKey) clearActiveViewer();
+        } else {
+          // 同一画面内の枠移動: 行き先キーへ載せ替え
+          const destIndex = slotLabels.findIndex(
+            (_, i) => slotIdAtIndex(currentSlotLayout, periodKey, i) === target.slotId,
+          );
+          const destKey =
+            destIndex >= 0 ? slotKeyFor(destIndex) : sourceKey;
+          setSlotDocs((prev) => {
+            const next = { ...prev };
+            const moved = next[sourceKey];
+            if (!moved) return prev;
+            delete next[sourceKey];
+            next[destKey] = moved;
+            return next;
+          });
+          if (activeSlotKey === sourceKey) {
+            const destIndex2 = slotLabels.findIndex(
+              (_, i) => slotIdAtIndex(currentSlotLayout, periodKey, i) === target.slotId,
+            );
+            if (destIndex2 >= 0) setActiveSlotKey(slotKeyFor(destIndex2));
+          }
+        }
+
+        setSlotNotice(`${target.destinationLabel} へ移しました。`);
+        setStatusNonce((v) => v + 1);
+      } catch (err) {
+        console.error("Relocate document failed:", err);
+        setSlotNotice(
+          err instanceof Error && err.message === "move-slot-occupied"
+            ? "移動先に既に資料があります。先に空にしてください。"
+            : "資料の移動に失敗しました。",
+        );
+      }
+    },
+    [
+      canUploadDocument,
+      slotKeyFor,
+      slotDocs,
+      periodKey,
+      clientId,
+      currentSlotLayout,
+      slotLabels,
+      activeSlotKey,
+      clearActiveViewer,
+      setActiveSlotKey,
+      setSlotDocs,
+      setSlotNotice,
+      setStatusNonce,
+    ],
   );
 
   const onOpenSlot = useCallback(
@@ -509,12 +641,110 @@ export function useSlotDocumentMutations(
       const slotKey = slotKeyFor(slotIndex);
       const doc = slotDocs[slotKey];
       if (!doc) return;
-      if (slotKey !== activeSlotKey) {
-        void activateDoc(doc.file, doc.pageCount, slotKey, doc.docugridDocumentId);
+      const isPdf = doc.isPdf ?? isPdfSlotName(doc.file.name);
+      if (isPdf) {
+        if (slotKey !== activeSlotKey) {
+          void activateDoc(doc.file, doc.pageCount, slotKey, doc.docugridDocumentId);
+        }
+        useViewerUiStore.getState().open(mode, doc.file);
+        return;
       }
-      useViewerUiStore.getState().open(mode, doc.file);
+      if (doc.isConvertibleImage && doc.docId) {
+        void (async () => {
+          try {
+            setSlotNotice("画像を PDF 化しています…");
+            const item = await convertSlotDocumentToPdf(doc.docId!, clientId);
+            const pdfFile = await fetchSlotDocumentFile(item);
+            setSlotDocs((prev) => ({
+              ...prev,
+              [slotKey]: {
+                ...prev[slotKey],
+                file: pdfFile,
+                pageCount: item.page_count,
+                docId: item.id,
+                persisted: true,
+                currentVersionId: item.current_version_id ?? undefined,
+                currentVersionLabel: item.current_version_label ?? undefined,
+                versionCount: item.version_count ?? undefined,
+                contentType: item.content_type ?? "application/pdf",
+                isPdf: true,
+                isConvertibleImage: false,
+              },
+            }));
+            setSlotNotice("PDF 化しました。元の画像は版履歴からダウンロードできます。");
+            void activateDoc(pdfFile, item.page_count, slotKey, item.docugrid_document_id ?? undefined);
+            useViewerUiStore.getState().open(mode, pdfFile);
+            setStatusNonce((v) => v + 1);
+          } catch (err) {
+            console.error("convert-to-pdf failed:", err);
+            setSlotNotice("PDF 化に失敗しました。ダウンロードだけ利用できます。");
+            try {
+              await downloadSlotDocumentFile({
+                id: doc.docId!,
+                client_id: clientId,
+                period_key: periodKey,
+                slot_id: "",
+                slot_label: null,
+                original_name: doc.file.name,
+                page_count: doc.pageCount,
+                content_sha256: "",
+                byte_size: doc.file.size,
+                uploaded_by: null,
+                uploaded_at: "",
+              });
+            } catch {
+              /* ignore */
+            }
+          }
+        })();
+        return;
+      }
+      void (async () => {
+        try {
+          if (!doc.docId) {
+            const url = URL.createObjectURL(doc.file);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = doc.file.name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            return;
+          }
+          await downloadSlotDocumentFile({
+            id: doc.docId,
+            client_id: clientId,
+            period_key: periodKey,
+            slot_id: "",
+            slot_label: null,
+            original_name: doc.file.name,
+            page_count: doc.pageCount,
+            content_sha256: "",
+            byte_size: doc.file.size,
+            uploaded_by: null,
+            uploaded_at: "",
+            content_type: doc.contentType,
+            is_pdf: false,
+          });
+          setSlotNotice(`「${doc.file.name}」をダウンロードしました（ビューワーは PDF のみ）。`);
+        } catch (err) {
+          console.error("download failed:", err);
+          setSlotNotice("ダウンロードに失敗しました。");
+        }
+      })();
     },
-    [slotDocs, activeSlotKey, slotKeyFor, activateDoc],
+    [
+      slotDocs,
+      activeSlotKey,
+      slotKeyFor,
+      activateDoc,
+      clientId,
+      periodKey,
+      setSlotDocs,
+      setSlotNotice,
+      setStatusNonce,
+    ],
   );
 
   const onOpenSlotForAudit = useCallback(
@@ -522,13 +752,18 @@ export function useSlotDocumentMutations(
       const slotKey = slotKeyFor(slotIndex);
       const doc = slotDocs[slotKey];
       if (!doc) return;
+      const isPdf = doc.isPdf ?? isPdfSlotName(doc.file.name);
+      if (!isPdf) {
+        onOpenSlot(slotIndex, "preview");
+        return;
+      }
       if (slotKey !== activeSlotKey) {
         void activateDoc(doc.file, doc.pageCount, slotKey, doc.docugridDocumentId);
       }
       const intent = doc.workflowStatus === "auditing" ? "audit-continue" : "audit-start";
       useViewerUiStore.getState().open("edit", doc.file, intent);
     },
-    [slotDocs, activeSlotKey, slotKeyFor, activateDoc],
+    [slotDocs, activeSlotKey, slotKeyFor, activateDoc, onOpenSlot],
   );
 
 
@@ -547,6 +782,7 @@ export function useSlotDocumentMutations(
     handleOpenUnassigned,
     handleOpenDeleted,
     handleAssignUnassigned,
+    handleRelocateDocument,
     onOpenSlot,
     onOpenSlotForAudit,
   };

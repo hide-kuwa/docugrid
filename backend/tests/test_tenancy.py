@@ -240,6 +240,62 @@ def test_stakeholder_master_rejects_cross_firm_assignment(beta_client_master) ->
     assert "another firm" in r.json()["detail"].lower()
 
 
+def test_client_master_put_adds_new_id_without_mixing_firms(beta_client_master) -> None:
+    """未登録 ID は自事務所の新規顧客として追加でき、他テナントの c1 は触れない。"""
+    create = client.put(
+        "/api/client-master",
+        headers=_beta_admin_headers(),
+        json={
+            "clients": [
+                {
+                    "id": "c_beta_1",
+                    "name": "Firm Beta Client",
+                    "fiscalMonth": 3,
+                    "category": "corporate",
+                    "tags": [],
+                    "firmId": FIRM_BETA_ID,
+                },
+                {
+                    "id": "c_beta_new",
+                    "name": "Beta New Client",
+                    "fiscalMonth": 12,
+                    "category": "corporate",
+                    "tags": ["import"],
+                    "firmId": FIRM_BETA_ID,
+                },
+            ],
+            "groups": [],
+        },
+    )
+    assert create.status_code == 200, create.text
+    beta_ids = {c["id"] for c in create.json()["clients"]}
+    assert beta_ids == {"c_beta_1", "c_beta_new"}
+    assert all(c.get("firmId") == FIRM_BETA_ID for c in create.json()["clients"])
+
+    default_ids = {c["id"] for c in client.get("/api/client-master", headers=_admin_headers()).json()["clients"]}
+    assert "c1" in default_ids
+    assert "c_beta_new" not in default_ids
+    assert "c_beta_1" not in default_ids
+
+    hijack = client.put(
+        "/api/client-master",
+        headers=_beta_admin_headers(),
+        json={
+            "clients": [
+                {
+                    "id": "c1",
+                    "name": "Stolen",
+                    "fiscalMonth": 3,
+                    "category": "corporate",
+                    "firmId": FIRM_BETA_ID,
+                }
+            ],
+            "groups": [],
+        },
+    )
+    assert hijack.status_code == 400
+
+
 def test_approver_pdf_thumbnails_without_client_header() -> None:
     """所長（approver）は顧問先ヘッダーなしでも PDF プレビュー API を呼べる。"""
     headers = {

@@ -35,7 +35,16 @@ async def upsert_slot_document(
     else:
         role = _require_client_permission(request, "document.upload", client_id)
     content = await _read_upload_content(file)
-    page_count = _validate_pdf_bytes(content)
+    from services.upload_file_kinds import UploadKindError, is_pdf_name, validate_upload_bytes
+
+    original_name = file.filename or "document.pdf"
+    if is_spi and not is_pdf_name(original_name):
+        raise HTTPException(status_code=400, detail="特定個人情報は PDF のみアップロードできます")
+    try:
+        page_count, _ext = validate_upload_bytes(content, original_name)
+    except UploadKindError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    is_pdf_upload = is_pdf_name(original_name)
     sha = hashlib.sha256(content).hexdigest()
     identity = resolve_identity(request)
     uploaded_by = identity.stakeholder_id or identity.email or ""
@@ -52,7 +61,7 @@ async def upsert_slot_document(
         spi_retention_until = default_retention_until()
 
     metadata_json: Optional[str] = None
-    if classify_metadata:
+    if classify_metadata and is_pdf_upload:
         try:
             meta_obj = json.loads(classify_metadata)
             meta_obj = enrich_classify_metadata(
@@ -77,7 +86,7 @@ async def upsert_slot_document(
     version = create_document_version(
         logical_id=logical.id,
         content=content,
-        original_name=file.filename or "document.pdf",
+        original_name=original_name,
         content_sha256=sha,
         source="client_upload",
         bump="upload",
@@ -113,7 +122,7 @@ async def upsert_slot_document(
             period_key=period_key,
             slot_label=slot_label or title,
             content=content,
-            filename=file.filename or "document.pdf",
+            filename=original_name,
             existing_file_id=existing_drive_file_id,
         )
     spi_flag = "1" if is_spi else "0"
@@ -137,7 +146,7 @@ async def upsert_slot_document(
                 """,
                 (
                     slot_label,
-                    file.filename or "document.pdf",
+                    original_name,
                     version.storage_key,
                     page_count,
                     sha,
@@ -172,7 +181,7 @@ async def upsert_slot_document(
                     period_key,
                     slot_id,
                     slot_label,
-                    file.filename or "document.pdf",
+                    original_name,
                     version.storage_key,
                     page_count,
                     sha,
@@ -206,7 +215,7 @@ async def upsert_slot_document(
         content_sha256=sha,
         version_label=version.version_label,
         status="draft",
-        action_title=f"アップロード: {file.filename or 'document.pdf'}",
+        action_title=f"アップロード: {original_name}",
         actor_stakeholder_id=identity.stakeholder_id or None,
         actor_email=identity.email or None,
         actor_role=role,
@@ -230,14 +239,33 @@ async def upsert_slot_document(
             document_version_id=version.id,
             detail=f"doc_id={doc_id}; auto_share=1",
         )
-    defer_normalize = (not is_spi) and async_classify is not None and async_classify.strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    defer_normalize = (
+        is_pdf_upload
+        and (not is_spi)
+        and async_classify is not None
+        and async_classify.strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
     )
-    if is_spi:
-        # 特定個人情報は AI 分類・OCR 外部送信の対象外
+    if is_pdf_upload and not is_spi:
+        # I2: index extractable PDF text immediately (OCR path also re-ingests later).
+        from services.slot_rag_ingest import maybe_ingest_pdf_bytes_for_rag
+
+        maybe_ingest_pdf_bytes_for_rag(
+            firm_id=client_firm,
+            client_id=client_id,
+            document_version_id=version.id,
+            content_sha256=sha,
+            content=content,
+            logical_document_id=logical.id,
+            skip=False,
+        )
+
+    if is_spi or not is_pdf_upload:
+        # 特定個人情報 / 非 PDF は AI 分類・OCR の対象外
         pass
     elif defer_normalize:
         job = create_ocr_job(
@@ -360,6 +388,10 @@ async def get_slot_document_file(request: Request, doc_id: str):
     row_firm = row["firm_id"] if "firm_id" in row.keys() and row["firm_id"] else None
     if row_firm:
         authorize_firm_resource(ctx, str(row_firm))
+    from services.upload_file_kinds import content_disposition_for, guess_media_type
+
+    media_type = guess_media_type(row["original_name"], storage_key=row["storage_key"])
+    disposition = content_disposition_for(row["original_name"])
     if is_spi:
         try:
             plain = read_decrypted_by_storage_key(row["storage_key"])
@@ -373,8 +405,8 @@ async def get_slot_document_file(request: Request, doc_id: str):
         )
         return Response(
             content=plain,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{row["original_name"]}"'},
+            media_type=media_type,
+            headers={"Content-Disposition": disposition},
         )
     path = resolve_storage_path(row["storage_key"])
     if not path.exists():
@@ -392,14 +424,156 @@ async def get_slot_document_file(request: Request, doc_id: str):
                     )
                     return Response(
                         content=remote,
-                        media_type="application/pdf",
-                        headers={
-                            "Content-Disposition": f'inline; filename="{row["original_name"]}"',
-                        },
+                        media_type=media_type,
+                        headers={"Content-Disposition": disposition},
                     )
         raise HTTPException(status_code=404, detail="File missing")
     _log_audit_event(request, "slot.download", "success", f"id={doc_id} client={row['client_id']}")
-    return FileResponse(str(path), media_type="application/pdf", filename=row["original_name"])
+    from services.upload_file_kinds import is_pdf_name
+
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=row["original_name"],
+        content_disposition_type="inline" if is_pdf_name(row["original_name"]) else "attachment",
+    )
+
+
+@router.post("/api/slots/{doc_id}/convert-to-pdf", response_model=SlotDocumentItem)
+async def convert_slot_document_to_pdf(request: Request, doc_id: str):
+    """画像スロットを PDF 新版にして閲覧可能にする（元ファイルは版履歴に残る）。"""
+    role = _require_permission(request, "document.upload")
+    _init_slot_documents_db()
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    _require_client_access(request, role, row["client_id"], required_permission="document.upload")
+    _deny_soft_deleted_row_unless_purge(request, row)
+    ctx = _auth_context(request)
+    row_firm = row["firm_id"] if "firm_id" in row.keys() and row["firm_id"] else None
+    if row_firm:
+        authorize_firm_resource(ctx, str(row_firm))
+    from services.upload_file_kinds import (
+        guess_media_type,
+        is_convertible_image_name,
+        is_pdf_name,
+    )
+
+    if is_pdf_name(row["original_name"]):
+        raise HTTPException(status_code=400, detail="Already a PDF")
+    if not is_convertible_image_name(row["original_name"]):
+        raise HTTPException(status_code=400, detail="Only images can be converted to PDF")
+    if row["contains_individual_number"] if "contains_individual_number" in row.keys() else None:
+        if str(row["contains_individual_number"]).strip().lower() in ("1", "true", "yes"):
+            raise HTTPException(status_code=400, detail="SPI documents cannot use this convert path")
+
+    path = resolve_storage_path(row["storage_key"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File missing")
+    content = path.read_bytes()
+    mime = guess_media_type(row["original_name"], storage_key=row["storage_key"])
+    from services.capture_routing import capture_bytes_as_pdf
+
+    try:
+        pdf_bytes, pdf_name = capture_bytes_as_pdf(content, mime, row["original_name"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    page_count = _validate_pdf_bytes(pdf_bytes)
+    sha = hashlib.sha256(pdf_bytes).hexdigest()
+    identity = resolve_identity(request)
+    uploaded_by = identity.stakeholder_id or identity.email or ""
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    logical_id = row["logical_document_id"] if "logical_document_id" in row.keys() else None
+    if not logical_id:
+        raise HTTPException(status_code=400, detail="Missing logical document")
+    parent_id = row["current_version_id"] if "current_version_id" in row.keys() else None
+    set_logical_status(logical_id, "processing")
+    version = create_document_version(
+        logical_id=logical_id,
+        content=pdf_bytes,
+        original_name=pdf_name,
+        content_sha256=sha,
+        source="image_convert",
+        bump="upload",
+        parent_version_id=parent_id,
+        created_by_stakeholder_id=identity.stakeholder_id,
+        created_by_email=identity.email,
+        page_count=page_count,
+    )
+    client_firm = get_client_firm_id(row["client_id"])
+    drive_cfg = _load_system_config(client_firm)
+    existing_drive = row["google_drive_file_id"] if "google_drive_file_id" in row.keys() else None
+    drive_file_id = maybe_upload_slot_to_drive(
+        firm_id=client_firm,
+        drive_connected=drive_cfg.google_drive_connected,
+        drive_root_folder_id=drive_cfg.drive_root_folder_id,
+        client_id=row["client_id"],
+        period_key=row["period_key"],
+        slot_label=row["slot_label"] or row["slot_id"],
+        content=pdf_bytes,
+        filename=pdf_name,
+        existing_file_id=existing_drive,
+    )
+    with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            UPDATE slot_documents SET
+                original_name=?, storage_key=?,
+                page_count=?, content_sha256=?, byte_size=?, uploaded_by=?, uploaded_at=?,
+                current_version_id=?, google_drive_file_id=COALESCE(?, google_drive_file_id)
+            WHERE id=?
+            """,
+            (
+                pdf_name,
+                version.storage_key,
+                page_count,
+                sha,
+                len(pdf_bytes),
+                uploaded_by,
+                now,
+                version.id,
+                drive_file_id,
+                doc_id,
+            ),
+        )
+        updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+    _log_audit_event(
+        request,
+        "slot.convert_to_pdf",
+        "success",
+        f"id={doc_id} client={row['client_id']} ver={version.version_label}",
+    )
+    _append_review_event(
+        client_id=row["client_id"],
+        period_key=row["period_key"],
+        slot_id=row["slot_id"],
+        event_type="upload",
+        content_sha256=sha,
+        version_label=version.version_label,
+        status="draft",
+        action_title=f"画像を PDF 化: {pdf_name}",
+        actor_stakeholder_id=identity.stakeholder_id or None,
+        actor_email=identity.email or None,
+        actor_role=role,
+        is_major=False,
+        logical_document_id=logical_id,
+        document_version_id=version.id,
+    )
+    from services.slot_rag_ingest import maybe_ingest_pdf_bytes_for_rag
+
+    maybe_ingest_pdf_bytes_for_rag(
+        firm_id=client_firm,
+        client_id=row["client_id"],
+        document_version_id=version.id,
+        content_sha256=sha,
+        content=pdf_bytes,
+        logical_document_id=logical_id,
+    )
+    return _enrich_slot_item(updated)
 
 
 @router.delete("/api/slots/{doc_id}")
@@ -707,44 +881,155 @@ async def unshare_slot_with_client(request: Request, doc_id: str):
 
 @router.patch("/api/slots/{doc_id}")
 async def move_slot_document(request: Request, doc_id: str):
+    """資料を別枠／別期／別顧問先へ移す。
+
+    body:
+      - slot_id (任意・省略時は現状維持)
+      - slot_label (任意)
+      - period_key (任意)
+      - client_id (任意・行き先顧問先)
+    """
     role = _require_permission(request, "document.upload")
     body = await request.json()
-    slot_id = str(body.get("slot_id") or "").strip()
+    target_slot_id = str(body.get("slot_id") or "").strip() or None
     slot_label = str(body.get("slot_label") or "").strip() or None
-    if not slot_id:
-        raise HTTPException(status_code=400, detail="slot_id required")
+    target_period_key = str(body.get("period_key") or "").strip() or None
+    target_client_id = str(body.get("client_id") or "").strip() or None
+
     _init_slot_documents_db()
     with sqlite3.connect(SLOT_DOCS_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
-        _require_client_access(request, role, row["client_id"], required_permission="document.upload")
+
+        src_client = row["client_id"]
+        src_period = row["period_key"]
+        src_slot = row["slot_id"]
+        _require_client_access(request, role, src_client, required_permission="document.upload")
+
+        dst_client = target_client_id or src_client
+        dst_period = target_period_key or src_period
+        dst_slot = target_slot_id or src_slot
+        if not dst_slot:
+            raise HTTPException(status_code=400, detail="slot_id required")
+
+        if dst_client != src_client:
+            _require_client_access(
+                request, role, dst_client, required_permission="document.upload"
+            )
+            src_firm = get_client_firm_id(src_client)
+            dst_firm = get_client_firm_id(dst_client)
+            if src_firm and dst_firm and src_firm != dst_firm:
+                raise HTTPException(status_code=403, detail="Cross-firm move not allowed")
+
+        if (
+            dst_client == src_client
+            and dst_period == src_period
+            and dst_slot == src_slot
+            and slot_label is None
+        ):
+            return _enrich_slot_item(row)
+
         conflict = conn.execute(
             """
             SELECT id FROM slot_documents
             WHERE client_id=? AND period_key=? AND slot_id=? AND id<>?
             """,
-            (row["client_id"], row["period_key"], slot_id, doc_id),
+            (dst_client, dst_period, dst_slot, doc_id),
         ).fetchone()
         if conflict:
             raise HTTPException(status_code=409, detail="Slot already occupied")
+
+        logical_id = (
+            row["logical_document_id"] if "logical_document_id" in row.keys() else None
+        )
+        dst_firm = get_client_firm_id(dst_client)
+        new_label = slot_label if slot_label is not None else row["slot_label"]
+
+        if logical_id:
+            try:
+                from services.document_version_service import relocate_logical_document
+
+                relocate_logical_document(
+                    logical_id=logical_id,
+                    client_id=dst_client,
+                    period_key=dst_period,
+                    slot_id=dst_slot,
+                    title=new_label,
+                )
+            except ValueError as exc:
+                code = str(exc)
+                if code == "target_occupied":
+                    raise HTTPException(
+                        status_code=409, detail="Destination logical document occupied"
+                    )
+                if code == "logical_not_found":
+                    logical_id = None
+                else:
+                    raise
+
+        # OCR 下書きも座標を追従（失敗しても移動自体は続行）
+        try:
+            from services.extraction_draft_service import (
+                get_extraction_draft,
+                save_extraction_draft,
+                clear_extraction_draft,
+            )
+
+            firm_for_draft = (
+                row["firm_id"]
+                if "firm_id" in row.keys() and row["firm_id"]
+                else get_client_firm_id(src_client)
+            )
+            if firm_for_draft and (
+                dst_client != src_client
+                or dst_period != src_period
+                or dst_slot != src_slot
+            ):
+                draft = get_extraction_draft(
+                    firm_id=firm_for_draft,
+                    client_id=src_client,
+                    period_key=src_period,
+                    slot_id=src_slot,
+                )
+                if draft and draft.get("edited_ids"):
+                    save_extraction_draft(
+                        firm_id=dst_firm or firm_for_draft,
+                        client_id=dst_client,
+                        period_key=dst_period,
+                        slot_id=dst_slot,
+                        fields=draft.get("fields") or {},
+                        edited_ids=draft.get("edited_ids") or [],
+                    )
+                    clear_extraction_draft(
+                        firm_id=firm_for_draft,
+                        client_id=src_client,
+                        period_key=src_period,
+                        slot_id=src_slot,
+                    )
+        except Exception:
+            pass
+
         conn.execute(
             """
             UPDATE slot_documents
-            SET slot_id=?, slot_label=COALESCE(?, slot_label)
+            SET client_id=?, period_key=?, slot_id=?,
+                slot_label=COALESCE(?, slot_label),
+                firm_id=COALESCE(?, firm_id)
             WHERE id=?
             """,
-            (slot_id, slot_label, doc_id),
+            (dst_client, dst_period, dst_slot, slot_label, dst_firm, doc_id),
         )
         updated = conn.execute("SELECT * FROM slot_documents WHERE id=?", (doc_id,)).fetchone()
+
     _log_audit_event(
         request,
         "slot.move",
         "success",
-        f"id={doc_id} client={row['client_id']} slot={slot_id}",
+        f"id={doc_id} {src_client}/{src_period}/{src_slot} -> {dst_client}/{dst_period}/{dst_slot}",
     )
-    return dict(updated)
+    return _enrich_slot_item(updated)
 
 
 def _update_slot_current_version(
@@ -860,6 +1145,10 @@ async def get_document_version_file(request: Request, version_id: str):
     vfirm = resolve_version_firm_id(version_id)
     if vfirm:
         authorize_firm_resource(_auth_context(request), vfirm)
+    from services.upload_file_kinds import content_disposition_for, guess_media_type
+
+    media_type = guess_media_type(version.original_name, storage_key=version.storage_key)
+    disposition = content_disposition_for(version.original_name)
     if is_spi_storage_key(version.storage_key):
         try:
             plain = read_decrypted_by_storage_key(version.storage_key)
@@ -868,14 +1157,21 @@ async def get_document_version_file(request: Request, version_id: str):
         _log_audit_event(request, "version.download", "success", f"version={version_id} spi=1")
         return Response(
             content=plain,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{version.original_name}"'},
+            media_type=media_type,
+            headers={"Content-Disposition": disposition},
         )
     path = version_file_path(version)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing")
     _log_audit_event(request, "version.download", "success", f"version={version_id}")
-    return FileResponse(str(path), media_type="application/pdf", filename=version.original_name)
+    from services.upload_file_kinds import is_pdf_name as _is_pdf_name
+
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=version.original_name,
+        content_disposition_type="inline" if _is_pdf_name(version.original_name) else "attachment",
+    )
 
 
 @router.delete("/api/document-versions/{version_id}")

@@ -57,10 +57,33 @@ export type DocugridUser = {
   firmId?: string;
   firmLabel?: string;
   visibleClientIds?: string[];
+  /** 担当割当のみ（事務所管理者でも全顧客には広げない） */
+  assignedClientIds?: string[];
   permissions?: AppPermission[];
   personaId?: PersonaId;
   personaLabel?: string;
 };
+
+export type MeResponse = {
+  email: string;
+  role: string;
+  stakeholder_id: string;
+  firm_id?: string;
+  firm_label?: string;
+  display_name?: string;
+  persona_id?: string;
+  persona_label?: string;
+  visible_client_ids?: string[];
+  assigned_client_ids?: string[];
+  permissions?: string[];
+};
+
+function displayNameFromMe(me: MeResponse, fallbackEmail: string): string {
+  const fromMe = (me.display_name || "").trim();
+  if (fromMe) return fromMe;
+  const local = (fallbackEmail || me.email || "").split("@")[0];
+  return local || me.email || "ユーザー";
+}
 
 export const saveCurrentUser = (user: DocugridUser): void => {
   if (typeof window === "undefined") return;
@@ -84,6 +107,9 @@ export const loadCurrentUser = (): DocugridUser | null => {
       visibleClientIds: Array.isArray(parsed.visibleClientIds)
         ? parsed.visibleClientIds
         : undefined,
+      assignedClientIds: Array.isArray(parsed.assignedClientIds)
+        ? parsed.assignedClientIds
+        : undefined,
       permissions: Array.isArray(parsed.permissions)
         ? (parsed.permissions as AppPermission[])
         : undefined,
@@ -95,29 +121,22 @@ export const loadCurrentUser = (): DocugridUser | null => {
   }
 };
 
-export type MeResponse = {
-  email: string;
-  role: string;
-  stakeholder_id: string;
-  firm_id?: string;
-  firm_label?: string;
-  persona_id?: string;
-  persona_label?: string;
-  visible_client_ids?: string[];
-  permissions?: string[];
-};
-
 function applyMeToUser(user: DocugridUser | null, me: MeResponse): DocugridUser {
   const base = user ?? { email: me.email, name: me.email.split("@")[0] || me.email };
   return {
     ...base,
     email: me.email || base.email,
+    name: displayNameFromMe(me, me.email || base.email) || base.name,
+    stakeholderId: me.stakeholder_id || base.stakeholderId,
     appRoleId: (me.role as AppRoleId) || base.appRoleId,
     firmId: me.firm_id || base.firmId,
     firmLabel: me.firm_label || firmLabel(me.firm_id) || base.firmLabel,
     visibleClientIds: Array.isArray(me.visible_client_ids)
       ? me.visible_client_ids
       : base.visibleClientIds,
+    assignedClientIds: Array.isArray(me.assigned_client_ids)
+      ? me.assigned_client_ids
+      : base.assignedClientIds,
     permissions: Array.isArray(me.permissions)
       ? (me.permissions as AppPermission[])
       : base.permissions,

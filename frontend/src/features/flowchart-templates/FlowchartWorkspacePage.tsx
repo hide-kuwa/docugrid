@@ -9,6 +9,8 @@ import { AuthoringWorkspaceChrome } from "@/features/workspace/AuthoringWorkspac
 import { setClientScope } from "@/lib/api-auth";
 import { checkSession, loadCurrentUser, type DocugridUser } from "@/lib/auth";
 import { canAccessClient, hasPermission, resolveStakeholder } from "@/lib/authorization";
+import { canShowPreviewWorkspaceNav } from "@/lib/nav-policy";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 export function FlowchartWorkspacePage() {
   const router = useRouter();
@@ -31,7 +33,12 @@ export function FlowchartWorkspacePage() {
         router.replace(session === "offline" ? "/login?reason=offline" : "/login?reason=session");
         return;
       }
-      setUser(loadCurrentUser());
+      const current = loadCurrentUser();
+      if (!canShowPreviewWorkspaceNav(current)) {
+        router.replace("/");
+        return;
+      }
+      setUser(current);
       setReady(true);
     })();
   }, [router]);
@@ -77,17 +84,15 @@ export function FlowchartWorkspacePage() {
         {mode === "run" ? (
           <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
             顧問先
-            <select
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800"
+            <ClientSearchSelect
+              clients={scopedClients.map(toClientSearchOption)}
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              {scopedClients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setClientId}
+              allowEmpty={false}
+              className="min-w-[12rem]"
+              selectClassName="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800"
+              searchClassName="mb-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+            />
           </label>
         ) : null}
       </div>

@@ -90,41 +90,47 @@ export function useSlotClassify({
       if (!canUploadDocument) return;
       const selectedFile = acceptedFiles[0];
       if (!selectedFile) return;
-      const isPdf =
-        selectedFile.type === "application/pdf" || /\.pdf$/i.test(selectedFile.name);
-      if (!isPdf) {
-        alert("この画面のプレビューはPDFのみ対応しています。PDFをアップロードしてください。");
+      const { isAllowedSlotFile, isPdfSlotName } = await import(
+        "@/features/docugrid/lib/slot-file-kinds"
+      );
+      if (!isAllowedSlotFile(selectedFile)) {
+        alert("この形式は保存できません（PDF・画像・Office 等のみ）。");
         return;
       }
       if (!currentClientId || currentClientId === "unknown") {
         alert("顧客が選択されていません。");
         return;
       }
+      const isPdf = isPdfSlotName(selectedFile.name) || selectedFile.type === "application/pdf";
       setUploadStatus("uploading");
       setIsLoading(true);
       try {
         let classifyMeta: ClassifyPersistMetadata | undefined;
-        try {
-          const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
-          const result = await classifyDocument(selectedFile, candidates, currentClientId, {
-            periodKey,
-            slotId: slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
-          });
-          classifyMeta = toClassifyPersistMetadata(result);
-        } catch {
-          /* 分類失敗時もスロット保存は続行 */
+        if (isPdf) {
+          try {
+            const candidates = classifyCandidates(periodKey, slotLabels, layoutSlotIds);
+            const result = await classifyDocument(selectedFile, candidates, currentClientId, {
+              periodKey,
+              slotId: slotIdAtIndex(currentSlotLayout, periodKey, slotIndex),
+            });
+            classifyMeta = toClassifyPersistMetadata(result);
+          } catch {
+            /* 分類失敗時もスロット保存は続行 */
+          }
         }
         const { persisted } = await persistFileToSlot(
           selectedFile,
           slotIndex,
           slotLabel,
-          true,
+          isPdf,
           classifyMeta,
         );
         setUploadStatus(persisted ? "success" : "error");
         setSlotNotice(
           persisted
-            ? `「${slotLabel}」に保存しました（サーバー保存済み）。`
+            ? isPdf
+              ? `「${slotLabel}」に保存しました（サーバー保存済み）。`
+              : `「${slotLabel}」に保存しました。ビューワーは PDF のみ（画像は枠クリックで PDF 化）。`
             : `「${slotLabel}」に取り込みました（サーバー保存に失敗・リロードで消えます）。`,
         );
         if (!persisted) {

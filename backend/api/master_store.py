@@ -167,7 +167,9 @@ def _mask_system_config_for_role(payload: SystemConfigPayload, role: str) -> Sys
     )
 
 
-_RELATION_KINDS = frozenset({"group_company", "relative", "shareholding", "referral"})
+_RELATION_KINDS = frozenset(
+    {"group_company", "relative", "shareholding", "referral", "officer"}
+)
 
 
 def _default_client_relations() -> list[ClientMasterRelation]:

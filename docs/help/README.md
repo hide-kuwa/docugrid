@@ -47,6 +47,8 @@
 | [overview.md](./overview.md) | DocuGrid でできること・画面の全体像 | draft |
 | [workspace.md](./workspace.md) | レール（Doc / PDF / DM / Tax / カルテ） | draft |
 | [doc-matrix.md](./doc-matrix.md) | 資料マトリクス・期（R8 など）・スロット | draft |
+| [slot-attachments.md](./slot-attachments.md) | PDF以外の保存・DL・画像の手動PDF化 | draft |
+| [work-assistant.md](./work-assistant.md) | Doc／設定 右下 DocuGrid AI（充足・OCR確認・資料検索・ヘルプ） | draft |
 | [authoring.md](./authoring.md) | 文書ひな形（レール「ひな形」） | draft |
 | [flowchart-templates.md](./flowchart-templates.md) | 判定フロー（レール「判定」・ノーコード） | draft |
 | [crm-perm.md](./crm-perm.md) | 永続の保有／提案／案件（CRM 入口） | stub |
@@ -60,6 +62,7 @@
 | [karte-special.md](./karte-special.md) | カルテ · 特殊 | draft |
 | [pdf.md](./pdf.md) | PDF 編集・並べ替え・ダウンロード | draft |
 | [guest-pdf.md](./guest-pdf.md) | ログイン不要の `/pdf` | draft |
+| [mobile.md](./mobile.md) | スマホ・タブレット（閲覧・簡易UP・ゲスト） | draft |
 | [auto-sort.md](./auto-sort.md) | 自動振り分け・要確認キュー | draft |
 | [audit-flow.md](./audit-flow.md) | 監査フロー（保存〜承認） | draft |
 | [tax-progress.md](./tax-progress.md) | Tax レール（税務進捗） | draft |
@@ -68,6 +71,7 @@
 | [my-number.md](./my-number.md) | マイナンバー関連書類（SPI） | draft |
 | [go-live.md](./go-live.md) | 本格稼働の最初の2歩（CSV + Drive） | draft |
 | [client-csv.md](./client-csv.md) | 顧客一覧 CSV 取込 | draft |
+| [client-transfer.md](./client-transfer.md) | 顧問先移管コード | draft |
 | [google-drive.md](./google-drive.md) | Google Drive 連携（管理者） | draft |
 | [support.md](./support.md) | 困ったとき・CS（メール→電話） | draft |
 | [support-ops.md](./support-ops.md) | CS 運用・電話ポリシー・指標 | draft |

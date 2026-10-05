@@ -381,16 +381,19 @@ export function GuestPdfWorkspace() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-50 via-white to-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+    <div className="flex min-h-dvh flex-col bg-gradient-to-b from-slate-50 via-white to-slate-100 pb-[env(safe-area-inset-bottom)]">
+      <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-3 py-2.5 backdrop-blur pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:py-3">
         <DocuGridLogo size="sm" />
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/welcome" className="rounded-lg px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-100">
-            DocuGrid について
+        <div className="flex items-center gap-1.5 text-sm sm:gap-2">
+          <Link
+            href="/welcome"
+            className="hidden rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100 min-[380px]:inline-flex"
+          >
+            について
           </Link>
           <Link
             href="/login"
-            className="rounded-lg bg-teal-600 px-3 py-1.5 font-bold text-white hover:bg-teal-500"
+            className="inline-flex min-h-10 items-center rounded-lg bg-teal-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-teal-500 sm:text-sm"
           >
             ログイン
           </Link>
@@ -398,7 +401,7 @@ export function GuestPdfWorkspace() {
       </header>
 
       <div
-        className={`flex flex-1 flex-col items-center justify-center px-4 py-16 transition-colors ${
+        className={`flex flex-1 flex-col items-center justify-center px-4 py-10 transition-colors sm:py-16 ${
           dragOver ? "bg-teal-50/80" : ""
         }`}
         onDragEnter={(e) => {
@@ -431,26 +434,30 @@ export function GuestPdfWorkspace() {
         />
 
         <div className="w-full max-w-xl text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-600">無料・ログイン不要</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">PDF を開く</h1>
-          <p className="mt-3 text-sm text-slate-500 sm:text-base">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-teal-600 sm:text-[11px]">
+            無料・ログイン不要
+          </p>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-4xl">
+            PDF を開く
+          </h1>
+          <p className="mt-2 text-sm text-slate-500 sm:mt-3 sm:text-base">
             注釈・並べ替え・ダウンロード。端末上だけで編集できます。
           </p>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-8 flex w-full flex-col items-stretch gap-2.5 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-3">
             {file && !viewerOpen ? (
               <>
                 <button
                   type="button"
                   onClick={resumeDraft}
-                  className="inline-flex min-w-[12rem] items-center justify-center gap-2 rounded-xl bg-teal-600 px-8 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700"
+                  className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-600 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700 sm:w-auto sm:min-w-[12rem]"
                 >
                   作業中の PDF を続ける
                 </button>
                 <button
                   type="button"
                   onClick={discardDraft}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 sm:w-auto"
                 >
                   破棄して選び直す
                 </button>
@@ -460,7 +467,7 @@ export function GuestPdfWorkspace() {
                 type="button"
                 disabled={isLoading}
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex min-w-[12rem] items-center justify-center gap-2 rounded-xl bg-teal-600 px-8 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-60"
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-600 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-60 sm:w-auto sm:min-w-[12rem]"
               >
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 PDFファイルを選択
@@ -469,13 +476,16 @@ export function GuestPdfWorkspace() {
           </div>
 
           {file && !viewerOpen ? (
-            <p className="mt-3 text-xs font-medium text-slate-500">
+            <p className="mt-3 truncate px-2 text-xs font-medium text-slate-500">
               下書き: {file.name}
             </p>
           ) : null}
 
-          <p className="mt-5 text-sm text-slate-400">
+          <p className="mt-5 hidden text-sm text-slate-400 md:block">
             {dragOver ? "ここにドロップして開く" : "または、ここに PDF をドロップしてください"}
+          </p>
+          <p className="mt-4 text-xs text-slate-400 md:hidden">
+            Files / 写真アプリから PDF を選べます
           </p>
 
           {error ? (

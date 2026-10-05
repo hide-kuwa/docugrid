@@ -28,9 +28,11 @@ from api.routers.dm_inbox import router as dm_inbox_router
 from api.routers.public_messaging import router as public_messaging_router
 from api.routers.tax_progress import router as tax_progress_router
 from api.routers.support_assistant import router as support_assistant_router
+from api.routers.work_assistant import router as work_assistant_router
 from api.routers.migration import router as migration_router
 from api.routers.spi import router as spi_router
 from api.routers.addons import router as addons_router
+from api.routers.client_transfers import router as client_transfers_router
 
 
 def register_routers(app: FastAPI) -> None:
@@ -63,6 +65,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(public_messaging_router)
     app.include_router(tax_progress_router)
     app.include_router(support_assistant_router)
+    app.include_router(work_assistant_router)
     app.include_router(migration_router)
     app.include_router(spi_router)
     app.include_router(addons_router)
+    app.include_router(client_transfers_router)

@@ -158,15 +158,33 @@ def firm_client_ids(firm_id: str) -> set[str]:
     return {cid for cid, fid in get_client_firm_map().items() if fid == firm_id}
 
 
+def assigned_client_ids(
+    ctx: AuthContext,
+    scope_map: dict[str, set[str]],
+) -> set[str]:
+    """Main/sub assignment rows only (never expanded for firm-wide roles)."""
+    in_firm = firm_client_ids(ctx.firm_id)
+    assigned = scope_map.get(ctx.member_id, set()) or scope_map.get(ctx.stakeholder_id, set())
+    return in_firm & assigned
+
+
 def visible_client_ids(
     ctx: AuthContext,
     scope_map: dict[str, set[str]],
 ) -> set[str]:
+    """Clients this principal may open.
+
+    Firm staff currently see **all** clients in the firm (assignment UI remains for
+    担当分フィルタ / future hide). Client-portal roles stay assignment-scoped.
+    """
     in_firm = firm_client_ids(ctx.firm_id)
-    if is_firm_wide_role(ctx.role):
+    # client_uploader = 顧問先ポータル。事務所スタッフは全員に許可（割当設定は残す）
+    if ctx.role == "client_uploader":
+        return assigned_client_ids(ctx, scope_map)
+    if is_firm_wide_role(ctx.role) or ctx.role in {"operator", "reviewer", "viewer"}:
         return in_firm
-    assigned = scope_map.get(ctx.member_id, set()) or scope_map.get(ctx.stakeholder_id, set())
-    return in_firm & assigned
+    # 未知ロールも事務所内は見える（隠す運用は割当 UI で後から絞る）
+    return in_firm
 
 
 def authorize_firm_resource(ctx: AuthContext, resource_firm_id: str) -> None:

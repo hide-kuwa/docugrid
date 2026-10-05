@@ -86,16 +86,22 @@ export function useAuthFlow(options?: { skipSessionRedirect?: boolean; sessionRe
       const me = await fetchMeWithToken(accessToken);
       const loginEmail = me?.email || fallbackEmail || "user@local";
       const matched = STAKEHOLDER_MASTER.find((item) => item.id === me?.stakeholder_id);
-      const name = loginEmail.split("@")[0] || loginEmail;
+      const nameFromMe = (me?.display_name || "").trim();
+      const name =
+        nameFromMe ||
+        matched?.displayName ||
+        loginEmail.split("@")[0] ||
+        loginEmail;
       const savedUser = me
         ? {
             email: loginEmail,
-            name: matched?.displayName || name,
+            name,
             stakeholderId: me.stakeholder_id || matched?.id,
             appRoleId: (me.role as AppRoleId) || matched?.appRoleId,
             firmId: me.firm_id,
             firmLabel: me.firm_label,
             visibleClientIds: Array.isArray(me.visible_client_ids) ? me.visible_client_ids : undefined,
+            assignedClientIds: Array.isArray(me.assigned_client_ids) ? me.assigned_client_ids : undefined,
             permissions: Array.isArray(me.permissions) ? (me.permissions as AppPermission[]) : undefined,
             personaId: me.persona_id as PersonaId | undefined,
             personaLabel: me.persona_label,

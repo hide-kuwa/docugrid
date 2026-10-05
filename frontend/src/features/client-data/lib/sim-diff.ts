@@ -3,8 +3,13 @@
 import type { ClientChartsPayload } from "@/features/client-data/lib/client-metrics-api";
 import type { ValuationInputsPayload } from "@/features/client-data/lib/client-valuation-api";
 
-export function numDiffers(canonical: number, display: number): boolean {
-  return canonical !== display;
+export function numDiffers(
+  canonical: number | null | undefined,
+  display: number | null | undefined,
+): boolean {
+  const a = canonical ?? null;
+  const b = display ?? null;
+  return a !== b;
 }
 
 export function chartsHasAnyDiff(

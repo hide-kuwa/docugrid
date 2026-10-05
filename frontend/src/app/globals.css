@@ -5,6 +5,11 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -12,6 +17,14 @@
   :focus-visible {
     outline: 2px solid var(--taxx-focus-ring);
     outline-offset: 2px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
   }
 }
 
@@ -81,6 +94,27 @@
   box-sizing: border-box;
   text-align: center;
   position: relative;
+}
+
+@media (max-width: 767px) {
+  .h-item {
+    width: min(11.5rem, 72vw);
+    min-height: 3.75rem;
+    padding: 0.3rem 0.2rem 0.5rem;
+  }
+  .h-item.active {
+    transform: scale(1.04);
+  }
+  .h-item .h-item-name {
+    font-size: 0.7rem;
+  }
+  .h-item-doc {
+    width: min(9.5rem, 62vw);
+    min-height: 3.25rem;
+  }
+  .v-item.active {
+    transform: scale(1.04);
+  }
 }
 .h-item.active {
   opacity: 1;

@@ -432,64 +432,68 @@ export function ClientDataOverview({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-50">
-      <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 md:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-violet-600">
-              <Database className="h-3.5 w-3.5" />
+      <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 md:px-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="inline-flex shrink-0 items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-violet-600">
+              <Database className="h-3 w-3" />
               DATA
-            </div>
-            <h1 className="mt-1 text-xl font-black text-slate-800">{client.name}</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              各項目の「変更」から編集し、「決定」で反映します。設定画面と常に同期され、変更履歴が残ります。
-            </p>
+            </span>
+            <h1 className="truncate text-sm font-bold text-slate-800 md:text-base">
+              {client.name}
+            </h1>
           </div>
-          <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-2 text-right">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-violet-500">
-              マスタ入力率
-            </div>
-            <div className="text-2xl font-black tabular-nums text-violet-700">{fillPercent}%</div>
-            <div className="text-[10px] font-medium text-violet-600">
-              入力済み {filled} / {total} 項目
-            </div>
-            <div className="mt-0.5 text-[9px] text-violet-400">※ マトリクス資料充足率とは別</div>
+          <div
+            className="inline-flex items-baseline gap-1.5 rounded-lg border border-violet-100 bg-violet-50 px-2.5 py-1"
+            title="マスタ項目の入力率（マトリクス資料充足率とは別）"
+          >
+            <span className="text-[9px] font-bold uppercase tracking-wide text-violet-500">
+              入力率
+            </span>
+            <span className="text-sm font-black tabular-nums text-violet-700">{fillPercent}%</span>
+            <span className="text-[10px] tabular-nums text-violet-600">
+              {filled}/{total}
+            </span>
+          </div>
+          <div className="relative w-full max-w-xs sm:ml-auto sm:w-56">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="項目名・値で検索…"
+              className="w-full rounded-lg border border-slate-200 py-1.5 pl-8 pr-2 text-xs"
+            />
           </div>
         </div>
-        <div className="relative mt-4 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="項目名・値で検索…"
-            className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm"
-          />
-        </div>
-        {canEdit && editor ? (
-          <p className="mt-2 text-[11px] text-violet-700">
-            「変更」→ 編集 → 「決定」で確定（{editor.name || editor.email} として記録）
-          </p>
-        ) : null}
-        <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-500">
-          <span className="font-semibold">入力元:</span>
-          <SourceBadge source="ocr" label="OCR読取" />
-          <SourceBadge source="manual" label="手動入力" />
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-slate-500">
+          {canEdit && editor ? (
+            <span className="text-violet-700">
+              「変更」→「決定」で確定（{editor.name || editor.email}）
+            </span>
+          ) : (
+            <span>設定と同期・変更履歴あり</span>
+          )}
+          <span className="text-slate-300">|</span>
+          <span className="font-semibold text-slate-500">入力元</span>
+          <SourceBadge source="ocr" label="OCR" />
+          <SourceBadge source="manual" label="手動" />
           <SourceBadge source="master" label="マスタ" />
-          <span className="text-slate-400">・青いチップは関連資料を開けます</span>
+          <span className="text-slate-400">青チップ＝関連資料</span>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4">
         {sections.length === 0 ? (
           <p className="py-12 text-center text-sm text-slate-400">該当する項目がありません</p>
         ) : (
-          <div className="mx-auto max-w-5xl space-y-6">
+          <div className="mx-auto max-w-5xl space-y-4">
             {sections.map(([sectionTitle, sectionRows]) => (
               <section
                 key={sectionTitle}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
               >
-                <h2 className="border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-xs font-bold text-slate-600">
+                <h2 className="border-b border-slate-100 bg-slate-50/80 px-3 py-1.5 text-xs font-bold text-slate-600">
                   {sectionTitle}
                 </h2>
                 <div className="divide-y divide-slate-100">
@@ -512,7 +516,7 @@ export function ClientDataOverview({
                     return (
                       <div
                         key={row.fieldId}
-                        className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(8rem,14rem)_1fr] sm:gap-4"
+                        className="grid gap-1.5 px-3 py-2 sm:grid-cols-[minmax(7rem,12rem)_1fr] sm:gap-3"
                       >
                         <dt className="text-xs font-semibold text-slate-500">{row.label}</dt>
                         <dd className="min-w-0 space-y-2">

@@ -47,7 +47,8 @@ def test_firm_tasks_staff_summaries() -> None:
         assert "assigned_client_ids" in row
 
 
-def test_operator_sees_subset_clients() -> None:
+def test_operator_sees_all_firm_clients_like_director() -> None:
+    """事務所スタッフは現状全員が全顧問先を見える（割当 UI は残す）。"""
     director = client.get("/api/firm-tasks", headers=_director_headers()).json()
     operator = client.get(
         "/api/firm-tasks",
@@ -57,4 +58,5 @@ def test_operator_sees_subset_clients() -> None:
             "X-Docugrid-User": "tanaka@tax.co.jp",
         },
     ).json()
-    assert operator["client_count"] <= director["client_count"]
+    assert operator["client_count"] == director["client_count"]
+    assert operator["client_count"] > 0

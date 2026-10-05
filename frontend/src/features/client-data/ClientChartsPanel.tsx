@@ -32,9 +32,14 @@ import {
   simMonthlyBarClass,
 } from "@/features/client-data/lib/sim-diff";
 
-function formatMan(yen: number): string {
+function formatMan(yen: number | null | undefined): string {
+  if (yen == null || Number.isNaN(yen)) return "未入力";
   if (yen >= 100_000_000) return `${(yen / 100_000_000).toFixed(1)}億`;
   return `${Math.round(yen / 10_000)}万`;
+}
+
+function numOrZero(n: number | null | undefined): number {
+  return typeof n === "number" && !Number.isNaN(n) ? n : 0;
 }
 
 const EMPTY_CHARTS: ClientChartsPayload = {
@@ -107,15 +112,19 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
   const yearBars = view.fiscal_years;
   const monthly = view.monthly_sales_index;
   const monthlyRevenue = canonicalData.monthly_revenue_yen ?? [];
-  const hasMonthlyRevenue = monthlyRevenue.some((m) => m.revenue_yen > 0);
+  const hasMonthlyRevenue = monthlyRevenue.some((m) => (m.revenue_yen ?? 0) > 0);
   const hasConsumptionTaxable =
     canonicalData.fiscal_years.some((fy) => (fy.consumption_taxable_yen ?? 0) > 0) ||
     view.fiscal_years.some((fy) => (fy.consumption_taxable_yen ?? 0) > 0);
-  const maxMonthlyRev = Math.max(...monthlyRevenue.map((m) => m.revenue_yen), 1);
-  const maxRevenue = Math.max(...yearBars.map((y) => y.revenue_yen), 1);
-  const maxMonthly = Math.max(...monthly.map((m) => m.index), 1);
-  const ytd = monthly.reduce((a, b) => a + b.index, 0);
-  const canonYtd = canonicalData.monthly_sales_index.reduce((a, b) => a + b.index, 0);
+  const maxMonthlyRev = Math.max(...monthlyRevenue.map((m) => numOrZero(m.revenue_yen)), 1);
+  const maxRevenue = Math.max(...yearBars.map((y) => numOrZero(y.revenue_yen)), 1);
+  const maxMonthly = Math.max(...monthly.map((m) => numOrZero(m.index)), 1);
+  const ytd = monthly.reduce((a, b) => a + numOrZero(b.index), 0);
+  const canonYtd = canonicalData.monthly_sales_index.reduce((a, b) => a + numOrZero(b.index), 0);
+  const chartsEmpty =
+    !yearBars.some((y) => (y.revenue_yen ?? 0) > 0 || (y.profit_yen ?? 0) > 0) &&
+    !monthly.some((m) => (m.index ?? 0) > 0) &&
+    !hasMonthlyRevenue;
 
   const patchFiscal = (
     label: string,
@@ -138,7 +147,7 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
       return {
         ...prev,
         monthly_sales_index: nextMonthly,
-        monthly_ytd_index: nextMonthly.reduce((a, b) => a + b.index, 0),
+        monthly_ytd_index: nextMonthly.reduce((a, b) => a + numOrZero(b.index), 0),
       };
     });
   };
@@ -182,6 +191,12 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
         </div>
       ) : null}
 
+      {chartsEmpty && !sim.isEditing ? (
+        <div className="mx-auto mb-4 w-full max-w-6xl rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
+          グラフ指標はすべて未入力です。下の「正規指標」から入力できます。
+        </div>
+      ) : null}
+
       {onOpenMetricVouch && !sim.isEditing ? (
         <div className="mx-auto mb-4 w-full max-w-6xl">
           <AuditActionLegend />
@@ -207,7 +222,7 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                   <div className="flex h-40 w-full max-w-[5rem] items-end justify-center gap-1">
                     <div
                       className={simBarRevenueClass(revDiff)}
-                      style={{ height: `${(year.revenue_yen / maxRevenue) * 100}%` }}
+                      style={{ height: `${(numOrZero(year.revenue_yen) / maxRevenue) * 100}%` }}
                       title={
                         revDiff && canonYear
                           ? `売上（シミュ） ${formatMan(year.revenue_yen)} / 正規 ${formatMan(canonYear.revenue_yen)}`
@@ -216,7 +231,7 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                     />
                     <div
                       className={simBarProfitClass(profDiff)}
-                      style={{ height: `${(year.profit_yen / maxRevenue) * 100}%` }}
+                      style={{ height: `${(numOrZero(year.profit_yen) / maxRevenue) * 100}%` }}
                       title={
                         profDiff && canonYear
                           ? `利益（シミュ） ${formatMan(year.profit_yen)} / 正規 ${formatMan(canonYear.profit_yen)}`
@@ -249,8 +264,8 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                       />
                       {!sim.isEditing && onOpenMetricVouch ? (
                         <MetricFiscalAuditActions
-                          revenueYen={canonYear.revenue_yen}
-                          profitYen={canonYear.profit_yen}
+                          revenueYen={canonYear.revenue_yen ?? 0}
+                          profitYen={canonYear.profit_yen ?? 0}
                           onOpenMetricVouch={onOpenMetricVouch}
                         />
                       ) : null}
@@ -335,7 +350,7 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
             <SimDisplayValue
               canonical={canonYtd}
               display={ytd}
-              format={(n) => `${Math.round(n)}%`}
+              format={(n) => (n == null ? "未入力" : `${Math.round(n)}%`)}
               className="rounded-full bg-violet-50 px-2 py-0.5 font-bold text-violet-700"
             />
           </div>
@@ -348,11 +363,11 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                 <div key={row.month} className="flex flex-1 flex-col items-center gap-1">
                   <div
                     className={simMonthlyBarClass(indexDiff)}
-                    style={{ height: `${(row.index / maxMonthly) * 100}%` }}
+                    style={{ height: `${(numOrZero(row.index) / maxMonthly) * 100}%` }}
                     title={
                       indexDiff && canonRow
-                        ? `${row.month}月: シミュ ${row.index}% / 正規 ${canonRow.index}%`
-                        : `${row.month}月: ${row.index}%`
+                        ? `${row.month}月: シミュ ${row.index ?? "未入力"}% / 正規 ${canonRow.index ?? "未入力"}%`
+                        : `${row.month}月: ${row.index == null ? "未入力" : `${row.index}%`}`
                     }
                   />
                   {sim.isEditing && canonRow && draftRow ? (
@@ -379,12 +394,12 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                   <div key={`rev-${row.month}`} className="flex flex-1 flex-col items-center gap-1">
                     <div
                       className="w-full max-w-[1.25rem] rounded-t bg-emerald-500/80"
-                      style={{ height: `${(row.revenue_yen / maxMonthlyRev) * 100}%` }}
+                      style={{ height: `${(numOrZero(row.revenue_yen) / maxMonthlyRev) * 100}%` }}
                       title={`${row.month}月: ${formatMan(row.revenue_yen)}${
                         row.source_type === "ocr" ? " (OCR)" : ""
                       }`}
                     />
-                    {!sim.isEditing && onOpenMetricVouch && row.revenue_yen > 0 ? (
+                    {!sim.isEditing && onOpenMetricVouch && (row.revenue_yen ?? 0) > 0 ? (
                       <AuditCheckToggle
                         tag={`${row.month}月`}
                         metricLabel={`${row.month}月${metricAuditLabel("monthly.revenue")}`}
@@ -396,7 +411,7 @@ export function ClientChartsPanel({ client, canEdit, onOpenMetricVouch }: Props)
                         onActivate={() =>
                           trigger(
                             "monthly.revenue",
-                            row.revenue_yen,
+                            row.revenue_yen ?? 0,
                             monthlyRevenuePendingKey(row.month),
                           )
                         }

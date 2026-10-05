@@ -20,3 +20,4 @@ alwaysApply: true
 - Match surrounding code. Minimal diff. No drive-by refactors.
 - New tenancy checks: reuse `authorize_client_access`, `authorize_firm_resource` from `backend/services/tenancy.py`.
 - User-facing UI: update `docs/help/coverage.md` (+ help page stub). See `docugrid-help` rule.
+- UI pages / visual polish: follow root [`DESIGN.md`](DESIGN.md) (clean SaaS + brand tokens); prefer local components over inventing a parallel look.

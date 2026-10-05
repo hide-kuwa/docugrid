@@ -465,6 +465,7 @@ from services.tenancy import (
     firm_label,
     resolve_version_firm_id,
     visible_client_ids,
+    assigned_client_ids,
 )
 from services.login_rate_limit import login_rate_limit_exceeded, mcp_token_rate_limit_exceeded
 from services.storage_paths import resolve_storage_path

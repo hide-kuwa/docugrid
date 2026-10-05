@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Noto_Sans_JP, Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -26,6 +26,18 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: "DocuGrid",
   description: "TAXX エコシステムの資料整理ハブ — 顧問先 × 期間のマトリクス",
+  appleWebApp: {
+    capable: true,
+    title: "DocuGrid",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#20262e",
 };
 
 export default function RootLayout({

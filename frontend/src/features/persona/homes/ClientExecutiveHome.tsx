@@ -19,9 +19,10 @@ type Props = {
   demoMode?: boolean;
 };
 
-function formatMan(yen: number): string {
+function formatMan(yen: number | null | undefined): string {
+  if (yen == null || Number.isNaN(yen)) return "未入力";
   if (yen >= 100_000_000) return `${(yen / 100_000_000).toFixed(1)}億円`;
-  if (yen <= 0) return "—";
+  if (yen <= 0) return "未入力";
   return `${Math.round(yen / 10_000)}万円`;
 }
 

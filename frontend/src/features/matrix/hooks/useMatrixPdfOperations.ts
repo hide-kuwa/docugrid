@@ -380,9 +380,61 @@ export function useMatrixPdfOperations({
         }
         const blob = await response.blob();
         const updatedFile = new File([blob], "merged.pdf", { type: blob.type || "application/pdf" });
+        if (annotationSnapshotTimerRef.current) {
+          clearTimeout(annotationSnapshotTimerRef.current);
+          annotationSnapshotTimerRef.current = null;
+        }
         setFile(updatedFile);
         assignPreviewFromFile(updatedFile);
         rememberWorkingFile(updatedFile);
+
+        // Add PDF（上にかぶせる）後は新版として保存し、過去版は残す（並べ替えと同じ）
+        const scope =
+          activeSlotKey &&
+          !activeSlotKey.startsWith("unassigned:") &&
+          !activeSlotKey.startsWith("deleted:")
+            ? parseSlotKey(activeSlotKey)
+            : null;
+        const slotKey = activeSlotKey;
+        if (scope && slotKey && canAnnotateDocument) {
+          const idx = slotIndexFromSlotKey(slotKey, periodKey);
+          const label = idx !== null && idx >= 0 ? slotLabels[idx] : undefined;
+          const added = Math.max(0, filesToMerge.length - 1);
+          const snap = await createDocumentVersionSnapshot(scope, updatedFile, "minor", label);
+          const contentSha256 = await sha256HexFromFile(updatedFile);
+          await createReviewEvent(scope, {
+            event_type: "pdf_merge",
+            status: "draft",
+            action_title: added > 0 ? `PDF結合 (+${added}ファイル)` : "PDF結合",
+            version_label: snap.version_label,
+            document_version_id: snap.id,
+            logical_document_id: snap.logical_document_id,
+            content_sha256: contentSha256,
+          });
+          setSlotDocs((prev) => {
+            const cur = prev[slotKey];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [slotKey]: {
+                ...cur,
+                file: updatedFile,
+                currentVersionId: snap.id,
+                currentVersionLabel: snap.version_label,
+                logicalDocumentId: snap.logical_document_id ?? cur.logicalDocumentId,
+                pageCount: snap.page_count ?? cur.pageCount,
+                versionCount: (cur.versionCount ?? 1) + 1,
+              },
+            };
+          });
+          onVersionCreated({
+            versionId: snap.id,
+            versionLabel: snap.version_label,
+            logicalDocumentId: snap.logical_document_id,
+            file: updatedFile,
+          });
+          setStatusNonce((v) => v + 1);
+        }
         setViewerSession((s) => s + 1);
         return updatedFile;
       } catch {
@@ -400,6 +452,13 @@ export function useMatrixPdfOperations({
       setIsLoading,
       setViewerError,
       setViewerSession,
+      activeSlotKey,
+      canAnnotateDocument,
+      periodKey,
+      slotLabels,
+      setSlotDocs,
+      setStatusNonce,
+      onVersionCreated,
     ],
   );
 

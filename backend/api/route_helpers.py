@@ -32,13 +32,21 @@ def _firm_usage_counts(firm_id: str) -> tuple[int, int]:
 
 
 def _row_to_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
+    from services.upload_file_kinds import (
+        guess_media_type,
+        is_convertible_image_name,
+        is_pdf_name,
+    )
+
+    original_name = row["original_name"]
+    storage_key = row["storage_key"] if "storage_key" in row.keys() else None
     return SlotDocumentItem(
         id=row["id"],
         client_id=row["client_id"],
         period_key=row["period_key"],
         slot_id=row["slot_id"],
         slot_label=row["slot_label"],
-        original_name=row["original_name"],
+        original_name=original_name,
         page_count=row["page_count"],
         content_sha256=row["content_sha256"],
         byte_size=row["byte_size"],
@@ -58,6 +66,9 @@ def _row_to_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
         client_shared_by=row["client_shared_by"] if "client_shared_by" in row.keys() else None,
         contains_individual_number=_row_flag_true(row, "contains_individual_number"),
         spi_retention_until=row["spi_retention_until"] if "spi_retention_until" in row.keys() else None,
+        content_type=guess_media_type(original_name, storage_key=storage_key),
+        is_pdf=is_pdf_name(original_name),
+        is_convertible_image=is_convertible_image_name(original_name),
     )
 
 
@@ -113,6 +124,12 @@ def _enrich_slot_item(row: sqlite3.Row) -> SlotDocumentItem:
 
 
 def _version_to_item(v) -> DocumentVersionItem:
+    from services.upload_file_kinds import (
+        guess_media_type,
+        is_convertible_image_name,
+        is_pdf_name,
+    )
+
     return DocumentVersionItem(
         id=v.id,
         logical_document_id=v.logical_document_id,
@@ -126,6 +143,9 @@ def _version_to_item(v) -> DocumentVersionItem:
         created_by_stakeholder_id=v.created_by_stakeholder_id,
         created_by_email=v.created_by_email,
         created_at=v.created_at,
+        content_type=guess_media_type(v.original_name, storage_key=v.storage_key),
+        is_pdf=is_pdf_name(v.original_name),
+        is_convertible_image=is_convertible_image_name(v.original_name),
     )
 
 

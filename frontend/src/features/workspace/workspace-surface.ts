@@ -238,7 +238,7 @@ export function saveWorkspaceSurface(id: WorkspaceSurfaceId): void {
 
 export function loadKarteSection(): DataWorkspaceTabId {
 
-  if (typeof window === "undefined") return "karte";
+  if (typeof window === "undefined") return "master";
 
   try {
 
@@ -266,7 +266,7 @@ export function loadKarteSection(): DataWorkspaceTabId {
 
   }
 
-  return "karte";
+  return "master";
 
 }
 

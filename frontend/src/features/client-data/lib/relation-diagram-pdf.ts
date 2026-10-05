@@ -8,6 +8,7 @@ import {
   edgeStroke,
   layoutClientRelations,
   RELATION_VIEW_MODES,
+  relationEdgeLabel,
   shouldDrawEdgeLabel,
   type RelationViewMode,
 } from "@/features/client-data/lib/client-relations-layout";
@@ -80,6 +81,9 @@ function legendItems(viewMode: RelationViewMode): { color: string; label: string
   }
   if (viewMode === "all" || viewMode === "ownership") {
     items.push({ color: "#0f766e", label: "出資％" });
+  }
+  if (viewMode === "all" || viewMode === "officer") {
+    items.push({ color: "#a21caf", label: "代表・役員" });
   }
   if (viewMode === "all" || viewMode === "referral") {
     items.push({ color: "#c2410c", label: "紹介", dash: true });
@@ -160,7 +164,15 @@ export function buildRelationDiagramSvg(args: {
       const spread =
         edge.kind === "referral" ? 18 : edge.kind === "shareholding" ? 12 : 9;
       const lane =
-        edge.kind === "referral" ? 2 : edge.kind === "shareholding" ? -1 : edge.kind === "relative" ? 1 : 0;
+        edge.kind === "referral"
+          ? 2
+          : edge.kind === "shareholding"
+            ? -1
+            : edge.kind === "relative"
+              ? 1
+              : edge.kind === "officer"
+                ? -2
+                : 0;
       const off = ((edgeIdx % 3) - 1) * (spread / 2) + lane * 6;
       const oxn = (-dy / len) * off;
       const oyn = (dx / len) * off;
@@ -193,10 +205,7 @@ export function buildRelationDiagramSvg(args: {
       const mx = qx + lo.x;
       const my = qy + lo.y;
       const showLabel = shouldDrawEdgeLabel(edge.kind, viewMode);
-      const label =
-        edge.kind === "shareholding" && edge.percent != null
-          ? `${style.label} ${edge.percent}%`
-          : style.label || RELATION_KIND_LABEL[edge.kind];
+      const label = relationEdgeLabel(edge) || RELATION_KIND_LABEL[edge.kind];
       const labelW = Math.max(52, label.length * 11);
       const dash = style.dash ? ` stroke-dasharray="${style.dash}"` : "";
       const labelSvg =

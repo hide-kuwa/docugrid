@@ -7,6 +7,7 @@ type Props = {
   driveConnected: boolean;
   driveConfigured: boolean;
   onOpenClients: () => void;
+  onOpenMigration: () => void;
   onOpenDrive: () => void;
   onStartTour: () => void;
 };
@@ -19,6 +20,7 @@ export function GoLiveSetupBanner({
   driveConnected,
   driveConfigured,
   onOpenClients,
+  onOpenMigration,
   onOpenDrive,
   onStartTour,
 }: Props) {
@@ -106,7 +108,7 @@ export function GoLiveSetupBanner({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={onOpenClients}
+              onClick={onOpenMigration}
               className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-800 hover:bg-violet-50"
             >
               整理パネルを開く

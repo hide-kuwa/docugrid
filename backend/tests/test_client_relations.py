@@ -56,6 +56,29 @@ def test_client_master_put_persists_relations() -> None:
     assert edge["note"] == "pytest referral"
 
 
+def test_client_master_put_persists_officer_relation() -> None:
+    """社長・役員（個人 → 法人）を役職メモ付きで保存できる."""
+    get_r = client.get("/api/client-master", headers=_admin_headers())
+    payload = get_r.json()
+    a, b = payload["clients"][0]["id"], payload["clients"][1]["id"]
+    payload["relations"] = [
+        {
+            "id": "test-officer-1",
+            "kind": "officer",
+            "fromClientId": a,
+            "toClientId": b,
+            "note": "代表取締役",
+        }
+    ]
+    put_r = client.put("/api/client-master", headers=_admin_headers(), json=payload)
+    assert put_r.status_code == 200, put_r.text
+    saved = client.get("/api/client-master", headers=_admin_headers()).json()
+    edge = next(r for r in saved["relations"] if r["id"] == "test-officer-1")
+    assert edge["kind"] == "officer"
+    assert edge["note"] == "代表取締役"
+    assert edge["percent"] is None
+
+
 def test_client_master_put_rejects_unknown_relation_client() -> None:
     get_r = client.get("/api/client-master", headers=_admin_headers())
     payload = get_r.json()

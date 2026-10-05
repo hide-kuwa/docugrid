@@ -1,4 +1,5 @@
 import type { ProfileFieldMeta, ProfileFieldChange } from "@/config/client-profile-fields";
+import { buildMonthDrumEntries, YEAR_DISPLAY_COUNT_DEFAULT } from "@/lib/fiscal-year-drum";
 
 export type AppPermission =
   | "client.view"
@@ -60,7 +61,9 @@ export type ClientRelationKind =
   | "group_company"
   | "relative"
   | "shareholding"
-  | "referral";
+  | "referral"
+  /** 個人が法人の代表・役員（note に役職名） */
+  | "officer";
 
 export type ClientRelationEdge = {
   id: string;
@@ -398,6 +401,7 @@ export const RELATION_KIND_LABEL: Record<ClientRelationKind, string> = {
   relative: "親族",
   shareholding: "出資",
   referral: "紹介",
+  officer: "役員・代表",
 };
 
 export const getClientGroups = (clientId: string): ClientFamilyGroup[] =>
@@ -566,12 +570,12 @@ export const DOCUMENT_CATEGORIES: DocumentCategoryConfig[] = [
   { id: "bank_statement", label: "通帳コピー", ocrTarget: true, dashboardTarget: false, alertTarget: false },
 ];
 
+const FALLBACK_MONTH_DRUM = buildMonthDrumEntries(3, new Date(), YEAR_DISPLAY_COUNT_DEFAULT);
+
 export const PERIODS = {
   /** @deprecated 年度は buildYearDrumMeta() で動的生成。フォールバック用のみ */
   year: ["R8", "R7", "R6", "R5", "R4", "OLD"],
   /** @deprecated 月次は buildMonthDrumLabels(fiscalMonth) で動的生成。フォールバックは 3月決算想定 */
-  month: Array.from({ length: 12 }, (_, i) => {
-    const month = ((3 - 1 - i) % 12 + 12) % 12 + 1;
-    return `${month}月`;
-  }),
+  month: FALLBACK_MONTH_DRUM.map((entry) => entry.label),
+  monthCalendarYears: FALLBACK_MONTH_DRUM.map((entry) => entry.calendarYear),
 };

@@ -230,8 +230,10 @@ export function TaxProgressMain() {
           <table className="w-max min-w-full border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-slate-800 text-white">
               <tr>
-                <th className="sticky left-0 z-20 bg-slate-800 px-2 py-2 font-bold">コード</th>
-                <th className="sticky left-[4.5rem] z-20 bg-slate-800 px-2 py-2 font-bold">
+                <th className="sticky left-0 z-20 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] bg-slate-800 px-2 py-2 font-bold shadow-[2px_0_0_0_rgba(15,23,42,0.12)]">
+                  コード
+                </th>
+                <th className="sticky left-[4.5rem] z-20 w-[9rem] min-w-[9rem] max-w-[9rem] bg-slate-800 px-2 py-2 font-bold shadow-[4px_0_8px_-2px_rgba(15,23,42,0.25)]">
                   顧客名
                 </th>
                 <th className="px-2 py-2 font-bold">主担当</th>
@@ -252,21 +254,27 @@ export function TaxProgressMain() {
                 .filter((row) =>
                   showAll ? true : row.stages.some((s) => s.status === "pending"),
                 )
-                .map((row, idx) => (
-                <tr
-                  key={row.client_id}
-                  className={idx % 2 === 0 ? "bg-rose-50/40" : "bg-white"}
-                >
-                  <td className="sticky left-0 z-[1] bg-inherit px-2 py-1.5 font-mono text-[10px] text-slate-500">
+                .map((row, idx) => {
+                  const rowBg = idx % 2 === 0 ? "bg-rose-50" : "bg-white";
+                  return (
+                <tr key={row.client_id} className={rowBg}>
+                  <td
+                    className={`sticky left-0 z-[1] w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] truncate px-2 py-1.5 font-mono text-[10px] text-slate-500 shadow-[2px_0_0_0_rgba(15,23,42,0.06)] ${rowBg}`}
+                  >
                     {row.client_code || "—"}
                   </td>
-                  <td className="sticky left-[4.5rem] z-[1] bg-inherit px-2 py-1.5 font-bold text-slate-800">
+                  <td
+                    className={`sticky left-[4.5rem] z-[1] w-[9rem] min-w-[9rem] max-w-[9rem] truncate px-2 py-1.5 font-bold text-slate-800 shadow-[4px_0_8px_-2px_rgba(15,23,42,0.18)] ${rowBg}`}
+                    title={row.client_name}
+                  >
                     {row.client_name}
                   </td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">
                     {row.primary_assignee_name || "—"}
                   </td>
-                  <td className="px-2 py-1.5 text-slate-600">{row.fiscal_month}月</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">
+                    {row.fiscal_month}月
+                  </td>
                   <td className="max-w-[10rem] truncate px-2 py-1.5 text-slate-500" title={row.note}>
                     {row.note || ""}
                   </td>
@@ -280,7 +288,8 @@ export function TaxProgressMain() {
                     </td>
                   ))}
                 </tr>
-              ))}
+                  );
+                })}
             </tbody>
           </table>
         )}

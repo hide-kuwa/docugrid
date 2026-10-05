@@ -28,6 +28,8 @@ ALLOWED_HELP_FILES: dict[str, str] = {
     "support-ops": "support-ops.md",
     "workspace": "workspace.md",
     "doc-matrix": "doc-matrix.md",
+    "slot-attachments": "slot-attachments.md",
+    "work-assistant": "work-assistant.md",
     "crm-perm": "crm-perm.md",
     "auto-sort": "auto-sort.md",
     "audit-flow": "audit-flow.md",
@@ -48,6 +50,8 @@ ALLOWED_HELP_FILES: dict[str, str] = {
 }
 
 KEYWORD_BOOST: dict[str, tuple[str, ...]] = {
+    "work-assistant": ("アシスタント", "チャット", "揃って", "充足", "docugrid ai"),
+    "slot-attachments": ("xlsx", "画像", "png", "jpeg", "pdf化", "ダウンロード"),
     "auto-sort": ("自動", "振り分け", "要確認", "キュー", "まとめて", "確信度"),
     "saving": ("保存", "サーバー", "drive", "ドライブ", "見えない", "どこ"),
     "guest-pdf": ("ゲスト", "/pdf", "ログイン不要"),

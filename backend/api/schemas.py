@@ -566,10 +566,21 @@ class MeResponse(BaseModel):
     stakeholder_id: str
     firm_id: str = ""
     firm_label: str = ""
+    display_name: str = ""
     persona_id: str = ""
     persona_label: str = ""
     permissions: list[str] = []
     visible_client_ids: list[str] = []
+    assigned_client_ids: list[str] = []
+
+
+class ClientTransferCreateBody(BaseModel):
+    clientId: str = Field(..., min_length=1, max_length=80)
+
+
+class ClientTransferClaimBody(BaseModel):
+    code: str = Field(..., min_length=4, max_length=32)
+    confirm: bool = False
 
 
 
@@ -1340,6 +1351,9 @@ class SlotDocumentItem(BaseModel):
     client_shared_by: Optional[str] = None
     contains_individual_number: bool = False
     spi_retention_until: Optional[str] = None
+    content_type: Optional[str] = None
+    is_pdf: bool = True
+    is_convertible_image: bool = False
 
 
 
@@ -1356,6 +1370,9 @@ class DocumentVersionItem(BaseModel):
     created_by_stakeholder_id: Optional[str] = None
     created_by_email: Optional[str] = None
     created_at: str
+    content_type: Optional[str] = None
+    is_pdf: bool = True
+    is_convertible_image: bool = False
 
 
 
@@ -1412,6 +1429,16 @@ class ExtractionApplyBody(BaseModel):
     slot_id: str
     slot_label: Optional[str] = None
     fields: dict[str, str]
+
+
+class ExtractionDraftBody(BaseModel):
+    """OCR 手動修正の状態保存（顧客マスタには触れない）。"""
+
+    client_id: str
+    period_key: str
+    slot_id: str
+    fields: dict[str, str] = {}
+    edited_ids: list[str] = []
 
 
 
@@ -1591,6 +1618,7 @@ __all__ = [
     "DriveUseSharedDriveBody",
     "DriveShareFirmPayload",
     "ExtractionApplyBody",
+    "ExtractionDraftBody",
     "FileInfo",
     "FirmClientTaskSummary",
     "FirmJoinRequestBody",
@@ -1670,6 +1698,8 @@ __all__ = [
     "MaAssumptionsBody",
     "McpTokenResponse",
     "MeResponse",
+    "ClientTransferCreateBody",
+    "ClientTransferClaimBody",
     "MetricMappingItem",
     "MetricMappingWriteBody",
     "MetricMappingsExportPayload",

@@ -124,6 +124,54 @@ export function buildSectionsFromPageTexts(pageTexts: string[]): DocumentSection
   return sections.sort((a, b) => a.pageIndex - b.pageIndex);
 }
 
+/** 手動割当できる帳票候補（必須 + 主要別表） */
+export function listAssignableSections(): {
+  id: string;
+  label: string;
+  kind: DocumentSectionKind;
+}[] {
+  const seen = new Set<string>();
+  const out: { id: string; label: string; kind: DocumentSectionKind }[] = [];
+  for (const req of CORP_TAX_REQUIRED) {
+    seen.add(req.id);
+    out.push(req);
+  }
+  for (const def of CORP_TAX_BEPPYO) {
+    if (seen.has(def.id)) continue;
+    seen.add(def.id);
+    out.push({ id: def.id, label: def.label, kind: "beppyo" });
+  }
+  return out;
+}
+
+/**
+ * 自動検出セクションに、id → pageIndex の手動割当を重ねる。
+ * 同一 id は手動が優先。ページ順に並べ直す。
+ */
+export function mergeManualSections(
+  auto: DocumentSection[],
+  overrides: Record<string, number>,
+): DocumentSection[] {
+  const byId = new Map(auto.map((s) => [s.id, { ...s }]));
+  const assignable = new Map(
+    listAssignableSections().map((a) => [a.id, a] as const),
+  );
+
+  for (const [id, pageIndex] of Object.entries(overrides)) {
+    if (!Number.isFinite(pageIndex) || pageIndex < 0) continue;
+    const meta = assignable.get(id) ?? byId.get(id);
+    if (!meta) continue;
+    byId.set(id, {
+      id,
+      label: meta.label,
+      kind: meta.kind,
+      pageIndex: Math.floor(pageIndex),
+    });
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.pageIndex - b.pageIndex);
+}
+
 /** 必須帳票チェックリスト（法人税申告書向け） */
 export function buildRequiredScheduleStatus(
   sections: DocumentSection[],

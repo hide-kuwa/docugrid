@@ -48,8 +48,8 @@ export const DOCUMENT_FIELD_INSERTS: MergeFieldInsert[] = [
 ];
 
 export const PARTY_ROLE_LABEL: Record<number, string> = {
-  1: "当事者１（甲）",
-  2: "当事者２（乙）",
+  1: "当事者１（甲・会社）",
+  2: "当事者２（乙／代表取締役など）",
   3: "当事者３（丙）",
 };
 

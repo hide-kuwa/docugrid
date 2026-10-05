@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from services.consumption_taxable_flowchart import evaluate_from_fields
 from services.consumption_taxable_status import (
     CONDITION_BASE_PERIOD_SALES,
     CONDITION_HIGH_VALUE_ASSET,
@@ -17,7 +18,6 @@ from services.consumption_taxable_status import (
     CONDITION_VOLUNTARY_ELECTION,
     MESSAGE_EXEMPT,
     MESSAGE_TAXABLE,
-    evaluate_taxable_status_from_fields,
 )
 
 client = TestClient(app)
@@ -26,39 +26,39 @@ PATH = "/api/check-taxable-status"
 
 
 def test_defaults_are_not_taxable() -> None:
-    result = evaluate_taxable_status_from_fields()
+    result = evaluate_from_fields()
     assert result.is_taxable is False
     assert result.matched_conditions == ()
     assert result.message == MESSAGE_EXEMPT
 
 
 def test_invoice_registered() -> None:
-    result = evaluate_taxable_status_from_fields(is_invoice_registered=True)
+    result = evaluate_from_fields(is_invoice_registered=True)
     assert result.matched_conditions == (CONDITION_INVOICE_REGISTERED,)
 
 
 def test_voluntary_election() -> None:
-    result = evaluate_taxable_status_from_fields(has_voluntary_election=True)
+    result = evaluate_from_fields(has_voluntary_election=True)
     assert result.matched_conditions == (CONDITION_VOLUNTARY_ELECTION,)
 
 
 def test_base_period_sales_must_exceed_10m() -> None:
-    at_threshold = evaluate_taxable_status_from_fields(base_period_sales=10_000_000)
-    over = evaluate_taxable_status_from_fields(base_period_sales=10_000_001)
+    at_threshold = evaluate_from_fields(base_period_sales=10_000_000)
+    over = evaluate_from_fields(base_period_sales=10_000_001)
     assert at_threshold.is_taxable is False
     assert over.matched_conditions == (CONDITION_BASE_PERIOD_SALES,)
 
 
 def test_specified_period_requires_both_sales_and_salaries_over_10m() -> None:
-    sales_only = evaluate_taxable_status_from_fields(
+    sales_only = evaluate_from_fields(
         specified_period_sales=10_000_001,
         specified_period_salaries=10_000_000,
     )
-    salaries_only = evaluate_taxable_status_from_fields(
+    salaries_only = evaluate_from_fields(
         specified_period_sales=10_000_000,
         specified_period_salaries=10_000_001,
     )
-    both = evaluate_taxable_status_from_fields(
+    both = evaluate_from_fields(
         specified_period_sales=10_000_001,
         specified_period_salaries=10_000_001,
     )
@@ -68,19 +68,19 @@ def test_specified_period_requires_both_sales_and_salaries_over_10m() -> None:
 
 
 def test_new_corporate_capital_is_inclusive_and_corporate_only() -> None:
-    individual = evaluate_taxable_status_from_fields(
+    individual = evaluate_from_fields(
         entity_type="individual",
         initial_capital=10_000_000,
     )
-    under = evaluate_taxable_status_from_fields(
+    under = evaluate_from_fields(
         entity_type="corporate",
         initial_capital=9_999_999,
     )
-    at_threshold = evaluate_taxable_status_from_fields(
+    at_threshold = evaluate_from_fields(
         entity_type="corporate",
         initial_capital=10_000_000,
     )
-    omitted_type = evaluate_taxable_status_from_fields(initial_capital=10_000_000)
+    omitted_type = evaluate_from_fields(initial_capital=10_000_000)
     assert individual.is_taxable is False
     assert under.is_taxable is False
     assert omitted_type.is_taxable is False
@@ -88,19 +88,19 @@ def test_new_corporate_capital_is_inclusive_and_corporate_only() -> None:
 
 
 def test_flag_conditions() -> None:
-    assert evaluate_taxable_status_from_fields(
+    assert evaluate_from_fields(
         is_special_new_corporate=True
     ).matched_conditions == (CONDITION_SPECIAL_NEW_CORPORATE,)
-    assert evaluate_taxable_status_from_fields(
+    assert evaluate_from_fields(
         has_high_value_asset_restriction=True
     ).matched_conditions == (CONDITION_HIGH_VALUE_ASSET,)
-    assert evaluate_taxable_status_from_fields(
+    assert evaluate_from_fields(
         has_taxable_inheritance=True
     ).matched_conditions == (CONDITION_TAXABLE_INHERITANCE,)
 
 
 def test_multiple_conditions_are_all_returned() -> None:
-    result = evaluate_taxable_status_from_fields(
+    result = evaluate_from_fields(
         is_invoice_registered=True,
         base_period_sales=20_000_000,
     )
@@ -194,7 +194,8 @@ def enable_header_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def taxable_store(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("services.consumption_taxable_client.STORAGE_DIR", tmp_path)
+    monkeypatch.setattr("services.flowchart_instances.STORAGE_DIR", tmp_path)
+    monkeypatch.setattr("services.flowchart_templates.STORAGE_DIR", tmp_path)
     yield tmp_path
 
 

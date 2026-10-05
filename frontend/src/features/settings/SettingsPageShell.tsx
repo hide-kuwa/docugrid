@@ -30,7 +30,9 @@ import { DocumentsSettingsTab } from "@/features/settings/DocumentsSettingsTab";
 import { AuditSettingsTab } from "@/features/settings/AuditSettingsTab";
 import { IntegrationsSettingsTab } from "@/features/settings/IntegrationsSettingsTab";
 import { GoLiveSetupBanner } from "@/features/settings/GoLiveSetupBanner";
+import { MigrationIngestPanel } from "@/features/settings/MigrationIngestPanel";
 import { GoogleDriveSettingsCard } from "@/features/settings/GoogleDriveSettingsCard";
+import { WorkAssistantFab } from "@/features/assistant/WorkAssistantFab";
 import { FeatureTourHost } from "@/features/onboarding/FeatureTourHost";
 import { groupedSettingsCategories } from "@/features/settings/settings-category-groups";
 import {
@@ -65,6 +67,8 @@ import { getPostLoginPath } from "@/lib/persona";
 export function SettingsPageShell() {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>("clients");
+  const [profileFocusClientId, setProfileFocusClientId] = useState<string | undefined>();
+  const [showMigrationPanel, setShowMigrationPanel] = useState(false);
   const [billingCheckoutResult, setBillingCheckoutResult] = useState<string | null>(null);
   const [billingTopupResult, setBillingTopupResult] = useState<string | null>(null);
   const [documentCategories, setDocumentCategories] = useState<DocumentCategoryConfig[]>(
@@ -77,6 +81,7 @@ export function SettingsPageShell() {
     })),
   );
   const [currentUser, setCurrentUser] = useState<DocugridUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [settingsConsole, setSettingsConsole] = useState<SettingsConsole>("firm");
 
   const canEditPlatformSettings = hasPermission(currentUser, "settings.platform");
@@ -184,6 +189,7 @@ export function SettingsPageShell() {
         return;
       }
       setCurrentUser(loadCurrentUser());
+      setAuthChecked(true);
     })();
   }, [router]);
 
@@ -200,56 +206,77 @@ export function SettingsPageShell() {
     })();
   }, []);
 
+  const canShowActiveCategory =
+    authChecked &&
+    Boolean(currentUser) &&
+    allowedCategories.some((c) => c.id === activeCategory);
+
+  if (!authChecked) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-slate-100 text-slate-500">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600"
+          aria-hidden
+        />
+        <p className="text-sm font-medium">読み込み中…</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-slate-100 font-sans text-slate-600">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-100 font-sans text-slate-600 pb-[env(safe-area-inset-bottom)]">
       {settingsConsole === "dev" ? (
         <DevSurfaceStrip consoleLabel="開発コンフィグ（設計・プラットフォーム）" />
       ) : null}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="relative z-20 flex w-28 shrink-0 flex-col overflow-y-auto border-r border-slate-700 bg-slate-900 shadow-2xl">
-          <button
-            onClick={() => router.push(getPostLoginPath(currentUser))}
-            className="mx-auto mt-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800 text-white hover:bg-slate-700"
-          >
-            ←
-          </button>
-          <div className="mt-6 text-center text-[10px] font-black tracking-widest text-blue-400">
-            {settingsConsole === "dev" ? "DEV" : "FIRM"}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <aside className="relative z-20 flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden border-b border-slate-700 bg-slate-900 shadow-2xl md:max-h-none md:w-28 md:overflow-y-auto md:border-b-0 md:border-r">
+          <div className="flex items-center gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:flex-col md:px-0 md:pt-4">
+            <button
+              onClick={() => router.push(getPostLoginPath(currentUser))}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-800 text-white hover:bg-slate-700 md:mx-auto"
+            >
+              ←
+            </button>
+            <div className="min-w-0 flex-1 md:mt-6 md:w-full md:flex-none md:text-center">
+              <div className="text-[10px] font-black tracking-widest text-blue-400">
+                {settingsConsole === "dev" ? "DEV" : "FIRM"}
+              </div>
+              <div className="mt-1 flex gap-1 md:mt-2 md:flex-col md:space-y-1 md:px-1">
+                {visibleFirmSettingsCategories(currentUser).length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsConsole("firm");
+                      router.replace(settingsHref("firm"));
+                    }}
+                    className={`rounded-lg px-2 py-1 text-[9px] font-bold md:w-full md:px-1 ${
+                      settingsConsole === "firm" ? "bg-emerald-600 text-white" : "text-slate-500 hover:text-white"
+                    }`}
+                  >
+                    運用
+                  </button>
+                ) : null}
+                {visibleDevSettingsCategories(currentUser).length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsConsole("dev");
+                      router.replace(settingsHref("dev"));
+                    }}
+                    className={`rounded-lg px-2 py-1 text-[9px] font-bold md:w-full md:px-1 ${
+                      settingsConsole === "dev" ? "bg-amber-600 text-white" : "text-slate-500 hover:text-white"
+                    }`}
+                  >
+                    開発
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
-          <div className="mt-2 space-y-1 px-1">
-            {visibleFirmSettingsCategories(currentUser).length > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsConsole("firm");
-                  router.replace(settingsHref("firm"));
-                }}
-                className={`w-full rounded-lg px-1 py-1 text-[9px] font-bold ${
-                  settingsConsole === "firm" ? "bg-emerald-600 text-white" : "text-slate-500 hover:text-white"
-                }`}
-              >
-                運用
-              </button>
-            ) : null}
-            {visibleDevSettingsCategories(currentUser).length > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsConsole("dev");
-                  router.replace(settingsHref("dev"));
-                }}
-                className={`w-full rounded-lg px-1 py-1 text-[9px] font-bold ${
-                  settingsConsole === "dev" ? "bg-amber-600 text-white" : "text-slate-500 hover:text-white"
-                }`}
-              >
-                開発
-              </button>
-            ) : null}
-          </div>
-          <div className="v-drum-scroller no-scrollbar mt-4 flex-1 px-2 py-6">
+          <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto px-3 pb-3 md:mt-4 md:flex-1 md:flex-col md:overflow-y-auto md:px-2 md:py-6 md:pb-6">
             {settingsGroups.map((group) => (
-              <div key={group.title} className="mb-2">
-                <p className="mb-2 px-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+              <div key={group.title} className="flex shrink-0 gap-2 md:mb-2 md:block">
+                <p className="mb-2 hidden px-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 md:block">
                   {group.title}
                 </p>
                 {group.ids.map((categoryId) => {
@@ -259,65 +286,63 @@ export function SettingsPageShell() {
                     <button
                       key={category.id}
                       onClick={() => setActiveCategory(category.id)}
-                      className={`v-item mb-3 w-full rounded-xl border px-2 py-3 text-center ${
+                      className={`min-w-[5.5rem] rounded-xl border px-2 py-2.5 text-center md:mb-3 md:w-full md:min-w-0 md:py-3 ${
                         activeCategory === category.id
-                          ? "active border-blue-500 bg-blue-600/20"
+                          ? "border-blue-500 bg-blue-600/20 text-white"
                           : "border-white/10 bg-slate-800 text-slate-300"
                       }`}
                     >
-                      <div className="text-xs font-bold">{category.label}</div>
-                      <div className="text-[9px] font-semibold opacity-70">{category.subLabel}</div>
+                      <div className="text-[11px] font-bold md:text-xs">{category.label}</div>
+                      <div className="hidden text-[9px] font-semibold opacity-70 md:block">{category.subLabel}</div>
                     </button>
                   );
                 })}
               </div>
             ))}
           </div>
-          <div className="mask-v-top pointer-events-none absolute left-0 top-0 z-20 h-20 w-full" />
-          <div className="mask-v-bottom pointer-events-none absolute bottom-0 left-0 z-20 h-20 w-full" />
+          <div className="mask-v-top pointer-events-none absolute left-0 top-0 z-20 hidden h-20 w-full md:block" />
+          <div className="mask-v-bottom pointer-events-none absolute bottom-0 left-0 z-20 hidden h-20 w-full md:block" />
         </aside>
 
         <main className="min-h-0 flex-1 overflow-y-auto">
-          <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/90 px-8 py-4 backdrop-blur">
-            <div>
-              <h1 className="text-xl font-black text-slate-800">
+          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur md:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-base font-black text-slate-800 md:text-lg">
                 {settingsConsole === "dev" ? "開発コンフィグ" : "事務所設定"}
               </h1>
-              <p className="text-xs text-slate-500">
-                {settingsConsole === "dev"
-                  ? "ロール・画面設計・連携など開発用タブ。日常業務はマトリクスから。"
-                  : "顧客・担当・ひな形など事務所運用の設定。"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              {currentUser?.firmLabel && (
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800">
-                  {currentUser.firmLabel}
-                </span>
-              )}
-              <span className="rounded-full bg-blue-50 px-3 py-1">顧客 {summary.clients}</span>
-              <span className="rounded-full bg-indigo-50 px-3 py-1">関係グループ {summary.groups}</span>
-              <span className="rounded-full bg-emerald-50 px-3 py-1">担当 {summary.stakeholders}</span>
-              <AuthNavButtons variant="light" />
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600">
+                {currentUser?.firmLabel && (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-800">
+                    {currentUser.firmLabel}
+                  </span>
+                )}
+                {currentUser?.name && (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700">
+                    {currentUser.name}
+                  </span>
+                )}
+                <AuthNavButtons variant="light" />
+              </div>
             </div>
           </header>
 
-          <div className="p-8">
-            {settingsConsole === "firm" &&
-            (activeCategory === "clients" || activeCategory === "drive") ? (
-              <GoLiveSetupBanner
-                clientCount={clientMaster.editableClients.length}
-                driveConnected={integration.isDriveConnected}
-                driveConfigured={
-                  integration.driveCredentialsConfigured && Boolean(integration.driveRootFolderId)
-                }
-                onOpenClients={() => setActiveCategory("clients")}
-                onOpenDrive={() => setActiveCategory("drive")}
-                onStartTour={() => setGoLiveTourId("go_live_setup")}
-              />
-            ) : null}
+          <div className="px-4 pt-3 text-xs text-slate-500 md:px-8">
+            {settingsConsole === "dev"
+              ? "ロール・画面設計・連携など開発用タブ。日常業務はマトリクスから。"
+              : "顧客・担当・ひな形など事務所運用の設定。"}
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-600">
+              <span className="rounded-full bg-blue-50 px-3 py-1">顧客 {summary.clients}</span>
+              <span className="hidden rounded-full bg-indigo-50 px-3 py-1 sm:inline">
+                関係グループ {summary.groups}
+              </span>
+              <span className="hidden rounded-full bg-emerald-50 px-3 py-1 sm:inline">
+                担当 {summary.stakeholders}
+              </span>
+            </div>
+          </div>
 
-            {activeCategory === "clients" && (
+          <div className="p-4 md:p-8">
+            {canShowActiveCategory && activeCategory === "clients" && (
               <ClientMasterSettingsTab
                 editableClients={clientMaster.editableClients}
                 editableGroups={clientMaster.editableGroups}
@@ -327,10 +352,16 @@ export function SettingsPageShell() {
                 onSave={() => void clientMaster.handleSaveClientMaster(currentUser)}
                 isSaving={clientMaster.isSavingClientMaster}
                 message={clientMaster.clientMasterMessage}
+                stakeholders={STAKEHOLDER_MASTER}
+                stakeholderScopes={stakeholderMaster.stakeholderScopes}
+                onOpenClientProfile={(clientId) => {
+                  setProfileFocusClientId(clientId);
+                  setActiveCategory("clientProfile");
+                }}
               />
             )}
 
-            {activeCategory === "clientProfile" && (
+            {canShowActiveCategory && activeCategory === "clientProfile" && (
               <ClientMasterSettingsTab
                 editableClients={clientMaster.editableClients}
                 editableGroups={clientMaster.editableGroups}
@@ -341,10 +372,17 @@ export function SettingsPageShell() {
                 isSaving={clientMaster.isSavingClientMaster}
                 message={clientMaster.clientMasterMessage}
                 showProfileEditor
+                profileClientId={profileFocusClientId}
+                stakeholders={STAKEHOLDER_MASTER}
+                stakeholderScopes={stakeholderMaster.stakeholderScopes}
+                onToggleAssignee={stakeholderMaster.toggleStakeholderClientScope}
+                onSaveAssignees={() => void stakeholderMaster.handleSaveStakeholderMaster()}
+                assigneesSaving={stakeholderMaster.isSavingStakeholderMaster}
+                assigneesMessage={stakeholderMaster.stakeholderMasterMessage}
               />
             )}
 
-            {activeCategory === "stakeholders" && (
+            {canShowActiveCategory && activeCategory === "stakeholders" && (
               <StakeholderSettingsTab
                 stakeholders={STAKEHOLDER_MASTER}
                 clients={clientMaster.editableClients}
@@ -362,7 +400,7 @@ export function SettingsPageShell() {
               />
             )}
 
-            {activeCategory === "roles" && (
+            {canShowActiveCategory && activeCategory === "roles" && (
               <RolesSettingsTab
                 editableRoles={roleSettings.editableRoles}
                 isLoadingRolePermissions={roleSettings.isLoadingRolePermissions}
@@ -374,7 +412,7 @@ export function SettingsPageShell() {
               />
             )}
 
-            {activeCategory === "documents" && (
+            {canShowActiveCategory && activeCategory === "documents" && (
               <DocumentsSettingsTab
                 documentCategories={documentCategories}
                 ocrAutoExtractEnabled={integration.ocrAutoExtractEnabled}
@@ -382,7 +420,7 @@ export function SettingsPageShell() {
               />
             )}
 
-            {activeCategory === "templates" && (
+            {canShowActiveCategory && activeCategory === "templates" && (
               <>
                 <p className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-violet-800">
                   判定フローは別ページです。レールの <strong>判定</strong>、または{" "}
@@ -395,25 +433,25 @@ export function SettingsPageShell() {
               </>
             )}
 
-            {activeCategory === "reviewChecklist" && (
+            {canShowActiveCategory && activeCategory === "reviewChecklist" && (
               <section className="fade-in-up">
                 <ReviewChecklistSettingsPanel currentUser={currentUser} />
               </section>
             )}
 
-            {activeCategory === "shortcuts" && (
+            {canShowActiveCategory && activeCategory === "shortcuts" && (
               <section className="fade-in-up">
                 <KeyboardShortcutsPanel />
               </section>
             )}
 
-            {activeCategory === "appearance" && (
+            {canShowActiveCategory && activeCategory === "appearance" && (
               <section className="fade-in-up">
                 <DocuGridAppearancePanel />
               </section>
             )}
 
-            {activeCategory === "billing" && (
+            {canShowActiveCategory && activeCategory === "billing" && (
               <section className="fade-in-up">
                 <BillingSettingsPanel
                   checkoutResult={billingCheckoutResult}
@@ -423,16 +461,16 @@ export function SettingsPageShell() {
               </section>
             )}
 
-            {activeCategory === "screens" && <ScreenDesignPanel />}
-            {activeCategory === "featureSurfaces" && <FeatureSurfacesPanel />}
-            {activeCategory === "addons" && (
+            {canShowActiveCategory && activeCategory === "screens" && <ScreenDesignPanel />}
+            {canShowActiveCategory && activeCategory === "featureSurfaces" && <FeatureSurfacesPanel />}
+            {canShowActiveCategory && activeCategory === "addons" && (
               <AddonsSettingsTab
                 isPlatformAdmin={canEditPlatformSettings}
                 consoleKind={settingsConsole}
               />
             )}
 
-            {activeCategory === "audit" && (
+            {canShowActiveCategory && activeCategory === "audit" && (
               <AuditSettingsTab
                 editableClients={clientMaster.editableClients}
                 auditRows={audit.auditRows}
@@ -468,14 +506,14 @@ export function SettingsPageShell() {
               />
             )}
 
-            {activeCategory === "mcp" && (
+            {canShowActiveCategory && activeCategory === "mcp" && (
               <section className="fade-in-up space-y-8">
                 <McpConnectPanel user={currentUser} embedded />
                 <OcrIndexLabPanel />
               </section>
             )}
 
-            {activeCategory === "messaging" && (
+            {canShowActiveCategory && activeCategory === "messaging" && (
               <section className="fade-in-up space-y-4">
                 <div>
                   <h2 className="text-lg font-bold text-slate-800">通知連携</h2>
@@ -487,7 +525,7 @@ export function SettingsPageShell() {
               </section>
             )}
 
-            {activeCategory === "drive" && (
+            {canShowActiveCategory && activeCategory === "drive" && (
               <section className="fade-in-up space-y-4">
                 <div>
                   <h2 className="text-lg font-bold text-slate-800">Google Drive</h2>
@@ -541,12 +579,56 @@ export function SettingsPageShell() {
               </section>
             )}
 
-            {activeCategory === "integrations" && (
+            {canShowActiveCategory && activeCategory === "integrations" && (
               <IntegrationsSettingsTab
                 {...integration}
                 canEditPlatformSettings={canEditPlatformSettings}
               />
             )}
+
+            {canShowActiveCategory &&
+            settingsConsole === "firm" &&
+            (activeCategory === "clients" || activeCategory === "drive") ? (
+              <div className="mt-8 space-y-4 border-t border-dashed border-slate-200 pt-6">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  本格稼働のセットアップ（あまり使わない）
+                </p>
+                {showMigrationPanel && activeCategory === "clients" ? (
+                  <div className="space-y-2">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowMigrationPanel(false)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        初回整理パネルを閉じる
+                      </button>
+                    </div>
+                    <MigrationIngestPanel
+                      clients={clientMaster.editableClients}
+                      canEdit={canEditFirmSettings}
+                    />
+                  </div>
+                ) : null}
+                <GoLiveSetupBanner
+                  clientCount={clientMaster.editableClients.length}
+                  driveConnected={integration.isDriveConnected}
+                  driveConfigured={
+                    integration.driveCredentialsConfigured && Boolean(integration.driveRootFolderId)
+                  }
+                  onOpenClients={() => {
+                    setShowMigrationPanel(false);
+                    setActiveCategory("clients");
+                  }}
+                  onOpenMigration={() => {
+                    setActiveCategory("clients");
+                    setShowMigrationPanel(true);
+                  }}
+                  onOpenDrive={() => setActiveCategory("drive")}
+                  onStartTour={() => setGoLiveTourId("go_live_setup")}
+                />
+              </div>
+            ) : null}
           </div>
         </main>
       </div>
@@ -554,6 +636,13 @@ export function SettingsPageShell() {
         user={currentUser}
         triggerTourId={goLiveTourId}
         onTriggerConsumed={() => setGoLiveTourId(null)}
+      />
+      <WorkAssistantFab
+        enabled={
+          Boolean(currentUser) &&
+          (hasPermission(currentUser, "document.view") ||
+            hasPermission(currentUser, "dashboard.view"))
+        }
       />
     </div>
   );

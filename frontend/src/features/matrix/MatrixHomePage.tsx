@@ -26,6 +26,7 @@ import { useSlotClassify } from "@/features/matrix/hooks/useSlotClassify";
 import { DataWorkspace, profileFillPercent } from "@/features/client-data/DataWorkspace";
 import { hasInsightsPanel, InsightsPanel } from "@/features/matrix/InsightsPanel";
 import { FeatureTourHost } from "@/features/onboarding/FeatureTourHost";
+import { WorkAssistantFab } from "@/features/assistant/WorkAssistantFab";
 import { BillingGatePanel } from "@/features/billing/BillingGatePanel";
 import { parseSlotKey } from "@/features/docugrid/lib/slot-scope";
 import { useDocugridAutoSync } from "@/features/docugrid/hooks/useDocugridAutoSync";
@@ -36,8 +37,9 @@ import {
   toClassifyPersistMetadata,
 } from "@/features/docugrid/lib/classify";
 import { classifyCandidates } from "@/lib/slot-ids";
-import { slotIndexFromLayoutSlotId } from "@/lib/slot-layout-ops";
+import { slotIdAtIndex, slotIndexFromLayoutSlotId } from "@/lib/slot-layout-ops";
 import { isDataPeriodIndex, isPermPeriodIndex } from "@/lib/period-nav";
+import { defaultYearPeriodIndex } from "@/lib/fiscal-year-drum";
 import type { ExtractionReviewPayload } from "@/features/client-data/lib/extraction-api";
 
 export function MatrixHomePage() {
@@ -65,8 +67,11 @@ export function MatrixHomePage() {
   const pdfWorkspaceBind = useViewerUiStore((s) => s.pdfWorkspaceBind);
   const docugridPageCount = useDocugridStore((s) => s.pageOrder.length);
 
-  const { clients: orgClients, groups: orgGroups } = useOrgDirectory();
+  const { clients: orgClients, groups: orgGroups, loaded: orgClientsLoaded } = useOrgDirectory();
   const canViewDocument = hasPermission(currentUser, "document.view");
+  const canUseWorkAssistant =
+    Boolean(currentUser) &&
+    (canViewDocument || hasPermission(currentUser, "dashboard.view"));
 
   const shell = useMatrixShellState({
     currentUser,
@@ -107,6 +112,7 @@ export function MatrixHomePage() {
     assignedClientIdSet,
     allVisibleClientIds,
     onJumpToPeriod,
+    onYearMonthModeSwitch,
   } = shell;
 
   const canUploadDocument = hasPermission(currentUser, "document.upload");
@@ -221,6 +227,7 @@ export function MatrixHomePage() {
     handleOpenUnassigned,
     handleOpenDeleted,
     handleAssignUnassigned,
+    handleRelocateDocument,
     onOpenSlot,
     onOpenSlotForAudit,
   } = slots;
@@ -421,6 +428,15 @@ export function MatrixHomePage() {
   );
 
   const slotCount = slotLayout.slotLabels.length;
+
+  const assistantExpectedSlots = useMemo(
+    () =>
+      slotLayout.slotLabels.map((label, idx) => ({
+        slotId: slotIdAtIndex(slotLayout.currentSlotLayout, periodKey, idx),
+        label,
+      })),
+    [slotLayout.slotLabels, slotLayout.currentSlotLayout, periodKey],
+  );
   const filledInView = Array.from({ length: slotCount }, (_, i) =>
     slotLayout.slotKeyFor(i),
   ).filter((k) => slotDocs[k]).length;
@@ -440,6 +456,7 @@ export function MatrixHomePage() {
     periodKey,
     activeMode,
     currentClient,
+    navClients,
     docHistoryItems,
     docHistoryLoading,
     activeDocCategoryLabel: activeDocCategory?.label,
@@ -466,6 +483,7 @@ export function MatrixHomePage() {
     unassignedDocsView,
     handleOpenUnassigned,
     handleAssignUnassigned,
+    handleRelocateDocument,
     handleSoftDeleteDocument,
     deletedDocsView,
     handleOpenDeleted,
@@ -485,6 +503,7 @@ export function MatrixHomePage() {
     timelineLoading,
     onAssignPackageToSlot,
     persistFileToSlot,
+    onPeriodChange: setActivePeriodIdx,
   });
 
   if (!authChecked) {
@@ -526,15 +545,30 @@ export function MatrixHomePage() {
         clientScopeMode={clientScopeMode}
         canToggleClientScope={canToggleScope}
         onClientScopeModeChange={onClientScopeModeChange}
+        clientsLoaded={orgClientsLoaded}
+        firmLabel={currentUser?.firmLabel}
+        userName={currentUser?.name}
         activeMode={activeMode}
         activePeriodIdx={activePeriodIdx}
         onPeriodChange={setActivePeriodIdx}
-        onModeSwitch={() => {
-          setActiveMode((prev) => (prev === "year" ? "month" : "year"));
-          if (matrixViewMode === "client-period") setActivePeriodIdx(2);
-        }}
+        onModeSwitch={onYearMonthModeSwitch}
         matrixPeriods={matrixPeriods}
         periodKey={periodKey}
+        onGoHome={() => {
+          setActiveClientIdx(0);
+          setActiveMode("year");
+          setActivePeriodIdx(
+            defaultYearPeriodIndex(
+              yearDrumMeta,
+              new Date(),
+              navClients[0]?.fiscal ?? currentClient.fiscal,
+              navClients[0]?.category ?? currentClient.category,
+            ),
+          );
+          window.dispatchEvent(
+            new CustomEvent("docugrid:select-workspace", { detail: { id: "doc" } }),
+          );
+        }}
         renderDataWorkspace={({ activeTab, onTabChange }) =>
           currentOrgClient ? (
             <DataWorkspace
@@ -585,7 +619,7 @@ export function MatrixHomePage() {
         }
         footer={
           isHydratingSlots ? (
-            <div className="pointer-events-none fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+            <div className="pointer-events-none fixed bottom-4 left-4 z-20 flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
               保存済みの資料を復元中…
             </div>
@@ -598,6 +632,13 @@ export function MatrixHomePage() {
         user={currentUser}
         triggerTourId={classify.tourTriggerId}
         onTriggerConsumed={classify.clearTourTrigger}
+      />
+      <WorkAssistantFab
+        enabled={canUseWorkAssistant}
+        clientId={currentClient.id !== "unknown" ? currentClient.id : null}
+        clientLabel={currentClient.name || currentClient.id}
+        periodKey={periodKey}
+        expectedSlots={assistantExpectedSlots}
       />
       <MatrixViewerHost
         isOpen={viewer.isViewerOpen}

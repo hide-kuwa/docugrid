@@ -3,6 +3,11 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { PERIODS } from "./mockData";
 import type { PeriodLists } from "@/lib/fiscal-year-drum";
+import {
+  fiscalPeriodOrdinalLabel,
+  fiscalPeriodTermLabel,
+  parseReiwaFromDrumLabel,
+} from "@/lib/fiscal-year-drum";
 import { PERIOD_INDEX_PERM } from "@/lib/period-nav";
 import type { MatrixViewMode } from "@/lib/matrix-view-mode";
 import type { NavClient } from "@/lib/client-nav";
@@ -26,7 +31,13 @@ interface SidebarProps {
 
 type DrumItem =
   | { kind: "perm" }
-  | { kind: "period"; label: string };
+  | {
+      kind: "period";
+      label: string;
+      calendarYear?: number;
+      fyBoundary?: boolean;
+      previousFyStart?: boolean;
+    };
 
 /** 中央スナップ用。アイテム半高の目安（永続/期ラベル） */
 const DRUM_ITEM_HALF_PX = 40;
@@ -62,14 +73,29 @@ export default function Sidebar({
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastWheelTime = useRef(0);
   const wheelAccumulator = useRef(0);
+  const prevDrumMode = useRef(activeMode);
   const [spacerPx, setSpacerPx] = useState(240);
 
   const isDocMode = viewMode === "document-client";
   const isKarteMode = Boolean(karteSections && karteSections.length > 0 && onKarteSectionChange);
+  const activeNavClient = clients[activeClientIdx];
+  const activeFiscalMonth = activeNavClient?.fiscal ?? 3;
+  const activeEstablishedDate = activeNavClient?.establishedDate;
 
   const periodDrumItems: DrumItem[] = [
     { kind: "perm" },
-    ...matrixPeriods[activeMode].map((label) => ({ kind: "period" as const, label })),
+    ...matrixPeriods[activeMode].map((label, i) => ({
+      kind: "period" as const,
+      label,
+      calendarYear:
+        activeMode === "month"
+          ? (matrixPeriods as PeriodLists & { monthCalendarYears?: number[] }).monthCalendarYears?.[
+              i
+            ]
+          : undefined,
+      fyBoundary: activeMode === "month" && i > 0 && i % 12 === 0,
+      previousFyStart: activeMode === "month" && i === 12,
+    })),
   ];
 
   /** ドラム表示 index → period index（0=データは廃止。永続=1, 期=2+） */
@@ -108,7 +134,7 @@ export default function Sidebar({
       const items = container.querySelectorAll(".v-item");
       const targetEl = items[activeDrumIdx] as HTMLElement | undefined;
       if (!targetEl) return;
-      lockAutoScroll(behavior === "smooth" ? 520 : 160);
+      lockAutoScroll(behavior === "smooth" ? 520 : 480);
       const offset =
         targetEl.offsetTop - container.clientHeight / 2 + targetEl.clientHeight / 2;
       container.scrollTo({ top: Math.max(0, offset), behavior });
@@ -154,8 +180,29 @@ export default function Sidebar({
   }, [onModeSwitch, isKarteMode]);
 
   useEffect(() => {
+    const modeChanged = prevDrumMode.current !== activeMode;
+    prevDrumMode.current = activeMode;
+    if (modeChanged && !isKarteMode && !isDocMode) {
+      // scrollTop=0 だと「永続」が中央付近に残り、解除後に YEAR の今期へ吸い寄せられない
+      lockAutoScroll(720);
+      let cancelled = false;
+      const run = () => {
+        if (cancelled) return;
+        scrollActiveToCenter("auto");
+      };
+      const frame1 = requestAnimationFrame(() => {
+        run();
+        requestAnimationFrame(run);
+      });
+      const timer = window.setTimeout(run, 80);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(frame1);
+        window.clearTimeout(timer);
+      };
+    }
     scrollActiveToCenter("smooth");
-  }, [scrollActiveToCenter, spacerPx]);
+  }, [scrollActiveToCenter, spacerPx, activeMode, lockAutoScroll, isKarteMode, isDocMode]);
 
   useEffect(() => {
     return () => {
@@ -233,6 +280,7 @@ export default function Sidebar({
       <div
         ref={vScrollerRef}
         onScroll={handleScroll}
+        data-drum-mode={isKarteMode || isDocMode ? undefined : activeMode}
         className="v-drum-scroller no-scrollbar relative z-10 flex h-full w-full flex-col items-center gap-6"
       >
         <div className="w-full flex-shrink-0" style={{ height: spacerPx }} aria-hidden />
@@ -240,6 +288,7 @@ export default function Sidebar({
           ? karteSections!.map((section, idx) => {
               const Icon = section.icon;
               const active = idx === activeKarteSectionIdx;
+              const planned = (section.status ?? "live") === "planned";
               return (
                 <div
                   key={section.id}
@@ -249,20 +298,28 @@ export default function Sidebar({
                     onKarteSectionChange?.(idx);
                   }}
                   className={`v-item w-full px-1 py-3 text-center ${active ? "active" : ""} ${
-                    active ? "text-violet-200" : "text-white"
+                    active ? "text-violet-200" : planned ? "text-amber-100/80" : "text-white"
                   }`}
-                  title={section.description}
+                  title={planned ? `${section.description}（工事中）` : section.description}
                 >
                   <Icon
-                    className={`mx-auto h-4 w-4 ${active ? "text-violet-300" : "text-slate-400"}`}
+                    className={`mx-auto h-4 w-4 ${
+                      active ? "text-violet-300" : planned ? "text-amber-400/80" : "text-slate-400"
+                    }`}
                     strokeWidth={active ? 2.25 : 1.75}
                   />
                   <div className="mt-1 text-sm font-black leading-snug tracking-tight">
                     {section.label}
                   </div>
-                  <div className="mt-0.5 text-[8px] font-bold tracking-widest opacity-50">
-                    {section.subLabel}
-                  </div>
+                  {planned ? (
+                    <div className="mt-0.5 text-[8px] font-bold tracking-widest text-amber-400/90">
+                      工事中
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 text-[8px] font-bold tracking-widest opacity-50">
+                      {section.subLabel}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -289,7 +346,7 @@ export default function Sidebar({
               ))
             : periodDrumItems.map((item, drumIdx) => (
                 <div
-                  key={item.kind === "period" ? item.label : item.kind}
+                  key={`${activeMode}-${item.kind === "period" ? `${item.label}-${item.calendarYear ?? drumIdx}` : item.kind}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onPeriodChange(periodIdxFromDrum(drumIdx));
@@ -302,6 +359,8 @@ export default function Sidebar({
                       : item.kind === "period" && item.label === "OLD"
                         ? "text-amber-300"
                         : "text-white"
+                  } ${
+                    item.kind === "period" && item.fyBoundary ? "border-t border-white/25 pt-5" : ""
                   }`}
                 >
                   {item.kind === "perm" ? (
@@ -318,9 +377,29 @@ export default function Sidebar({
                     <>
                       <div className="text-2xl font-black tracking-tighter">{item.label}</div>
                       {activeMode === "year" ? (
-                        <div className="text-[9px] font-bold opacity-60">YEAR</div>
+                        <div className="space-y-0.5 text-[9px] font-bold opacity-70">
+                          {(() => {
+                            const reiwa = parseReiwaFromDrumLabel(item.label);
+                            if (reiwa == null) return null;
+                            const term = fiscalPeriodTermLabel(reiwa, activeFiscalMonth);
+                            const ordinal = fiscalPeriodOrdinalLabel(
+                              reiwa,
+                              activeFiscalMonth,
+                              activeEstablishedDate,
+                            );
+                            return (
+                              <>
+                                {ordinal ? <div>{ordinal}</div> : null}
+                                <div>{term ?? `${reiwa + 2018}`}</div>
+                              </>
+                            );
+                          })()}
+                        </div>
                       ) : (
-                        <div className="text-[9px] font-bold opacity-60">MONTH</div>
+                        <div className="text-[9px] font-bold opacity-60">
+                          {item.previousFyStart ? "前期 " : ""}
+                          {item.calendarYear ?? "MONTH"}
+                        </div>
                       )}
                     </>
                   )}

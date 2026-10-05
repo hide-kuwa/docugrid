@@ -25,6 +25,7 @@ import { relationLayoutKey, type RelationDiagramManualLayout } from "@/features/
 import { fetchClientMaster, saveClientMaster } from "@/lib/client-master-api";
 import { useRelationLayoutPersist } from "@/features/client-data/hooks/useRelationLayoutPersist";
 import { useRelationDiagramExport } from "@/features/client-data/hooks/useRelationDiagramExport";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 type Props = {
   client: OrgClient;
@@ -37,8 +38,18 @@ const KIND_OPTIONS: ClientRelationKind[] = [
   "group_company",
   "relative",
   "shareholding",
+  "officer",
   "referral",
 ];
+
+/** 種別ごとの From / To の意味（役員は 個人 → 法人） */
+const KIND_ENDPOINT_LABEL: Record<ClientRelationKind, { from: string; to: string }> = {
+  group_company: { from: "From（親・持株など）", to: "To（子・事業会社など）" },
+  relative: { from: "From（本人）", to: "To（親族）" },
+  shareholding: { from: "From（出資者）", to: "To（被出資）" },
+  officer: { from: "From（社長・役員の個人）", to: "To（その法人）" },
+  referral: { from: "From（紹介元）", to: "To（被紹介）" },
+};
 
 export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) {
   const [clients, setClients] = useState<OrgClient[]>([]);
@@ -183,7 +194,8 @@ export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) 
       )
       .sort((a, b) => {
         const order = (k: ClientRelationKind) =>
-          ({ group_company: 0, relative: 1, shareholding: 2, referral: 3 }[k] ?? 9);
+          ({ group_company: 0, relative: 1, shareholding: 2, officer: 3, referral: 4 }[k] ??
+          9);
         return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
       });
   }, [relations, client.id, viewMode]);
@@ -262,7 +274,7 @@ export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) 
       <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 md:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <GitBranch className="h-4 w-4 text-slate-500" aria-hidden />
-          <h2 className="text-sm font-bold text-slate-800">関係（家系・出資・紹介）</h2>
+          <h2 className="text-sm font-bold text-slate-800">関係（家系・出資・役員・紹介）</h2>
           <span className="text-xs text-slate-500">中心: {client.name}</span>
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
             <div
@@ -381,6 +393,12 @@ export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) 
               出資％
             </li>
           ) : null}
+          {viewMode === "all" || viewMode === "officer" ? (
+            <li className="flex items-center gap-1.5">
+              <span className="h-1 w-5 rounded bg-fuchsia-700" />
+              代表・役員
+            </li>
+          ) : null}
           {viewMode === "all" || viewMode === "referral" ? (
             <li className="flex items-center gap-1.5">
               <span
@@ -473,37 +491,22 @@ export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) 
                   </select>
                 </label>
                 <label className="block text-[10px] font-bold text-slate-500">
-                  From（紹介元・出資者など）
-                  <select
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                  {KIND_ENDPOINT_LABEL[draft.kind].from}
+                  <ClientSearchSelect
+                    clients={clients.map(toClientSearchOption)}
                     value={draft.fromClientId}
-                    onChange={(e) =>
-                      setDraft((p) => ({ ...p, fromClientId: e.target.value }))
-                    }
-                  >
-                    <option value="">選択…</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(fromClientId) => setDraft((p) => ({ ...p, fromClientId }))}
+                    emptyLabel="選択…"
+                  />
                 </label>
                 <label className="block text-[10px] font-bold text-slate-500">
-                  To（被紹介・被出資など）
-                  <select
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                  {KIND_ENDPOINT_LABEL[draft.kind].to}
+                  <ClientSearchSelect
+                    clients={clients.map(toClientSearchOption)}
                     value={draft.toClientId}
-                    onChange={(e) =>
-                      setDraft((p) => ({ ...p, toClientId: e.target.value }))
-                    }
-                  >
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(toClientId) => setDraft((p) => ({ ...p, toClientId }))}
+                    allowEmpty={false}
+                  />
                 </label>
                 {draft.kind === "shareholding" ? (
                   <label className="block text-[10px] font-bold text-slate-500">
@@ -522,9 +525,10 @@ export function ClientRelationsPanel({ client, canEdit, onFocusClient }: Props) 
                   </label>
                 ) : null}
                 <label className="block text-[10px] font-bold text-slate-500">
-                  メモ
+                  {draft.kind === "officer" ? "役職（図の線に出ます）" : "メモ"}
                   <input
                     className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                    placeholder={draft.kind === "officer" ? "代表取締役" : ""}
                     value={draft.note}
                     onChange={(e) =>
                       setDraft((p) => ({ ...p, note: e.target.value }))

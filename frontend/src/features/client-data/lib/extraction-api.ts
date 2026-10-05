@@ -36,6 +36,23 @@ export type ApplyExtractionArgs = {
   fields: Record<string, string>;
 };
 
+export type ExtractionDraftPayload = {
+  client_id: string;
+  period_key: string;
+  slot_id: string;
+  fields: Record<string, string>;
+  edited_ids: string[];
+  updated_at: string | null;
+};
+
+export type SaveExtractionDraftArgs = {
+  clientId: string;
+  periodKey: string;
+  slotId: string;
+  fields: Record<string, string>;
+  editedIds: string[];
+};
+
 /** 人が確認・補完したフィールドをマスタへ反映 */
 export async function applyExtractionFields(
   args: ApplyExtractionArgs,
@@ -56,6 +73,46 @@ export async function applyExtractionFields(
   });
   if (!res.ok) throw new Error(`extraction-apply-failed:${res.status}`);
   return (await res.json()) as NormalizeResultPayload;
+}
+
+/** OCR 手動修正の状態（マスタ未反映）を読み込む */
+export async function loadExtractionDraft(args: {
+  clientId: string;
+  periodKey: string;
+  slotId: string;
+}): Promise<ExtractionDraftPayload> {
+  const params = new URLSearchParams({
+    client_id: args.clientId,
+    period_key: args.periodKey,
+    slot_id: args.slotId,
+  });
+  const res = await authFetch(`${API_BASE}/extraction/draft?${params}`, {
+    headers: buildAuthHeaders(args.clientId),
+  });
+  if (!res.ok) throw new Error(`extraction-draft-load-failed:${res.status}`);
+  return (await res.json()) as ExtractionDraftPayload;
+}
+
+/** OCR 手動修正の状態を保存（顧客マスタには触れない） */
+export async function saveExtractionDraft(
+  args: SaveExtractionDraftArgs,
+): Promise<ExtractionDraftPayload> {
+  const res = await authFetch(`${API_BASE}/extraction/draft`, {
+    method: "PUT",
+    headers: {
+      ...buildAuthHeaders(args.clientId),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: args.clientId,
+      period_key: args.periodKey,
+      slot_id: args.slotId,
+      fields: args.fields,
+      edited_ids: args.editedIds,
+    }),
+  });
+  if (!res.ok) throw new Error(`extraction-draft-save-failed:${res.status}`);
+  return (await res.json()) as ExtractionDraftPayload;
 }
 
 export function pendingExtractionFields(

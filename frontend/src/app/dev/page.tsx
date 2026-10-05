@@ -105,7 +105,7 @@ export default function DevConsolePage() {
         <div className="max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
           <p className="text-sm font-bold text-white">開発コンソールへのアクセス権がありません</p>
           <p className="mt-2 text-xs text-slate-400">
-            所長・管理者（settings.manage）またはプラットフォーム運用アカウントでログインしてください。
+            プラットフォーム管理者（settings.platform）でログインしてください。事務所アカウントでは開けません。
           </p>
           <Link
             href="/"

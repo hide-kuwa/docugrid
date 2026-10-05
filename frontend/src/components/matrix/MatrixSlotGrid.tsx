@@ -16,7 +16,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Upload } from "lucide-react";
 
 import { useGridSlotTagsVisibility } from "@/features/config/hooks/use-grid-slot-tags-visibility";
 import {
@@ -26,9 +26,16 @@ import {
 
 import type { SlotLayoutScope } from "@/lib/slot-layout-scope";
 import type { SlotLayout } from "@/lib/slot-layout-storage";
+import { SLOT_FILE_ACCEPT, isAllowedSlotFile } from "@/features/docugrid/lib/slot-file-kinds";
 import { SortableSlotCard } from "./SortableSlotCard";
 import { SlotLayoutScopeBar } from "./SlotLayoutScopeBar";
 import { SlotAddPanel } from "./SlotAddPanel";
+import {
+  SlotRelocateMenu,
+  type RelocateClientOption,
+  type RelocateConfirmPayload,
+  type RelocatePeriodOption,
+} from "./SlotRelocateMenu";
 import { slotPresetGroupsForPeriod } from "@/lib/slot-layout-presets";
 import type { ReviewTimelineItem } from "@/features/pdf-viewer/lib/review-events";
 import { summarizeDocumentTrail } from "@/features/pdf-viewer/lib/document-trail";
@@ -51,10 +58,15 @@ const LOGICAL_STATUS_BADGE: Record<string, { label: string; className: string }>
 type SlotDoc = {
   file: File;
   pageCount: number | null;
+  docId?: string;
+  persisted?: boolean;
   currentVersionLabel?: string;
   versionCount?: number;
   workflowStatus?: string;
   logicalStatus?: string;
+  clientSharedAt?: string | null;
+  isPdf?: boolean;
+  isConvertibleImage?: boolean;
   classifyMeta?: {
     confidence: number;
     engine: string;
@@ -114,6 +126,16 @@ type Props = {
     slotLabel: string,
   ) => Promise<{ persisted: boolean; docId?: string }>;
   timelineEvents?: ReviewTimelineItem[];
+  /** 枠 ID（移動先の slot_id） */
+  layoutSlotIds?: string[];
+  relocatePeriodOptions?: RelocatePeriodOption[];
+  relocateClientOptions?: RelocateClientOption[];
+  onRelocateDocument?: (
+    sourceSlotIndex: number,
+    target: RelocateConfirmPayload,
+  ) => void | Promise<void>;
+  /** 右クリックから資料だけ削除（枠は残す） */
+  onDeleteDocument?: (sourceSlotIndex: number) => void | Promise<void>;
 };
 
 const LONG_PRESS_MS = 480;
@@ -139,10 +161,10 @@ export function MatrixSlotGrid({
   onAddCustomSlot,
   onAddPresetSlots,
   periodKey = "",
-  unassignedDocs = [],
-  onOpenUnassigned,
-  onAssignUnassigned,
-  onDeleteUnassigned,
+  unassignedDocs: _unassignedDocs = [],
+  onOpenUnassigned: _onOpenUnassigned,
+  onAssignUnassigned: _onAssignUnassigned,
+  onDeleteUnassigned: _onDeleteUnassigned,
   deletedDocs = [],
   onOpenDeleted,
   onRestoreDeleted,
@@ -161,11 +183,23 @@ export function MatrixSlotGrid({
   onApplySlotLayout,
   onAuthoringSave,
   timelineEvents = [],
+  layoutSlotIds = [],
+  relocatePeriodOptions = [],
+  relocateClientOptions = [],
+  onRelocateDocument,
+  onDeleteDocument,
 }: Props) {
   const [slotEditMode, setSlotEditMode] = useState(false);
   const [authoringOpen, setAuthoringOpen] = useState(false);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
   const [autoDragActive, setAutoDragActive] = useState(false);
+  const [relocateMenu, setRelocateMenu] = useState<{
+    x: number;
+    y: number;
+    slotIndex: number;
+    slotLabel: string;
+    slotId: string;
+  } | null>(null);
   const { mode: slotTagsVisibility } = useGridSlotTagsVisibility();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,8 +209,8 @@ export function MatrixSlotGrid({
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
 
-  const slotCardHeight = "h-[15.5rem] overflow-hidden flex flex-col";
-  const uploadedCardClass = `${slotCardHeight} bg-white rounded-xl border-l-4 shadow-sm p-3`;
+  const slotCardHeight = "h-full overflow-hidden flex flex-col";
+  const uploadedCardClass = `${slotCardHeight} bg-white rounded-xl border-l-4 border-slate-200 shadow-sm p-2.5 md:p-3`;
 
   const sortableIds = displayOrder.map((idx) => `slot-${idx}`);
 
@@ -245,7 +279,7 @@ export function MatrixSlotGrid({
     (picked: FileList | File[], slotIndex: number, slotLabel: string) => {
       if (!canUpload || slotEditMode) return;
       const list = Array.from(picked).filter(
-        (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name),
+        (f) => isAllowedSlotFile(f),
       );
       if (list.length === 0) return;
       onFilesDroppedToSlot(list, slotIndex, slotLabel);
@@ -256,6 +290,7 @@ export function MatrixSlotGrid({
   const acceptAutoSortFiles = useCallback(
     (picked: FileList | File[]) => {
       if (!canUpload || slotEditMode) return;
+      // 自動振り分けは PDF のみ（分類エンジン前提）
       const list = Array.from(picked).filter(
         (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name),
       );
@@ -276,15 +311,15 @@ export function MatrixSlotGrid({
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-start gap-2">
+        <div className="mb-3 flex flex-wrap items-start gap-2 md:mb-4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-slate-800">資料の格納</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <h2 className="text-sm font-bold text-slate-800 md:text-base">資料の格納</h2>
+          <p className="mt-0.5 hidden text-xs text-slate-500 md:block">
             {slotEditMode
               ? "枠をドラッグして並べ替え · 名前をタップして変更 · − で資料を外す · 赤いゴミ箱で枠を削除 · 「枠を追加」で枠を増やす"
               : canEditLayout
-                ? "各枠に PDF を入れるか、右端でまとめて振り分け。枠を長押しで編集モード。"
-                : "各枠に PDF を入れるか、右端の箱へまとめてドロップ。収納済みの枠をクリックで開きます。"}
+                ? "各枠に PDF をドロップ（またはクリック）。枠を長押しで編集モード。"
+                : "各枠に PDF をドロップ（またはクリック）。収納済みの枠をクリックで開きます。"}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2" data-slot-skip-edit>
@@ -295,7 +330,7 @@ export function MatrixSlotGrid({
             <button
               type="button"
               onClick={enterEditMode}
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-sm hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+              className="hidden shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-sm hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 sm:inline-flex"
             >
               枠を編集
             </button>
@@ -327,7 +362,7 @@ export function MatrixSlotGrid({
       >
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
-            <div className="grid min-w-0 grid-cols-2 gap-4 fade-in-up md:grid-cols-3 lg:grid-cols-4 [&>*]:min-w-[9rem] [&>*]:h-[15.5rem]">
+            <div className="grid min-w-0 grid-cols-2 gap-2.5 fade-in-up sm:gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4 [&>*]:min-w-0 [&>*]:h-[10.75rem] sm:[&>*]:h-[12.5rem] md:[&>*]:min-w-[9rem] md:[&>*]:h-[15.5rem]">
               {displayOrder.map((slotIndex) => {
                 const title = slotLabels[slotIndex] ?? `枠 ${slotIndex + 1}`;
                 const doc = slotDocs[slotKeyFor(slotIndex)];
@@ -429,6 +464,26 @@ export function MatrixSlotGrid({
                         acceptPdfFiles(e.dataTransfer.files, slotIndex, title);
                       }
                     }}
+                    onContextMenuSlot={
+                      canUpload &&
+                      doc?.file &&
+                      doc.persisted &&
+                      doc.docId &&
+                      (onRelocateDocument || onDeleteDocument)
+                        ? (e) => {
+                            const slotId =
+                              layoutSlotIds[slotIndex] ||
+                              `slot_${slotIndex + 1}`;
+                            setRelocateMenu({
+                              x: Math.min(e.clientX, window.innerWidth - 200),
+                              y: Math.min(e.clientY, window.innerHeight - 160),
+                              slotIndex,
+                              slotLabel: title,
+                              slotId,
+                            });
+                          }
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -475,7 +530,7 @@ export function MatrixSlotGrid({
                     if (slotEditMode) return;
                     autoSortInputRef.current?.click();
                   }}
-                  className={`flex h-[15.5rem] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed p-3 text-center transition-colors ${
+                  className={`hidden h-[15.5rem] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed p-3 text-center transition-colors md:flex ${
                     slotEditMode ? "pointer-events-none opacity-40" : ""
                   } ${
                     autoDragActive
@@ -510,66 +565,6 @@ export function MatrixSlotGrid({
           </p>
         ) : null}
       </div>
-
-      {slotEditMode && unassignedDocs.length > 0 ? (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-          <h3 className="text-xs font-bold text-amber-900">未割当の資料（枠を削除した際に保持）</h3>
-          <ul className="mt-2 space-y-1.5">
-            {unassignedDocs.map((item) => (
-              <li
-                key={item.docId}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-100 bg-white px-2 py-1.5 text-[11px]"
-              >
-                <span className="min-w-0 flex-1 font-semibold text-slate-700">
-                  {item.label}
-                  <span className="ml-1 font-normal text-slate-400">({item.fileName})</span>
-                </span>
-                {onOpenUnassigned ? (
-                  <button
-                    type="button"
-                    onClick={() => onOpenUnassigned(item.docId)}
-                    className="rounded border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                  >
-                    開く
-                  </button>
-                ) : null}
-                {onAssignUnassigned && displayOrder.length > 0 ? (
-                  <select
-                    className="max-w-[8rem] rounded border border-slate-200 px-1 py-0.5 text-[10px]"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const idx = Number(e.target.value);
-                      if (Number.isInteger(idx) && idx >= 0) {
-                        onAssignUnassigned(item.docId, idx);
-                        e.target.value = "";
-                      }
-                    }}
-                  >
-                    <option value="" disabled>
-                      枠へ移す
-                    </option>
-                    {displayOrder.map((idx) => (
-                      <option key={idx} value={idx}>
-                        {slotLabels[idx]}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {onDeleteUnassigned ? (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteUnassigned(item.docId)}
-                    className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700 hover:bg-red-100"
-                    title="削除（所長のみ削除済み一覧から閲覧・復元可能）"
-                  >
-                    削除
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       {deletedDocs.length > 0 ? (
         <div className="mt-3 rounded-xl border border-red-200 bg-red-50/50 p-3">
@@ -629,13 +624,35 @@ export function MatrixSlotGrid({
       ) : null}
 
       {slotEditMode ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
           <button
             type="button"
             onClick={() => setSlotEditMode(false)}
-            className="pointer-events-auto rounded-full bg-slate-900/90 px-8 py-2.5 text-sm font-bold text-white shadow-lg backdrop-blur-sm transition hover:bg-slate-800"
+            className="pointer-events-auto rounded-full bg-slate-900/95 px-8 py-3 text-sm font-bold text-white shadow-lg backdrop-blur-sm transition hover:bg-slate-800"
           >
             完了
+          </button>
+        </div>
+      ) : canAutoSort ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-3 md:hidden">
+          <button
+            type="button"
+            data-tour="auto-sort"
+            disabled={isClassifying}
+            onClick={() => autoSortInputRef.current?.click()}
+            className="pointer-events-auto inline-flex min-h-12 w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 text-sm font-bold text-white shadow-[0_8px_24px_rgba(32,38,46,0.18)] transition hover:bg-brand-700 disabled:opacity-60"
+          >
+            {isClassifying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                振り分け中…
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" aria-hidden />
+                PDFをまとめて上げる
+              </>
+            )}
           </button>
         </div>
       ) : null}
@@ -643,7 +660,7 @@ export function MatrixSlotGrid({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept={SLOT_FILE_ACCEPT}
         className="hidden"
         onChange={(e) => {
           const pending = pendingSlotRef.current;
@@ -664,6 +681,37 @@ export function MatrixSlotGrid({
           acceptAutoSortFiles(e.target.files);
           e.target.value = "";
         }}
+      />
+
+      <SlotRelocateMenu
+        open={relocateMenu}
+        onClose={() => setRelocateMenu(null)}
+        canRelocate={Boolean(canUpload && onRelocateDocument)}
+        canDelete={Boolean(canUpload && onDeleteDocument)}
+        slotOptions={displayOrder.map((slotIndex) => {
+          const label = slotLabels[slotIndex] ?? `枠 ${slotIndex + 1}`;
+          const slotId = layoutSlotIds[slotIndex] || `slot_${slotIndex + 1}`;
+          const key = slotKeyFor(slotIndex);
+          const occupied = Boolean(slotDocs[key]?.file);
+          return {
+            slotId,
+            label,
+            occupied,
+            isCurrent: relocateMenu?.slotIndex === slotIndex,
+          };
+        })}
+        periodOptions={relocatePeriodOptions}
+        clientOptions={relocateClientOptions}
+        onConfirm={async (sourceSlotIndex, target) => {
+          await onRelocateDocument?.(sourceSlotIndex, target);
+        }}
+        onDeleteDocument={
+          onDeleteDocument
+            ? async (sourceSlotIndex) => {
+                await onDeleteDocument(sourceSlotIndex);
+              }
+            : undefined
+        }
       />
     </>
   );

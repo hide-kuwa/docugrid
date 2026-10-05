@@ -43,7 +43,5 @@ export function InsightsPanel({ personaId, user, onSelectClient }: Props) {
   return null;
 }
 
-export const hasInsightsPanel = (personaId: PersonaId): boolean =>
-  personaId === "firm_director" ||
-  personaId === "firm_staff_main" ||
-  personaId === "firm_staff_support";
+/** 一時オフ。戻すときはペルソナ別の条件に戻す。 */
+export const hasInsightsPanel = (_personaId: PersonaId): boolean => false;

@@ -21,6 +21,7 @@ import {
   useViewerUiStore,
 } from "@/features/pdf-viewer/state/viewer-ui-store";
 import type { NavClient } from "@/lib/client-nav";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 type Props = {
   clients: NavClient[];
@@ -251,21 +252,17 @@ export function WorkspacePdfMain({ clients, periodKey }: Props) {
             <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
               対象顧問先
             </span>
-            <select
+            <ClientSearchSelect
+              clients={clients.map(toClientSearchOption)}
               value={selectedClientId}
-              onChange={(e) => {
-                setSelectedClientId(e.target.value);
+              onChange={(id) => {
+                setSelectedClientId(id);
                 setError(null);
               }}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
-            >
-              <option value="">なし（端末上のみ）</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              emptyLabel="なし（端末上のみ）"
+              selectClassName="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+              searchClassName="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+            />
             <span className="text-[11px] leading-relaxed text-slate-400">
               {hasClient
                 ? "「DocuGridに格納」で、この顧問先の「PDF 作業」枠に保存されます。"

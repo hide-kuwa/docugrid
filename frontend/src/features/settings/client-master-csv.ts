@@ -41,7 +41,7 @@ function escapeCsvCell(value: string): string {
   return value;
 }
 
-function slugClientId(name: string, used: Set<string>): string {
+export function slugClientId(name: string, used: Set<string>): string {
   const base =
     name
       .trim()
@@ -141,11 +141,14 @@ export function parseClientCsv(
     }
 
     const fiscalRaw = idx.fiscal >= 0 ? Number(cells[idx.fiscal]) : NaN;
-    const fiscalMonth =
-      Number.isFinite(fiscalRaw) && fiscalRaw >= 1 && fiscalRaw <= 12 ? Math.floor(fiscalRaw) : 3;
     const categoryRaw = (idx.category >= 0 ? cells[idx.category] : "corporate").trim().toLowerCase();
     const category: OrgClient["category"] =
       categoryRaw === "individual" || categoryRaw === "個人" ? "individual" : "corporate";
+    const fiscalDefault = category === "individual" ? 12 : 3;
+    const fiscalMonth =
+      Number.isFinite(fiscalRaw) && fiscalRaw >= 1 && fiscalRaw <= 12
+        ? Math.floor(fiscalRaw)
+        : fiscalDefault;
     const tagsRaw = idx.tags >= 0 ? cells[idx.tags] : "";
     const tags = tagsRaw
       ? tagsRaw
@@ -185,8 +188,49 @@ export function parseClientCsv(
   };
 }
 
+const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+
+function countJapaneseChars(text: string): number {
+  return (text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length;
+}
+
+/** Excel（日本語 Windows）向けに UTF-8 BOM + CRLF で書く */
+export function csvFileBytes(content: string): Uint8Array {
+  const normalized = content.replace(/^\uFEFF/, "").replace(/\r?\n/g, "\r\n");
+  const body = new TextEncoder().encode(
+    normalized.endsWith("\r\n") ? normalized : `${normalized}\r\n`,
+  );
+  const out = new Uint8Array(UTF8_BOM.length + body.length);
+  out.set(UTF8_BOM, 0);
+  out.set(body, UTF8_BOM.length);
+  return out;
+}
+
+/** UTF-8（BOM 可）を優先し、Excel 保存の Shift-JIS も読む */
+export function decodeCsvBytes(bytes: Uint8Array): string {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
+    return new TextDecoder("utf-8").decode(bytes.subarray(3));
+  }
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  let sjis = utf8;
+  try {
+    sjis = new TextDecoder("shift-jis").decode(bytes);
+  } catch {
+    return utf8;
+  }
+  if (utf8.includes("\uFFFD")) return sjis;
+  return countJapaneseChars(sjis) > countJapaneseChars(utf8) ? sjis : utf8;
+}
+
 export function downloadTextFile(filename: string, content: string, mime = "text/csv;charset=utf-8") {
-  const blob = new Blob([content], { type: mime });
+  const blob = mime.includes("csv")
+    ? new Blob([Uint8Array.from(csvFileBytes(content))], { type: mime })
+    : new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

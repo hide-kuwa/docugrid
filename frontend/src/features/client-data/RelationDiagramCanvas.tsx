@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   edgeAnchor,
   edgeStroke,
+  relationEdgeLabel,
   shouldDrawEdgeLabel,
   type RelationGraphLayout,
   type RelationGraphNode,
@@ -320,7 +321,9 @@ export function RelationDiagramCanvas({
                 ? -1
                 : edge.kind === "relative"
                   ? 1
-                  : 0;
+                  : edge.kind === "officer"
+                    ? -2
+                    : 0;
           const laneOff =
             ((edgeIdx % 3) - 1) * (spread / 2) + lane * 6;
           const ox = (-dy / len) * laneOff;
@@ -358,10 +361,7 @@ export function RelationDiagramCanvas({
           const amx = qx + lo.x;
           const amy = qy + lo.y;
           const showLabel = shouldDrawEdgeLabel(edge.kind, viewMode);
-          const label =
-            edge.kind === "shareholding" && edge.percent != null
-              ? `${style.label} ${edge.percent}%`
-              : style.label;
+          const label = relationEdgeLabel(edge);
           const labelW = Math.max(52, (label?.length ?? 0) * 11);
 
           return (

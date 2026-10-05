@@ -3,20 +3,20 @@ import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
 
 export type FiscalYearMetric = {
   label: string;
-  revenue_yen: number;
-  profit_yen: number;
-  consumption_taxable_yen?: number;
+  revenue_yen: number | null;
+  profit_yen: number | null;
+  consumption_taxable_yen?: number | null;
   consumption_taxable_source?: string | null;
 };
 
 export type MonthlyIndexMetric = {
   month: number;
-  index: number;
+  index: number | null;
 };
 
 export type MonthlyRevenueMetric = {
   month: number;
-  revenue_yen: number;
+  revenue_yen: number | null;
   source_type?: string | null;
 };
 

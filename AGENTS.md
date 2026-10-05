@@ -61,6 +61,7 @@ cd backend && python -m pytest tests/test_security.py -q
 | MCP tool auth | `mcp-server/src/guards.ts`, `tools.ts` |
 | OCR/RAG/MCP next chapter | `docs/future-plan-ocr-rag-mcp.md` |
 | Frontend auth UX | `frontend/src/` + `/api/auth/me` contract |
+| UI look & feel (pages / polish) | [`DESIGN.md`](DESIGN.md) + existing `frontend/` patterns |
 
 ## Token discipline (Fable5 sessions)
 

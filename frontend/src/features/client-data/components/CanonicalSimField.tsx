@@ -3,8 +3,8 @@
 import { numDiffers } from "@/features/client-data/lib/sim-diff";
 
 type Props = {
-  canonical: number;
-  simValue: number;
+  canonical: number | null;
+  simValue: number | null;
   editing: boolean;
   onSimChange: (value: number) => void;
   min?: number;
@@ -34,7 +34,8 @@ export function CanonicalSimField({
         tabIndex={-1}
         aria-label="正規値"
         className={`w-full cursor-not-allowed rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[9px] text-slate-400 ${inputClassName}`}
-        value={canonical || ""}
+        value={canonical ?? ""}
+        placeholder="未入力"
         title="正規値（DB・変更不可）"
       />
       <input
@@ -46,10 +47,10 @@ export function CanonicalSimField({
             ? "border-amber-400 bg-amber-50/80 text-amber-900"
             : "border-violet-300 bg-violet-50 text-violet-900"
         } ${inputClassName}`}
-        value={simValue || ""}
+        value={simValue ?? ""}
         onChange={(e) => onSimChange(Number(e.target.value) || 0)}
         title="シミュレーション（この画面のグラフのみ）"
-        placeholder="シミュ"
+        placeholder="未入力"
       />
     </div>
   );
@@ -81,7 +82,7 @@ export function CanonicalSimLabeledField({
             readOnly
             disabled
             className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs tabular-nums text-slate-400"
-            value={canonical > 0 ? canonical.toLocaleString() : "—"}
+            value={canonical != null && canonical > 0 ? canonical.toLocaleString() : "未入力"}
           />
           {suffix ? <span className="shrink-0 text-[10px] text-slate-400">{suffix}</span> : null}
         </div>
@@ -95,12 +96,12 @@ export function CanonicalSimLabeledField({
                 ? "border-amber-400 bg-amber-50/80 text-amber-900"
                 : "border-violet-300 bg-violet-50 text-violet-900"
             }`}
-            value={simValue > 0 ? simValue.toLocaleString() : ""}
+            value={simValue != null && simValue > 0 ? simValue.toLocaleString() : ""}
             onChange={(e) => {
               const n = Number.parseInt(e.target.value.replace(/[^\d]/g, ""), 10);
               onSimChange(Number.isFinite(n) ? n : 0);
             }}
-            placeholder="試算用"
+            placeholder="未入力"
           />
           {suffix ? <span className="shrink-0 text-[10px] text-violet-400">{suffix}</span> : null}
         </div>

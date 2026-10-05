@@ -1,6 +1,6 @@
 """論理資料と immutable な document_versions（P2 版管理）。
 
-新版 PDF は storage/{firm_id}/versions/{version_id}.pdf に保存する。
+新版は storage/{firm_id}/versions/{version_id}{ext} に保存する（PDF 以外も可）。
 旧版（storage/versions/...）は読み取り時にフォールバックする。
 """
 
@@ -275,16 +275,19 @@ def create_document_version(
     contains_individual_number: bool = False,
 ) -> DocumentVersion:
     init_document_versions_db()
-    if page_count is None:
-        try:
-            page_count = len(fitz.open("pdf", content))
-        except Exception:
-            page_count = None
+    from services.upload_file_kinds import is_pdf_name, safe_storage_ext
 
     major, minor, patch, label = compute_next_version(logical_id, bump)
     version_id = uuid.uuid4().hex
     logical = get_logical_by_id(logical_id)
     firm_id = logical.firm_id if logical else DEFAULT_FIRM_ID
+    safe_name = original_name or "document.pdf"
+    if page_count is None and is_pdf_name(safe_name):
+        try:
+            page_count = len(fitz.open("pdf", content))
+        except Exception:
+            page_count = None
+
     if contains_individual_number:
         from services.spi_vault import encrypt_bytes, spi_storage_key
 
@@ -293,7 +296,8 @@ def create_document_version(
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(encrypt_bytes(content))
     else:
-        storage_key = f"{firm_id}/versions/{version_id}.pdf"
+        ext = safe_storage_ext(safe_name)
+        storage_key = f"{firm_id}/versions/{version_id}{ext}"
         dest = STORAGE_DIR / storage_key
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content)
@@ -320,7 +324,7 @@ def create_document_version(
                 storage_key,
                 content_sha256,
                 len(content),
-                original_name or "document.pdf",
+                safe_name,
                 page_count,
                 source,
                 parent_version_id,
@@ -460,6 +464,59 @@ def get_logical_by_slot(
             (client_id, period_key, slot_id),
         ).fetchone()
     return _row_logical(row) if row else None
+
+
+def relocate_logical_document(
+    *,
+    logical_id: str,
+    client_id: str,
+    period_key: str,
+    slot_id: str,
+    title: Optional[str] = None,
+) -> LogicalDocument:
+    """論理資料の顧問先・期・枠座標を付け替える（版ファイルはそのまま）。
+
+    行き先に別の論理資料があり current_version がある場合は ValueError('target_occupied')。
+    空の行き先論理資料があれば削除してから移動する。
+    """
+    init_document_versions_db()
+    now = _now_iso()
+    firm_id = get_client_firm_id(client_id)
+    with sqlite3.connect(VERSIONS_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        src = conn.execute(
+            "SELECT * FROM logical_documents WHERE id=?",
+            (logical_id,),
+        ).fetchone()
+        if not src:
+            raise ValueError("logical_not_found")
+
+        dest = conn.execute(
+            """
+            SELECT * FROM logical_documents
+            WHERE client_id=? AND period_key=? AND slot_id=? AND id<>?
+            """,
+            (client_id, period_key, slot_id, logical_id),
+        ).fetchone()
+        if dest:
+            if dest["current_version_id"] or dest["approved_version_id"]:
+                raise ValueError("target_occupied")
+            conn.execute("DELETE FROM logical_documents WHERE id=?", (dest["id"],))
+
+        new_title = title if title is not None else src["title"]
+        conn.execute(
+            """
+            UPDATE logical_documents
+            SET client_id=?, period_key=?, slot_id=?, title=?, firm_id=?, updated_at=?
+            WHERE id=?
+            """,
+            (client_id, period_key, slot_id, new_title, firm_id, now, logical_id),
+        )
+        row = conn.execute(
+            "SELECT * FROM logical_documents WHERE id=?",
+            (logical_id,),
+        ).fetchone()
+    return _row_logical(row)
 
 
 def get_version(version_id: str) -> Optional[DocumentVersion]:

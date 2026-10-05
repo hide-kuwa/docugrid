@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, FileSearch, Loader2, Pencil } from "lucide-react";
 import {
   CLIENT_PROFILE_FIELD_IDS,
@@ -11,6 +11,8 @@ import {
   applyExtractionFields,
   buildExtractionReviewFromClassifyMeta,
   buildOcrFieldRows,
+  loadExtractionDraft,
+  saveExtractionDraft,
   type OcrFieldDisplaySource,
 } from "@/features/client-data/lib/extraction-api";
 import { propagateSlotNormalizeResult } from "@/features/org/org-directory-events";
@@ -38,6 +40,8 @@ const SOURCE_LABEL: Record<OcrFieldDisplaySource, string> = {
   manual_master: "手動（マスタ）",
   manual_session: "手動修正",
 };
+
+const DRAFT_SAVE_DEBOUNCE_MS = 600;
 
 function statusClass(status: string): string {
   if (status === "extracted") return "bg-emerald-50 text-emerald-800 border-emerald-200";
@@ -67,10 +71,19 @@ export function ViewerOcrFieldsPanel({
   const [open, setOpen] = useState(true);
   const [sessionDraft, setSessionDraft] = useState<Record<string, string>>({});
   const [sessionEditedIds, setSessionEditedIds] = useState<Set<string>>(() => new Set());
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [draftSaveState, setDraftSaveState] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNextAutosaveRef = useRef(true);
+  const draftIdentity = `${clientId}|${periodKey}|${slotId}`;
+
+  // ベース値（OCR / マスタ）を組み立て
   useEffect(() => {
     if (!review) return;
     const init: Record<string, string> = {};
@@ -85,9 +98,83 @@ export function ViewerOcrFieldsPanel({
     }
     setSessionDraft(init);
     setSessionEditedIds(new Set());
+    setDraftHydrated(false);
+    setDraftSaveState("idle");
     setError(null);
     setMessage(null);
-  }, [review, clientProfile, clientProfileMeta, classifyMeta?.classified_at]);
+    skipNextAutosaveRef.current = true;
+  }, [review, clientProfile, clientProfileMeta, classifyMeta?.classified_at, draftIdentity]);
+
+  // サーバー上の手動修正ドラフトを重ねる（マスタ反映とは別）
+  useEffect(() => {
+    if (!review || !slotIdentityReady(clientId, periodKey, slotId)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const draft = await loadExtractionDraft({ clientId, periodKey, slotId });
+        if (cancelled) return;
+        if (draft.edited_ids.length > 0) {
+          setSessionDraft((prev) => {
+            const next = { ...prev };
+            for (const id of draft.edited_ids) {
+              const value = (draft.fields[id] ?? "").trim();
+              if (value) next[id] = value;
+            }
+            return next;
+          });
+          setSessionEditedIds(new Set(draft.edited_ids));
+        }
+      } catch {
+        // 下書き読込失敗は編集自体を止めない
+      } finally {
+        if (!cancelled) {
+          setDraftHydrated(true);
+          skipNextAutosaveRef.current = true;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [review, clientId, periodKey, slotId, classifyMeta?.classified_at, draftIdentity]);
+
+  // 編集内容をデバウンス自動保存（マスタには触れない）
+  useEffect(() => {
+    if (!draftHydrated || !slotIdentityReady(clientId, periodKey, slotId)) return;
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const editedIds = [...sessionEditedIds];
+      const fields: Record<string, string> = {};
+      for (const id of editedIds) {
+        const value = (sessionDraft[id] ?? "").trim();
+        if (value) fields[id] = value;
+      }
+      setDraftSaveState("saving");
+      void saveExtractionDraft({
+        clientId,
+        periodKey,
+        slotId,
+        fields,
+        editedIds,
+      })
+        .then(() => setDraftSaveState("saved"))
+        .catch(() => setDraftSaveState("error"));
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [
+    sessionDraft,
+    sessionEditedIds,
+    draftHydrated,
+    clientId,
+    periodKey,
+    slotId,
+  ]);
 
   const rows = useMemo(() => {
     if (!review) return [];
@@ -101,6 +188,14 @@ export function ViewerOcrFieldsPanel({
   }, [review, clientProfile, clientProfileMeta, sessionDraft, sessionEditedIds]);
 
   const dirtyCount = sessionEditedIds.size;
+  const masterDirtyCount = useMemo(() => {
+    const allowed = new Set(CLIENT_PROFILE_FIELD_IDS);
+    let n = 0;
+    for (const id of sessionEditedIds) {
+      if (allowed.has(id) && (sessionDraft[id] ?? "").trim()) n += 1;
+    }
+    return n;
+  }, [sessionEditedIds, sessionDraft]);
 
   const handleChange = useCallback(
     (fieldId: string, nextValue: string, ocrValue: string) => {
@@ -137,7 +232,7 @@ export function ViewerOcrFieldsPanel({
         edited.length > 0 && edited.every((id) => !allowedIds.has(id));
       setMessage(
         hasDocumentOnly
-          ? "この資料の推定項目は表示のみです。顧客マスタ項目と紐づくフィールドを編集してください。"
+          ? "資料固有の項目は自動保存済みです。顧客マスタ項目を編集してから反映してください。"
           : "反映する変更がありません",
       );
       return;
@@ -153,7 +248,13 @@ export function ViewerOcrFieldsPanel({
         fields,
       });
       propagateSlotNormalizeResult(clientId, result);
-      setSessionEditedIds(new Set());
+      const appliedIds = new Set(Object.keys(fields));
+      setSessionEditedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of appliedIds) next.delete(id);
+        return next;
+      });
+      skipNextAutosaveRef.current = true;
       setMessage("マスタへ反映しました（手動入力を優先）");
       onApplied?.(result);
     } catch {
@@ -176,6 +277,17 @@ export function ViewerOcrFieldsPanel({
   if (!review || rows.length === 0) {
     return null;
   }
+
+  const draftStatusLabel =
+    draftSaveState === "saving"
+      ? "状態を保存中…"
+      : draftSaveState === "saved"
+        ? "状態を自動保存済み"
+        : draftSaveState === "error"
+          ? "状態の自動保存に失敗"
+          : dirtyCount > 0 && draftHydrated
+            ? "状態は自動保存されます"
+            : null;
 
   return (
     <aside
@@ -210,6 +322,15 @@ export function ViewerOcrFieldsPanel({
               {rows.length} 項目
               {dirtyCount > 0 ? ` · 手動修正 ${dirtyCount}` : ""}
             </p>
+            {draftStatusLabel ? (
+              <p
+                className={`mt-1 text-[10px] ${
+                  draftSaveState === "error" ? "text-rose-600" : "text-slate-400"
+                }`}
+              >
+                {draftStatusLabel}
+              </p>
+            ) : null}
             {classifyMeta?.engine ? (
               <p className="mt-1 font-mono text-[10px] text-slate-400">
                 engine: {classifyMeta.engine}
@@ -283,22 +404,28 @@ export function ViewerOcrFieldsPanel({
           <div className="border-t border-slate-100 px-3 py-3">
             {error ? <p className="mb-2 text-xs text-rose-600">{error}</p> : null}
             {message ? <p className="mb-2 text-xs text-emerald-700">{message}</p> : null}
+            <p className="mb-2 text-[10px] leading-relaxed text-slate-500">
+              黄色の手動修正は自動で状態保存されます。顧客マスタへ載せるときだけ下のボタンを押してください。
+            </p>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || masterDirtyCount === 0}
               onClick={() => void handleApply()}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+              title={
+                masterDirtyCount === 0
+                  ? "マスタ項目の未反映修正がありません"
+                  : `${masterDirtyCount} 項目を顧客マスタへ反映`
+              }
             >
               {saving ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Check className="h-3.5 w-3.5" />
               )}
-              手動修正をマスタへ反映
+              マスタへ反映
+              {masterDirtyCount > 0 ? `（${masterDirtyCount}）` : ""}
             </button>
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
-              手動で書き換えた値は OCR より優先されます。黄色の項目がこの画面での修正です。
-            </p>
           </div>
         </div>
       ) : null}

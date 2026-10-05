@@ -185,7 +185,81 @@ async def apply_extraction_fields(request: Request, body: ExtractionApplyBody):
             "success",
             f"client={body.client_id} slot={body.slot_id} applied={len(norm.applied)}",
         )
+        try:
+            from services.extraction_draft_service import remove_fields_from_draft
+
+            remove_fields_from_draft(
+                firm_id=ctx.firm_id,
+                client_id=body.client_id,
+                period_key=body.period_key,
+                slot_id=body.slot_id,
+                field_ids=list(body.fields.keys()),
+            )
+        except Exception:
+            pass
     return ingest_result_for_response(norm)
+
+
+@router.get("/api/extraction/draft")
+async def get_extraction_draft_route(
+    request: Request,
+    client_id: str = Query(...),
+    period_key: str = Query(...),
+    slot_id: str = Query(...),
+):
+    """OCR 手動修正の保存状態を返す（マスタ未反映の下書き）。"""
+    _require_client_permission(request, "document.view", client_id)
+    ctx = _auth_context(request)
+    from services.extraction_draft_service import get_extraction_draft
+
+    draft = get_extraction_draft(
+        firm_id=ctx.firm_id,
+        client_id=client_id,
+        period_key=period_key,
+        slot_id=slot_id,
+    )
+    if not draft:
+        return {
+            "client_id": client_id,
+            "period_key": period_key,
+            "slot_id": slot_id,
+            "fields": {},
+            "edited_ids": [],
+            "updated_at": None,
+        }
+    return {
+        "client_id": draft["client_id"],
+        "period_key": draft["period_key"],
+        "slot_id": draft["slot_id"],
+        "fields": draft["fields"],
+        "edited_ids": draft["edited_ids"],
+        "updated_at": draft["updated_at"],
+    }
+
+
+@router.put("/api/extraction/draft")
+async def put_extraction_draft_route(request: Request, body: ExtractionDraftBody):
+    """OCR 手動修正の状態を保存する。顧客マスタには触れない。"""
+    _require_client_permission(request, "document.upload", body.client_id)
+    ctx = _auth_context(request)
+    from services.extraction_draft_service import save_extraction_draft
+
+    saved = save_extraction_draft(
+        firm_id=ctx.firm_id,
+        client_id=body.client_id,
+        period_key=body.period_key,
+        slot_id=body.slot_id,
+        fields=body.fields,
+        edited_ids=body.edited_ids,
+    )
+    return {
+        "client_id": saved["client_id"],
+        "period_key": saved["period_key"],
+        "slot_id": saved["slot_id"],
+        "fields": saved["fields"],
+        "edited_ids": saved["edited_ids"],
+        "updated_at": saved["updated_at"],
+    }
 
 
 @router.get("/api/document-templates")
@@ -214,10 +288,14 @@ async def put_document_templates(request: Request, body: DocumentTemplateUpdateB
 
 
 def _client_record_for_render(ctx: AuthContext, client_id: str) -> dict:
-    master = _merge_client_master_for_firm(ctx, _load_client_master())
+    """Load one client row for merge/render. Do not use firm save-merge (multi-firm masters)."""
+    master = _load_client_master()
     for client in master.clients:
-        if client.id == client_id:
-            return client.model_dump()
+        if client.id != client_id:
+            continue
+        if get_client_firm_id(client.id) != ctx.firm_id:
+            raise HTTPException(status_code=404, detail="Client not found")
+        return client.model_dump()
     raise HTTPException(status_code=404, detail="Client not found")
 
 
@@ -429,7 +507,7 @@ async def export_authoring_pdf(request: Request, body: AuthoringExportPdfBody):
     role = _require_client_permission(request, "document.upload", body.client_id)
     if not (body.body or "").strip():
         raise HTTPException(status_code=400, detail="body required")
-    safe_title = (body.title or "document").strip() or "document"
+    safe_title = (body.title or "文書").strip() or "文書"
     pdf_bytes = text_to_pdf_bytes(body.body, title=safe_title)
     filename = f"{safe_title}.pdf".replace('"', "_")
     _log_audit_event(

@@ -1,6 +1,6 @@
 # ヘルプ coverage（機能 ↔ 使い方ページ）
 
-最終更新: 2026-08-20
+最終更新: 2026-08-28
 
 **ユーザー向け説明がどこまで書けているか**の台帳。  
 機能を足す・大きく変えるときは **必ずこの表を更新**する（本文がまだなら `stub` で行を足す）。
@@ -21,43 +21,48 @@
 
 | 機能 ID / 画面 | ヘルプ | 状態 | 備考 |
 |----------------|--------|------|------|
-| workspace.rail | [workspace.md](./workspace.md) | draft | Doc/PDF/DM/Tax/カルテ |
-| workspace.doc_matrix | [doc-matrix.md](./doc-matrix.md) | draft | R8 期・スロット・失敗時 |
-| workspace.authoring | [authoring.md](./authoring.md) | draft | レール「ひな形」`/templates`・差し込み・枠に保存 |
-| workspace.flowchart | [flowchart-templates.md](./flowchart-templates.md) | draft | レール「判定」`/flowchart`・事業区分ツリーUI・ノーコード・税法固定 |
+| workspace.rail | [workspace.md](./workspace.md) | draft | Doc/PDF/カルテ＋設定・検索。DM/Tax/ひな形/判定/タスクは「開発中」に集約。スマホは左レールタップ・期間チップ |
+| workspace.doc_matrix | [doc-matrix.md](./doc-matrix.md) | draft | 見出し・左ドラムに R〇年〇月期／第N期。スマホは枠縮小＋下のまとめて上げる |
+| workspace.slot_attachments | [slot-attachments.md](./slot-attachments.md) | draft | PDF以外の保存・DL。画像は手動PDF化（版履歴に元ファイル） |
+| workspace.mobile | [mobile.md](./mobile.md) | draft | 閲覧中心・簡易UP・ゲスト。写真UPは未対応 |
+| workspace.authoring | [authoring.md](./authoring.md) | draft | 広い画面・拡大縮小・かっこ書き→差し込み・手入力 |
+| workspace.flowchart | [flowchart-templates.md](./flowchart-templates.md) | draft | 顧問先検索・事業区分ツリーUI・ノーコード・税法固定 |
 | settings.flowchart_templates | [flowchart-templates.md](./flowchart-templates.md) | draft | 設定からは案内のみ。本体は判定ページ |
 | crm.perm_tabs | [crm-perm.md](./crm-perm.md) | stub | 永続横タブ（保有／提案／案件）C0・顧問先ナビ直下 |
 | workspace.karte | [karte.md](./karte.md) | draft | 左縦セクション・失敗時 |
-| workspace.pdf | [pdf.md](./pdf.md) | draft | 注釈・並べ替え・保存注意 |
-| workspace.tax | [tax-progress.md](./tax-progress.md) | draft | Tax レール |
+| workspace.pdf | [pdf.md](./pdf.md) | draft | 注釈・並べ替え・Add PDF結合。Docスロット時は新版保存（過去版保持）。帳票索引 |
+| workspace.tax | [tax-progress.md](./tax-progress.md) | draft | Tax レール。主担当列は sticky 顧客名に被らないよう幅固定 |
 | workspace.dm | [dm.md](./dm.md) | draft | システム内チャット＋メール/Slack/LINE |
 | saving.server_drive | [saving.md](./saving.md) | draft | 保存先・他者に見えないとき |
 | saving.storage_story | [storage-story.md](./storage-story.md) | draft | サーバー＋Drive・LP転用コピー・移行時のDrive容量 |
 | security.my_number | [my-number.md](./my-number.md) | draft | SPI 暗号化レーン。HP文は docs/my-number-handling.md |
 | saving.google_drive | [google-drive.md](./google-drive.md) | draft | OAuth + 共有ドライブ／メンバー共有。空一覧・メール前提のケア UI |
-| settings.client_csv | [client-csv.md](./client-csv.md) | draft | 顧客マスタ CSV 取込・書出 |
-| settings.migration | [migration.md](./migration.md) | draft | 初回 ZIP 整理・要確認キュー・整理用トークン |
+| settings.client_csv | [client-csv.md](./client-csv.md) | draft | 顧客マスタ最下部の受け入れ枠。新規登録・一覧は上部 |
+| guest.pdf | [guest-pdf.md](./guest-pdf.md) | draft | `/pdf` ログイン不要。スマホは全幅CTA・safe-area |
+| settings.client_transfer | [client-transfer.md](./client-transfer.md) | draft | 発行は顧客詳細最下部。受け取り・発行一覧は顧客マスタ最下部 |
+| settings.client_profile | [client-profile.md](./client-profile.md) | draft | 顧客詳細。担当変更（上）・移管は最下部。e-Tax補助 |
+| settings.go_live | [go-live.md](./go-live.md) | draft | 顧客マスタ／Drive の最下部バナー。CSV → 任意ZIP → Drive |
+| settings.migration | [migration.md](./migration.md) | draft | 初回 ZIP。本格稼働バナー（最下部）から開く |
 | settings.addons | [addons.md](./addons.md) | stub | 公式パックの付け外し／こちら専用／公式昇格 |
-| settings.go_live | [go-live.md](./go-live.md) | draft | CSV → 任意ZIP → Drive。storage-story リンク |
-| guest.pdf | [guest-pdf.md](./guest-pdf.md) | draft | `/pdf` ログイン不要 |
-| doc.auto_sort | [auto-sort.md](./auto-sort.md) | draft | 一括投入・確信度・失敗表 |
-| doc.pending_review | [auto-sort.md](./auto-sort.md)#要確認キュー | draft | 空帯も常時表示 |
+| doc.auto_sort | [auto-sort.md](./auto-sort.md) | stub | **当面 UI 非表示**（一括ドロップ帯）。再開時に draft へ戻す |
+| doc.pending_review | [auto-sort.md](./auto-sort.md)#要確認キュー | draft | スロット直上の整理トレイ。提案どおり＋枠検索 |
 | doc.audit_flow | [audit-flow.md](./audit-flow.md) | draft | 作業保存〜承認。証跡（閲覧・確認・契約同意） |
-| client_data.master | [karte-master.md](./karte-master.md) | draft | カルテ・マスタ |
-| client_data.relations | [karte-relations.md](./karte-relations.md) | draft | 関係図配置の永続化・PDF反映・A4縦横 |
-| client_data.charts | [karte-charts.md](./karte-charts.md) | draft | カルテ・グラフ |
+| client_data.master | [karte-master.md](./karte-master.md) | draft | カルテで唯一利用可。上部ヘッダーはコンパクト（検索・入力率）。他セクションは工事中 |
+| client_data.relations | [karte-relations.md](./karte-relations.md) | draft | 関係図・PDF。役員・代表（役職名）／From/To は名前・かな検索。**工事中** |
+| client_data.charts | [karte-charts.md](./karte-charts.md) | draft | 正規指標は年次表＋月次2カード。**工事中** |
 | client_data.payroll | [karte-payroll.md](./karte-payroll.md) | draft | 最短手順・失敗表 |
 | client_data.progress | [karte-progress.md](./karte-progress.md) | draft | マイルストーン・アラート。判定はレール「判定」 |
 | client_data.stock_valuation | [karte-stock.md](./karte-stock.md) | draft | 試算注意・失敗表 |
 | client_data.special | [karte-special.md](./karte-special.md) | draft | メモとの使い分け |
 | client_data.karte_notes | [karte.md](./karte.md) | draft | メモ本体 |
 | capture.gallery | — | stub | feature_surfaces 連動候補 |
-| rag.mcp_search | — | n/a | ラボ／設定向け |
+| rag.mcp_search | — | draft | 設定 MCP タブの検索ラボ（I2 live） |
 | onboarding.feature_tour | [README.md](./README.md)#チュートリアルとの役割分担 | draft | レール「ヘルプ」ホバー → ガイド |
 | support.funnel | [support.md](./support.md) | draft | ユーザー向け窓口の流れ |
 | support.ops | [support-ops.md](./support-ops.md) | draft | S4 電話ポリシー・指標 |
 | support.later_ops | [later-ops.md](./later-ops.md) | n/a | 運用・本番の「あとで」チェック（ユーザー向け記事ではない） |
 | support.assistant | [support-bot-vision.md](./support-bot-vision.md) | draft | S4: tickets + metrics + ops |
+| work.assistant | [work-assistant.md](./work-assistant.md) | draft | Doc／設定 右下 FAB。ヘルプ＋充足＋OCR反映確認＋資料 RAG |
 | help.center | `/help` + help-articles / MD 本文表示 | draft | S1: 一覧＋全文 |
 | overview | [overview.md](./overview.md) | draft | |
 | faq | [faq.md](./faq.md) | draft | 迷いどころを厚くした |

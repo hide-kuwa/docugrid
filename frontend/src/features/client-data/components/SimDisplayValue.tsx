@@ -3,9 +3,9 @@
 import { numDiffers } from "@/features/client-data/lib/sim-diff";
 
 type Props = {
-  canonical: number;
-  display: number;
-  format: (n: number) => string;
+  canonical: number | null;
+  display: number | null;
+  format: (n: number | null) => string;
   className?: string;
   size?: "xs" | "sm" | "base";
 };

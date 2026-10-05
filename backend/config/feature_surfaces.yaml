@@ -76,7 +76,7 @@ surfaces:
   - id: rag.mcp_search
     label: RAG / MCP 社内検索ラボ
     description: OCR状態・ハイブリッド検索（キーワード+埋め込み）・再OCRを設定画面で実験
-    default_mode: preview
+    default_mode: live
     group: ai
 
   - id: messaging.channels

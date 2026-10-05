@@ -173,6 +173,54 @@ def test_render_body_parties_from_master() -> None:
     assert "【" not in payload["renderedBody"]
 
 
+def test_render_body_works_with_multi_firm_master(tmp_path, monkeypatch) -> None:
+    """Regression: lookup must not call firm save-merge (fails when other firms exist)."""
+    from services.tenancy import DEFAULT_FIRM_ID, FIRM_BETA_ID, invalidate_client_firm_cache
+
+    master_path = tmp_path / "client_master.json"
+    master_path.write_text(
+        json.dumps(
+            {
+                "clients": [
+                    {
+                        "id": "c1",
+                        "name": "Firm A Client",
+                        "fiscalMonth": 3,
+                        "category": "corporate",
+                        "tags": [],
+                        "firmId": DEFAULT_FIRM_ID,
+                    },
+                    {
+                        "id": "c_beta_1",
+                        "name": "Firm Beta Client",
+                        "fiscalMonth": 3,
+                        "category": "corporate",
+                        "tags": [],
+                        "firmId": FIRM_BETA_ID,
+                    },
+                ],
+                "groups": [],
+                "updated_at": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("api.constants.CLIENT_MASTER_PATH", master_path)
+    monkeypatch.setattr("api.master_store.CLIENT_MASTER_PATH", master_path)
+    monkeypatch.setattr("services.tenancy.CLIENT_MASTER_PATH", master_path)
+    invalidate_client_firm_cache()
+    try:
+        r = client.post(
+            "/api/authoring-templates/render-body",
+            headers=_admin_headers(),
+            json={"client_id": "c1", "body": "【法人名１】", "parties": [{"slot": 1, "client_id": "c1"}]},
+        )
+        assert r.status_code == 200, r.text
+        assert "Firm A Client" in r.json()["renderedBody"]
+    finally:
+        invalidate_client_firm_cache()
+
+
 def test_render_template_parties_on_global_agreement() -> None:
     r = client.post(
         "/api/authoring-templates/global-party-agreement-stub/render",

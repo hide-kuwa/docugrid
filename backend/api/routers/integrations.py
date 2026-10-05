@@ -555,13 +555,16 @@ async def update_client_master(request: Request, payload: ClientMasterPayload):
     role = _require_permission(request, "settings.manage")
     ctx = _auth_context(request)
     scope_map = _get_stakeholder_client_scope_map()
+    existing_map = get_client_firm_map()
     for client in payload.clients:
-        if get_client_firm_id(client.id) != ctx.firm_id:
+        mapped = existing_map.get(client.id)
+        if mapped is not None and mapped != ctx.firm_id:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot modify client {client.id!r} belonging to another firm",
             )
-        authorize_client_access(ctx, client.id, scope_map)
+        if mapped is not None:
+            authorize_client_access(ctx, client.id, scope_map)
     _validate_client_master(payload)
     merged = _merge_client_master_for_firm(ctx, payload)
     saved = _save_client_master(merged)
@@ -570,6 +573,22 @@ async def update_client_master(request: Request, payload: ClientMasterPayload):
         sync_firm_billing_usage(ctx.firm_id, client_count)
     except Exception:
         pass
+    allowed = visible_client_ids(ctx, scope_map)
+    saved = ClientMasterPayload(
+        clients=filter_client_master_clients(saved.clients, ctx, scope_map),
+        groups=[g for g in saved.groups if any(cid in allowed for cid in g.clientIds)],
+        relations=[
+            r
+            for r in saved.relations
+            if r.fromClientId in allowed and r.toClientId in allowed
+        ],
+        relationLayouts={
+            k: v
+            for k, v in saved.relationLayouts.items()
+            if k.split("__", 1)[0] in allowed
+        },
+        updated_at=saved.updated_at,
+    )
     _log_audit_event(request, "client_master.put", "success", f"clients={len(saved.clients)} groups={len(saved.groups)}")
     return saved
 

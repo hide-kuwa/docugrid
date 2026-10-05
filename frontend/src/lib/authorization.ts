@@ -18,7 +18,9 @@ export const resolveStakeholder = (user: DocugridUser | null): StakeholderMaster
 
 export const hasPermission = (user: DocugridUser | null, permission: AppPermission): boolean => {
   if (!user) return false;
-  if (user.permissions?.length) {
+  // Server-synced list is authoritative (including empty = no grants).
+  // Only fall back to static APP_ROLES when permissions were never synced.
+  if (Array.isArray(user.permissions)) {
     return user.permissions.includes(permission);
   }
   if (!user.appRoleId) return false;

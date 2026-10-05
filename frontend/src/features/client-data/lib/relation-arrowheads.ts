@@ -70,6 +70,8 @@ export function arrowStyleForKind(
       return { style: "dart", length: 11, half: 3.8 };
     case "relative":
       return { style: "chevron", length: 10, half: 4.4 };
+    case "officer":
+      return { style: "dart", length: 12, half: 4.2 };
     case "group_company":
       return null;
     default:

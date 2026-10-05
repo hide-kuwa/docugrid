@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MatrixViewMode } from "@/lib/matrix-view-mode";
 import {
   fetchCatalogCategories,
@@ -11,6 +11,8 @@ import {
   buildMatrixPeriods,
   buildYearDrumMeta,
   clampYearDisplayCount,
+  defaultMonthPeriodIndex,
+  defaultYearPeriodIndex,
   isOldPeriodKey,
   YEAR_DISPLAY_COUNT_DEFAULT,
 } from "@/lib/fiscal-year-drum";
@@ -21,11 +23,11 @@ import {
   periodKeyFromIndex,
 } from "@/lib/period-nav";
 import { API_BASE } from "@/config/api";
-import { authFetch, buildAuthHeaders } from "@/lib/api-auth";
+import { authFetch, buildAuthHeaders, setClientScope } from "@/lib/api-auth";
 import {
   buildNavClients,
   canToggleClientScope,
-  DEFAULT_NAV_CLIENTS,
+  EMPTY_NAV_CLIENT,
   loadClientScopeMode,
   resolveAllVisibleClientIds,
   resolveAssignedClientIds,
@@ -49,7 +51,7 @@ export function useMatrixShellState(params: {
   const { currentUser, orgClients, orgGroups, authChecked, canViewDocument, statusNonce } = params;
 
   const [activeClientIdx, setActiveClientIdx] = useState(0);
-  const [clientScopeMode, setClientScopeMode] = useState<ClientScopeMode>("assigned");
+  const [clientScopeMode, setClientScopeMode] = useState<ClientScopeMode>("all");
   const [activeMode, setActiveMode] = useState<"year" | "month">("year");
   const [activePeriodIdx, setActivePeriodIdx] = useState(2);
   const [matrixViewMode, setMatrixViewMode] = useState<MatrixViewMode>("client-period");
@@ -66,14 +68,15 @@ export function useMatrixShellState(params: {
     setClientScopeMode(loadClientScopeMode());
   }, []);
 
+  const orgClientIds = useMemo(() => orgClients.map((client) => client.id), [orgClients]);
   const assignedClientIds = useMemo(
-    () => resolveAssignedClientIds(currentUser),
-    [currentUser],
+    () => resolveAssignedClientIds(currentUser, orgClientIds),
+    [currentUser, orgClientIds],
   );
   const assignedClientIdSet = useMemo(() => new Set(assignedClientIds), [assignedClientIds]);
   const allVisibleClientIds = useMemo(
-    () => resolveAllVisibleClientIds(currentUser, orgClients.map((client) => client.id)),
-    [currentUser, orgClients],
+    () => resolveAllVisibleClientIds(currentUser, orgClientIds),
+    [currentUser, orgClientIds],
   );
   const canToggleScope = useMemo(
     () => canToggleClientScope(currentUser, assignedClientIds, allVisibleClientIds),
@@ -84,10 +87,7 @@ export function useMatrixShellState(params: {
     [clientScopeMode, allVisibleClientIds, assignedClientIds],
   );
   const navClients = useMemo(
-    () =>
-      drumClientIds.length > 0
-        ? buildNavClients(orgClients, orgGroups, drumClientIds, assignedClientIdSet)
-        : DEFAULT_NAV_CLIENTS,
+    () => buildNavClients(orgClients, orgGroups, drumClientIds, assignedClientIdSet),
     [drumClientIds, orgClients, orgGroups, assignedClientIdSet],
   );
   const allNavClients = useMemo(
@@ -97,20 +97,19 @@ export function useMatrixShellState(params: {
         : navClients,
     [allVisibleClientIds, orgClients, orgGroups, assignedClientIdSet, navClients],
   );
-  const currentClient: NavClient = navClients[activeClientIdx] ?? navClients[0] ?? DEFAULT_NAV_CLIENTS[0]!;
+  const currentClient: NavClient = navClients[activeClientIdx] ?? navClients[0] ?? EMPTY_NAV_CLIENT;
+
+  useEffect(() => {
+    if (currentClient.id && currentClient.id !== "unknown") {
+      setClientScope(currentClient.id);
+    }
+  }, [currentClient.id]);
 
   useEffect(() => {
     if (activeClientIdx >= navClients.length) {
       setActiveClientIdx(0);
     }
   }, [activeClientIdx, navClients.length]);
-
-  useEffect(() => {
-    if (!canToggleScope && clientScopeMode === "all") {
-      setClientScopeMode("assigned");
-      saveClientScopeMode("assigned");
-    }
-  }, [canToggleScope, clientScopeMode]);
 
   const onClientScopeModeChange = useCallback(
     (mode: ClientScopeMode) => {
@@ -166,6 +165,26 @@ export function useMatrixShellState(params: {
     [yearDrumMeta, currentClient.fiscal],
   );
 
+  useEffect(() => {
+    if (currentClient.id === "unknown") return;
+    if (activeMode === "month") {
+      setActivePeriodIdx(
+        defaultMonthPeriodIndex(new Date(), currentClient.fiscal, yearDrumMeta.displayCount),
+      );
+      return;
+    }
+    setActivePeriodIdx(
+      defaultYearPeriodIndex(
+        yearDrumMeta,
+        new Date(),
+        currentClient.fiscal,
+        currentClient.category,
+      ),
+    );
+    // 顧問先が変わったときだけ今日の期へ。年↔月の切替は onYearMonthModeSwitch 側。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeMode / yearDrumMeta は意図的に除外
+  }, [currentClient.id, currentClient.fiscal, currentClient.category]);
+
   const periodKey = periodKeyFromIndex(activePeriodIdx, activeMode, matrixPeriods);
 
   useEffect(() => {
@@ -177,9 +196,25 @@ export function useMatrixShellState(params: {
   useEffect(() => {
     const lastPeriodIdx = PERIOD_INDEX_PERM + matrixPeriods[activeMode].length;
     if (activePeriodIdx > lastPeriodIdx) {
-      setActivePeriodIdx(PERIOD_INDEX_PERM + 1);
+      setActivePeriodIdx(
+        activeMode === "month"
+          ? defaultMonthPeriodIndex(new Date(), currentClient.fiscal, yearDrumMeta.displayCount)
+          : defaultYearPeriodIndex(
+              yearDrumMeta,
+              new Date(),
+              currentClient.fiscal,
+              currentClient.category,
+            ),
+      );
     }
-  }, [matrixPeriods, activeMode, activePeriodIdx]);
+  }, [
+    matrixPeriods,
+    activeMode,
+    activePeriodIdx,
+    currentClient.fiscal,
+    currentClient.category,
+    yearDrumMeta,
+  ]);
 
   useEffect(() => {
     if (isDataPeriodIndex(activePeriodIdx)) {
@@ -251,6 +286,43 @@ export function useMatrixShellState(params: {
     [matrixPeriods],
   );
 
+  const onYearMonthModeSwitch = useCallback(() => {
+    const next = activeMode === "year" ? "month" : "year";
+    setActiveMode(next);
+    // MONTH → 今日の月、YEAR → 今日が属する事業年度（永続・OLD には落とさない）
+    setActivePeriodIdx(
+      next === "month"
+        ? defaultMonthPeriodIndex(new Date(), currentClient.fiscal, yearDrumMeta.displayCount)
+        : defaultYearPeriodIndex(
+            yearDrumMeta,
+            new Date(),
+            currentClient.fiscal,
+            currentClient.category,
+          ),
+    );
+  }, [activeMode, currentClient.fiscal, currentClient.category, yearDrumMeta]);
+
+  // 初回（および顧問先確定時）に YEAR なら今期へ。永続のまま残らないようにする
+  const yearSnapClientRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentClient.id === "unknown") return;
+    if (activeMode !== "year") {
+      yearSnapClientRef.current = null;
+      return;
+    }
+    if (yearSnapClientRef.current === currentClient.id) return;
+    if (!yearDrumMeta.labels.some((label) => /^R\d+$/.test(label))) return;
+    yearSnapClientRef.current = currentClient.id;
+    setActivePeriodIdx(
+      defaultYearPeriodIndex(
+        yearDrumMeta,
+        new Date(),
+        currentClient.fiscal,
+        currentClient.category,
+      ),
+    );
+  }, [activeMode, currentClient.id, currentClient.fiscal, currentClient.category, yearDrumMeta]);
+
   return {
     activeClientIdx,
     setActiveClientIdx,
@@ -284,5 +356,6 @@ export function useMatrixShellState(params: {
     assignedClientIdSet,
     allVisibleClientIds,
     onJumpToPeriod,
+    onYearMonthModeSwitch,
   };
 }

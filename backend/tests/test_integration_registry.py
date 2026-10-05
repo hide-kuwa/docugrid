@@ -54,6 +54,14 @@ def _operator_headers() -> dict[str, str]:
     }
 
 
+def _firm_admin_headers() -> dict[str, str]:
+    return {
+        "X-Docugrid-Role": "firm_admin",
+        "X-Docugrid-User": "owner@lext-tax.jp",
+        "X-Docugrid-Stakeholder-Id": "actor-s3",
+    }
+
+
 @pytest.fixture
 def ports_config_file(tmp_path, monkeypatch):
     path = tmp_path / "integration_ports.yaml"
@@ -189,6 +197,11 @@ def test_api_integration_ports_list_platform(ports_config_file) -> None:
 
 def test_api_integration_ports_list_forbidden_for_operator(ports_config_file) -> None:
     r = client.get("/api/dev/integration-ports", headers=_operator_headers())
+    assert r.status_code == 403
+
+
+def test_api_integration_ports_list_forbidden_for_firm_admin(ports_config_file) -> None:
+    r = client.get("/api/dev/integration-ports", headers=_firm_admin_headers())
     assert r.status_code == 403
 
 

@@ -133,10 +133,12 @@ async def auth_me(request: Request):
         stakeholder_id=identity.stakeholder_id,
         firm_id=fid,
         firm_label=firm_label(fid),
+        display_name=(member.display_name or "").strip() if member else "",
         persona_id=pid,
         persona_label=persona_label(pid),
         permissions=perms,
         visible_client_ids=sorted(visible_client_ids(ctx, scope_map)),
+        assigned_client_ids=sorted(assigned_client_ids(ctx, scope_map)),
     )
     resp = JSONResponse(content=me.model_dump())
     ensure_csrf_cookie_on_response(request, resp)

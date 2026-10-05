@@ -8,6 +8,7 @@ import {
   type AuditEventRow,
 } from "@/features/settings/hooks/useAuditSettings";
 import type { ReviewTimelineItem } from "@/features/pdf-viewer/lib/review-events";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 type AuditSettingsTabProps = {
   editableClients: OrgClient[];
@@ -87,18 +88,15 @@ export function AuditSettingsTab({
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-xs font-bold text-slate-600">
             顧客
-            <select
-              className="mt-1 block w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+            <ClientSearchSelect
+              clients={editableClients.map(toClientSearchOption)}
               value={reviewExportClientId}
-              onChange={(e) => onReviewExportClientIdChange(e.target.value)}
-            >
-              <option value="">選択してください</option>
-              {editableClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.id} / {client.name}
-                </option>
-              ))}
-            </select>
+              onChange={onReviewExportClientIdChange}
+              emptyLabel="選択してください"
+              formatOption={(c) => `${c.id} / ${c.name}`}
+              selectClassName="mt-1 block w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+              searchClassName="mt-1 block w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+            />
           </label>
           <label className="text-xs font-bold text-slate-600">
             期キー（任意）
@@ -220,18 +218,15 @@ export function AuditSettingsTab({
         </label>
         <label className="text-xs font-bold text-slate-600">
           顧客
-          <select
-            className="mt-1 block w-36 rounded border border-slate-200 px-2 py-1 text-xs"
+          <ClientSearchSelect
+            clients={editableClients.map(toClientSearchOption)}
             value={auditClientFilter}
-            onChange={(e) => onAuditClientFilterChange(e.target.value)}
-          >
-            <option value="">すべて</option>
-            {editableClients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.id} / {client.name}
-              </option>
-            ))}
-          </select>
+            onChange={onAuditClientFilterChange}
+            emptyLabel="すべて"
+            formatOption={(c) => `${c.id} / ${c.name}`}
+            selectClassName="mt-1 block w-36 rounded border border-slate-200 px-2 py-1 text-xs"
+            searchClassName="mt-1 block w-36 rounded border border-slate-200 px-2 py-1 text-xs"
+          />
         </label>
         <label className="text-xs font-bold text-slate-600">
           担当

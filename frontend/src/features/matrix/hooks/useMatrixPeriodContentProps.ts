@@ -9,6 +9,11 @@ import type { MatrixViewMode } from "@/lib/matrix-view-mode";
 import type { PeriodLists, YearDrumMeta } from "@/lib/fiscal-year-drum";
 import type { NavClient } from "@/lib/client-nav";
 import type { SlotDoc } from "@/features/matrix/types/slot-doc";
+import {
+  periodDisplayLabelFromKey,
+  periodKeyFromIndex,
+} from "@/lib/period-nav";
+import { isOldDrumLabel } from "@/lib/fiscal-year-drum";
 
 type ClassifyApi = ReturnType<typeof useSlotClassify>;
 type SlotLayoutApi = ReturnType<typeof useMatrixSlotLayout>;
@@ -20,6 +25,7 @@ export type UseMatrixPeriodContentPropsInput = {
   periodKey: string;
   activeMode: "year" | "month";
   currentClient: NavClient;
+  navClients: NavClient[];
   docHistoryItems: MatrixPeriodContentProps["docHistoryItems"];
   docHistoryLoading: boolean;
   activeDocCategoryLabel?: string;
@@ -58,6 +64,16 @@ export type UseMatrixPeriodContentPropsInput = {
   unassignedDocsView: { docId: string; label: string; fileName: string }[];
   handleOpenUnassigned: (docId: string) => void;
   handleAssignUnassigned: (docId: string, slotIndex: number) => void;
+  handleRelocateDocument: (
+    sourceSlotIndex: number,
+    target: {
+      slotId: string;
+      slotLabel: string;
+      periodKey?: string;
+      clientId?: string;
+      destinationLabel: string;
+    },
+  ) => void | Promise<void>;
   handleSoftDeleteDocument: (docId: string) => void;
   deletedDocsView: { docId: string; label: string; fileName: string }[];
   handleOpenDeleted: (docId: string) => void;
@@ -83,6 +99,7 @@ export type UseMatrixPeriodContentPropsInput = {
     activate: boolean,
     classifyMeta?: import("@/features/docugrid/lib/classify").ClassifyPersistMetadata,
   ) => Promise<{ persisted: boolean; docId?: string }>;
+  onPeriodChange: (idx: number) => void;
 };
 
 export function useMatrixPeriodContentProps(
@@ -94,6 +111,7 @@ export function useMatrixPeriodContentProps(
     periodKey,
     activeMode,
     currentClient,
+    navClients,
     docHistoryItems,
     docHistoryLoading,
     activeDocCategoryLabel,
@@ -120,6 +138,7 @@ export function useMatrixPeriodContentProps(
     unassignedDocsView,
     handleOpenUnassigned,
     handleAssignUnassigned,
+    handleRelocateDocument,
     handleSoftDeleteDocument,
     deletedDocsView,
     handleOpenDeleted,
@@ -139,6 +158,7 @@ export function useMatrixPeriodContentProps(
     timelineLoading,
     onAssignPackageToSlot,
     persistFileToSlot,
+    onPeriodChange,
   } = input;
 
   const onDismissExtractionReview = useCallback(
@@ -151,6 +171,39 @@ export function useMatrixPeriodContentProps(
     setStatusNonce((v) => v + 1);
   }, [setExtractionReviewCtx, setStatusNonce]);
 
+  const relocatePeriodOptions = useMemo(() => {
+    const opts: { periodKey: string; label: string; isCurrent: boolean }[] = [
+      {
+        periodKey: "perm",
+        label: "永続",
+        isCurrent: periodKey === "perm",
+      },
+    ];
+    const list = matrixPeriods[activeMode] ?? [];
+    for (let i = 0; i < list.length; i += 1) {
+      const label = list[i]!;
+      if (isOldDrumLabel(label)) continue;
+      const idx = i + 2;
+      const key = periodKeyFromIndex(idx, activeMode, matrixPeriods);
+      opts.push({
+        periodKey: key,
+        label: periodDisplayLabelFromKey(key, matrixPeriods),
+        isCurrent: key === periodKey,
+      });
+    }
+    return opts;
+  }, [matrixPeriods, activeMode, periodKey]);
+
+  const relocateClientOptions = useMemo(
+    () =>
+      navClients.map((c) => ({
+        id: c.id,
+        name: c.name,
+        isCurrent: c.id === currentClient.id,
+      })),
+    [navClients, currentClient.id],
+  );
+
   const onDeleteUnassigned = useMemo(
     () =>
       canUploadDocument
@@ -162,6 +215,17 @@ export function useMatrixPeriodContentProps(
           }
         : undefined,
     [canUploadDocument, handleSoftDeleteDocument],
+  );
+
+  const onDeleteDocument = useCallback(
+    async (sourceSlotIndex: number) => {
+      if (!canUploadDocument) return;
+      const key = slotLayout.slotKeyFor(sourceSlotIndex);
+      const docId = slotDocs[key]?.docId;
+      if (!docId) return;
+      await handleSoftDeleteDocument(docId);
+    },
+    [canUploadDocument, slotLayout, slotDocs, handleSoftDeleteDocument],
   );
 
   const onRestoreDeleted = useMemo(
@@ -223,6 +287,10 @@ export function useMatrixPeriodContentProps(
     unassignedDocsView,
     onOpenUnassigned: handleOpenUnassigned,
     onAssignUnassigned: handleAssignUnassigned,
+    onRelocateDocument: handleRelocateDocument,
+    onDeleteDocument,
+    relocatePeriodOptions,
+    relocateClientOptions,
     onDeleteUnassigned,
     deletedDocsView: canPurgeDocument ? deletedDocsView : undefined,
     onOpenDeleted: canPurgeDocument ? handleOpenDeleted : undefined,
@@ -264,5 +332,6 @@ export function useMatrixPeriodContentProps(
     onAssignPackageToSlot,
     onPackageNotice: setSlotNotice,
     onAuthoringSave,
+    onPeriodChange,
   };
 }

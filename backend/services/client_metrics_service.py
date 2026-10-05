@@ -206,7 +206,7 @@ def upsert_metric_fact(
 
 
 def build_charts_payload(firm_id: str, client_id: str, *, seed_base_yen: int = 48_000_000) -> Dict[str, Any]:
-    seed_client_metrics_if_empty(firm_id, client_id, base_yen=seed_base_yen)
+    del seed_base_yen  # 互換のため残す。デモ数値は投入しない。
     facts = list_metric_facts(firm_id, client_id)
 
     def pick(metric_key: str, period_key: str) -> Optional[dict]:
@@ -223,9 +223,9 @@ def build_charts_payload(firm_id: str, client_id: str, *, seed_base_yen: int = 4
         fiscal_years.append(
             {
                 "label": label,
-                "revenue_yen": rev["value_yen"] if rev else 0,
-                "profit_yen": prof["value_yen"] if prof else 0,
-                "consumption_taxable_yen": consumption["value_yen"] if consumption else 0,
+                "revenue_yen": rev["value_yen"] if rev else None,
+                "profit_yen": prof["value_yen"] if prof else None,
+                "consumption_taxable_yen": consumption["value_yen"] if consumption else None,
                 "consumption_taxable_source": consumption["source_type"] if consumption else None,
             }
         )
@@ -238,18 +238,18 @@ def build_charts_payload(firm_id: str, client_id: str, *, seed_base_yen: int = 4
         monthly.append(
             {
                 "month": int(key[1:]),
-                "index": row["value_num"] if row and row["value_num"] is not None else 0,
+                "index": row["value_num"] if row and row["value_num"] is not None else None,
             }
         )
         monthly_revenue.append(
             {
                 "month": int(key[1:]),
-                "revenue_yen": rev_row["value_yen"] if rev_row and rev_row["value_yen"] is not None else 0,
+                "revenue_yen": rev_row["value_yen"] if rev_row and rev_row["value_yen"] is not None else None,
                 "source_type": rev_row["source_type"] if rev_row else None,
             }
         )
 
-    ytd = sum(m["index"] for m in monthly)
+    ytd = sum(m["index"] for m in monthly if isinstance(m["index"], (int, float)))
 
     return {
         "client_id": client_id,
@@ -259,6 +259,20 @@ def build_charts_payload(firm_id: str, client_id: str, *, seed_base_yen: int = 4
         "monthly_ytd_index": ytd,
         "facts": facts,
     }
+
+
+def clear_seeded_client_metrics(firm_id: Optional[str] = None) -> int:
+    """デモ seed 行を削除。firm_id 指定時はその事務所のみ。"""
+    init_client_metrics_db()
+    with sqlite3.connect(METRICS_DB_PATH) as conn:
+        if firm_id:
+            cur = conn.execute(
+                "DELETE FROM client_metric_facts WHERE source_type='seed' AND firm_id=?",
+                (firm_id,),
+            )
+        else:
+            cur = conn.execute("DELETE FROM client_metric_facts WHERE source_type='seed'")
+        return int(cur.rowcount or 0)
 
 
 VALUATION_PERIOD = "current"

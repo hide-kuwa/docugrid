@@ -502,6 +502,7 @@ CREATE TABLE matrix_slot_assignments (
 | `docs/expense-reimbursement-vision.md` | 営業経費精算（インボイス・カレンダー RAG）ビジョン |
 | `docs/future-plan-ocr-rag-mcp.md` | 本番ホスト（Vercel+VPS）と OCR→RAG→MCP の次章プラン |
 | `docs/tomorrow-tasks.md` | P1 由来タスクのメモ（本 roadmap と重複する場合は本書を優先） |
+| `docs/client-transfer-next.md` | 顧問先移管コードの v1 スコープ外（顧客ログイン表示・Drive 付け替え・旧側削除／請求停止） |
 
 ---
 

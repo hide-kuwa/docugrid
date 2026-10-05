@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { OrgClient } from "@/config/organization";
 import { formatYen } from "@/features/billing/billing-api";
 import { useMigrationIngest } from "@/features/settings/hooks/useMigrationIngest";
+import { ClientSearchSelect, toClientSearchOption } from "@/components/ClientSearchSelect";
 
 type Props = {
   clients: OrgClient[];
@@ -234,16 +235,14 @@ export function MigrationIngestPanel({ clients, canEdit }: Props) {
           <div className="flex flex-wrap items-end gap-2 text-[11px]">
             <label className="flex flex-col gap-1">
               <span className="text-slate-500">顧問先</span>
-              <select
-                className="rounded border border-slate-200 px-2 py-1"
+              <ClientSearchSelect
+                clients={clients.map(toClientSearchOption)}
                 value={batchClientId}
-                onChange={(e) => setBatchClientId(e.target.value)}
-              >
-                <option value="">選択</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+                onChange={setBatchClientId}
+                emptyLabel="選択"
+                selectClassName="rounded border border-slate-200 px-2 py-1"
+                searchClassName="rounded border border-slate-200 px-2 py-1"
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-slate-500">期間キー</span>

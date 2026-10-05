@@ -385,7 +385,8 @@ function SimDiffRow({
   display: number;
   suffix: string;
 }) {
-  const format = (n: number) => (n > 0 ? `${n.toLocaleString()} ${suffix}` : "—");
+  const format = (n: number | null) =>
+    n != null && n > 0 ? `${n.toLocaleString()} ${suffix}` : "—";
   return (
     <div className="flex justify-between gap-2 border-b border-slate-50 py-1 text-xs">
       <span className="text-slate-500">{label}</span>
