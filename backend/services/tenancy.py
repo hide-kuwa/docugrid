@@ -7,6 +7,7 @@ See docs/auth-tenancy-design.md.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from functools import lru_cache
@@ -28,6 +29,20 @@ FIRM_LABELS: dict[str, str] = {
     FIRM_BETA_ID: "ベータ事務所",
     PROLEXT_FIRM_ID: "PROLEXT税理士法人",
 }
+
+_FIRM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def is_valid_firm_id(firm_id: str) -> bool:
+    """firm_id is used as a directory name under storage/firms/; reject separators and dots."""
+    return bool(firm_id) and bool(_FIRM_ID_RE.match(firm_id))
+
+
+def safe_firm_id(firm_id: str) -> str:
+    fid = (firm_id or "").strip() or DEFAULT_FIRM_ID
+    if not is_valid_firm_id(fid):
+        raise ValueError("invalid firm_id")
+    return fid
 
 
 def firm_label(firm_id: str) -> str:

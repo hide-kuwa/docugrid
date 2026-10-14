@@ -33,6 +33,7 @@ export function MessagingChannelsPanel() {
   const [slackChannel, setSlackChannel] = useState("");
   const [slackWebhook, setSlackWebhook] = useState("");
   const [slackBotToken, setSlackBotToken] = useState("");
+  const [slackSigningSecret, setSlackSigningSecret] = useState("");
 
   const [lineEnabled, setLineEnabled] = useState(false);
   const [lineMode, setLineMode] = useState("messaging_api");
@@ -93,6 +94,9 @@ export function MessagingChannelsPanel() {
           default_channel: slackChannel,
           ...(slackWebhook.trim() ? { webhook_url: slackWebhook.trim() } : {}),
           ...(slackBotToken.trim() ? { bot_token: slackBotToken.trim() } : {}),
+          ...(slackSigningSecret.trim()
+            ? { signing_secret: slackSigningSecret.trim() }
+            : {}),
         },
         line: {
           enabled: lineEnabled,
@@ -107,6 +111,7 @@ export function MessagingChannelsPanel() {
       setEmailApiKey("");
       setSlackWebhook("");
       setSlackBotToken("");
+      setSlackSigningSecret("");
       setLineToken("");
       setMessage("保存しました。シークレットは暗号化して事務所単位で保持します。");
     } catch (e) {
@@ -343,6 +348,18 @@ export function MessagingChannelsPanel() {
               local モード: 外部 Slack へは送らず、DM 受信箱にだけ残します。
             </p>
           )}
+          {slackMode !== "local" ? (
+            <label className="text-xs text-slate-600 sm:col-span-2">
+              受信用 Signing Secret（推奨・Slack App の Basic Information）
+              <input
+                type="password"
+                className="mt-1 block w-full rounded-lg border border-slate-200 px-2 py-1.5 font-mono text-xs"
+                value={slackSigningSecret}
+                onChange={(e) => setSlackSigningSecret(e.target.value)}
+                placeholder={data?.slack.signing_secret_configured ? "設定済み" : "未設定"}
+              />
+            </label>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button

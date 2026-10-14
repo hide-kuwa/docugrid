@@ -4,20 +4,26 @@ Security notes:
 - No firm/client data access — request body PDF only, response is processed bytes.
 - Auth is intentionally omitted; CSRF exempt via /api/public/pdf prefix.
 - Upload size is enforced (same limit as authenticated uploads).
-- Page caps reduce thumbnail/render abuse.
+- Page caps, per-IP rate limit, and rendered pixel caps reduce render/memory abuse.
+- Internal exception text is logged, never returned.
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import logging
+import math
 from typing import List, Optional
 
 import fitz
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from api.deps import _read_upload_content
+from api.session import _client_ip
+from services.login_rate_limit import public_pdf_rate_limit_exceeded
+from services.upload_limits import max_upload_bytes
 from services.pdf_annotations import (
     add_box_annotation,
     add_check_annotation,
@@ -32,10 +38,24 @@ from services.pdf_annotations import (
     tag_docugrid_annotation,
 )
 
-router = APIRouter(prefix="/api/public/pdf", tags=["public-pdf"])
+logger = logging.getLogger("docugrid.public_pdf")
+
+
+def _rate_limit(request: Request) -> None:
+    if public_pdf_rate_limit_exceeded(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+
+router = APIRouter(
+    prefix="/api/public/pdf",
+    tags=["public-pdf"],
+    dependencies=[Depends(_rate_limit)],
+)
 
 _MAX_PUBLIC_PAGES = 200
 _MAX_THUMBNAIL_PAGES = 80
+_MAX_RENDER_PIXELS = 25_000_000
+_MAX_THUMBNAIL_PIXELS = 250_000
 
 
 async def _read_pdf(upload: UploadFile) -> bytes:
@@ -46,6 +66,20 @@ def _open_pdf(content: bytes) -> fitz.Document:
     if not content:
         raise ValueError("Empty file")
     return fitz.open("pdf", content)
+
+
+def _capped_matrix(page: fitz.Page, scale: float, max_pixels: int) -> fitz.Matrix:
+    """Shrink scale so a malicious oversized page box cannot allocate a huge pixmap."""
+    area = max(page.rect.width, 1.0) * max(page.rect.height, 1.0)
+    capped = min(scale, math.sqrt(max_pixels / area))
+    return fitz.Matrix(capped, capped)
+
+
+def _error_response(exc: Exception) -> JSONResponse:
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"message": str(exc.detail)})
+    logger.warning("public pdf request failed: %s", type(exc).__name__)
+    return JSONResponse(status_code=500, content={"message": "PDF processing failed"})
 
 
 @router.post("/info")
@@ -61,7 +95,7 @@ async def public_pdf_info(file: UploadFile = File(...)):
             )
         return {"page_count": pages, "pageCount": pages}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)
 
 
 @router.post("/highlight")
@@ -190,7 +224,7 @@ async def public_highlight_pdf(
                 doc_r = fitz.open(stream=pdf_bytes, filetype="pdf")
                 if 0 <= page < len(doc_r):
                     pr = doc_r[page]
-                    pix = pr.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+                    pix = pr.get_pixmap(matrix=_capped_matrix(pr, 2.0, _MAX_RENDER_PIXELS))
                     preview_b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
             finally:
                 if doc_r is not None:
@@ -203,7 +237,7 @@ async def public_highlight_pdf(
             )
         return Response(content=pdf_bytes, media_type="application/pdf")
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)
 
 
 @router.post("/reorder")
@@ -227,7 +261,7 @@ async def public_reorder_pdf(
         doc.save(output_buffer)
         return Response(content=output_buffer.getvalue(), media_type="application/pdf")
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)
 
 
 @router.post("/merge")
@@ -237,8 +271,12 @@ async def public_merge_pdfs(files: List[UploadFile] = File(...)):
             return JSONResponse(status_code=400, content={"message": "Too many files"})
         merged_doc = fitz.open()
         total_pages = 0
+        total_bytes = 0
         for file in files:
             content = await _read_pdf(file)
+            total_bytes += len(content)
+            if total_bytes > max_upload_bytes():
+                return JSONResponse(status_code=413, content={"message": "Upload too large"})
             doc = _open_pdf(content)
             total_pages += len(doc)
             if total_pages > _MAX_PUBLIC_PAGES:
@@ -251,7 +289,7 @@ async def public_merge_pdfs(files: List[UploadFile] = File(...)):
         merged_doc.save(output_buffer)
         return Response(content=output_buffer.getvalue(), media_type="application/pdf")
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)
 
 
 @router.post("/thumbnails")
@@ -266,12 +304,12 @@ async def public_pdf_thumbnails(file: UploadFile = File(...)):
             )
         thumbnails = []
         for page in doc:
-            pix = page.get_pixmap(matrix=fitz.Matrix(0.3, 0.3))
+            pix = page.get_pixmap(matrix=_capped_matrix(page, 0.3, _MAX_THUMBNAIL_PIXELS))
             b64_str = base64.b64encode(pix.tobytes("png")).decode("utf-8")
             thumbnails.append(f"data:image/png;base64,{b64_str}")
         return JSONResponse(content={"thumbnails": thumbnails})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)
 
 
 @router.post("/render")
@@ -284,8 +322,8 @@ async def public_render_pdf_page(
         doc = _open_pdf(content)
         if 0 <= page < len(doc):
             p = doc[page]
-            pix = p.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+            pix = p.get_pixmap(matrix=_capped_matrix(p, 2.0, _MAX_RENDER_PIXELS))
             return Response(content=pix.tobytes("png"), media_type="image/png")
         return JSONResponse(status_code=400, content={"message": "Page out of range"})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+        return _error_response(e)

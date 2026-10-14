@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from services.firm_settings import STORAGE_DIR, _decrypt_secret, _encrypt_secret, _secret_last4
-from services.tenancy import DEFAULT_FIRM_ID
+from services.tenancy import DEFAULT_FIRM_ID, safe_firm_id
 
 CHANNELS = ("email", "slack", "line")
 EMAIL_PROVIDERS = frozenset({"resend", "sendgrid", "smtp", "local"})
@@ -18,8 +18,7 @@ LINE_MODES = frozenset({"messaging_api", "notify", "local"})
 
 
 def _firm_dir(firm_id: str) -> Path:
-    fid = (firm_id or "").strip() or DEFAULT_FIRM_ID
-    return STORAGE_DIR / "firms" / fid
+    return STORAGE_DIR / "firms" / safe_firm_id(firm_id)
 
 
 def channels_path(firm_id: str) -> Path:
@@ -111,6 +110,7 @@ def _default_public() -> dict[str, Any]:
             "webhook_url_last4": None,
             "bot_token_configured": False,
             "bot_token_last4": None,
+            "signing_secret_configured": False,
             "ready": False,
         },
         "line": {
@@ -202,6 +202,7 @@ def get_channels_public(firm_id: str) -> dict[str, Any]:
             "default_channel": str(slack.get("default_channel") or ""),
             **_secret_status(slack, "webhook_url"),
             **_secret_status(slack, "bot_token"),
+            "signing_secret_configured": bool(_read_secret(slack, "signing_secret")),
         }
     )
     out["slack"]["ready"] = _slack_ready(slack if slack else out["slack"])
@@ -281,6 +282,12 @@ def update_channels(firm_id: str, patch: dict[str, Any]) -> dict[str, Any]:
             "bot_token",
             body.get("bot_token"),
             clear=bool(body.get("clear_bot_token")),
+        )
+        _set_secret(
+            slack,
+            "signing_secret",
+            body.get("signing_secret"),
+            clear=bool(body.get("clear_signing_secret")),
         )
         raw["slack"] = slack
 
@@ -376,6 +383,10 @@ def secrets_compare(a: str, b: str) -> bool:
 
 def get_line_channel_secret(firm_id: str) -> Optional[str]:
     return _read_secret(_channel_block(_load_raw(firm_id), "line"), "channel_secret")
+
+
+def get_slack_signing_secret(firm_id: str) -> Optional[str]:
+    return _read_secret(_channel_block(_load_raw(firm_id), "slack"), "signing_secret")
 
 
 def get_channel_secrets(firm_id: str, channel: str) -> dict[str, Optional[str]]:

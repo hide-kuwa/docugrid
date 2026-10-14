@@ -6,7 +6,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from docugrid_auth import csrf_validation_failed, get_cors_origins, validate_auth_config
+from docugrid_auth import (
+    app_env_is_explicit,
+    csrf_validation_failed,
+    get_cors_origins,
+    is_production,
+    validate_auth_config,
+)
 
 from api.constants import *  # noqa: F403
 from api.deps import *  # noqa: F403
@@ -22,7 +28,20 @@ from services.stripe_billing_service import (  # noqa: F401
     is_stripe_configured,
 )
 
-app = FastAPI()
+_expose_api_docs = not is_production()
+app = FastAPI(
+    docs_url="/docs" if _expose_api_docs else None,
+    redoc_url="/redoc" if _expose_api_docs else None,
+    openapi_url="/openapi.json" if _expose_api_docs else None,
+)
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
 
 
 @app.middleware("http")
@@ -30,6 +49,21 @@ async def csrf_middleware(request: Request, call_next):
     if csrf_validation_failed(request):
         return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
     response = await call_next(request)
+    return response
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    is_docs_page = request.url.path in ("/docs", "/redoc", "/docs/oauth2-redirect")
+    for name, value in _SECURITY_HEADERS.items():
+        if is_docs_page and name == "Content-Security-Policy":
+            continue
+        response.headers.setdefault(name, value)
+    if is_production():
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
     return response
 
 
@@ -61,8 +95,11 @@ def startup_init_db() -> None:
     from services.client_simulation_service import init_client_simulation_db
     from services.client_karte_service import init_client_karte_db
 
+    from services.client_family_tree_service import init_client_family_tree_db
+
     init_client_simulation_db()
     init_client_karte_db()
+    init_client_family_tree_db()
     init_ocr_jobs_db()
     from services.spi_vault import init_spi_db
 
@@ -70,7 +107,16 @@ def startup_init_db() -> None:
     ensure_demo_calendar_seed()
     ensure_invoice_cache_seed()
     # validate_auth_config() raises RuntimeError on fatal production misconfiguration.
-    for warning in validate_auth_config():
+    try:
+        auth_warnings = validate_auth_config()
+    except RuntimeError as exc:
+        if not app_env_is_explicit():
+            raise RuntimeError(
+                f"{exc} (DOCUGRID_ENV is unset, so production checks apply; "
+                "for local development set DOCUGRID_ENV=development or use `npm run dev:backend`)"
+            ) from exc
+        raise
+    for warning in auth_warnings:
         logging.getLogger("docugrid.auth").warning(warning)
     _init_audit_links_db()
     _init_audit_events_db()

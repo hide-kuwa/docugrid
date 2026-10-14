@@ -49,8 +49,11 @@ Current runnable path in this repository is:
 ```bash
 cd backend
 python -m pip install -r requirements.txt
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+cd ..
+npm run dev:backend   # DOCUGRID_ENV=development を付けて uvicorn を起動
 ```
+
+`DOCUGRID_ENV` 未設定のまま uvicorn を直接起動すると **本番扱い**（ヘッダ認証・開発用 JWT 秘密鍵が無効）になり、本番用の設定がないと起動に失敗します。直接起動する場合は `DOCUGRID_ENV=development` を設定してください。
 
 開発用テスト（任意）:
 

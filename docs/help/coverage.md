@@ -32,7 +32,7 @@
 | workspace.karte | [karte.md](./karte.md) | draft | 左縦セクション・失敗時 |
 | workspace.pdf | [pdf.md](./pdf.md) | draft | 注釈・並べ替え・Add PDF結合。Docスロット時は新版保存（過去版保持）。帳票索引 |
 | workspace.tax | [tax-progress.md](./tax-progress.md) | draft | Tax レール。主担当列は sticky 顧客名に被らないよう幅固定 |
-| workspace.dm | [dm.md](./dm.md) | draft | システム内チャット＋メール/Slack/LINE |
+| workspace.dm | [dm.md](./dm.md) | draft | システム内チャット＋メール/Slack/LINE。Slack は Signing Secret 設定で署名検証 |
 | saving.server_drive | [saving.md](./saving.md) | draft | 保存先・他者に見えないとき |
 | saving.storage_story | [storage-story.md](./storage-story.md) | draft | サーバー＋Drive・LP転用コピー・移行時のDrive容量 |
 | security.my_number | [my-number.md](./my-number.md) | draft | SPI 暗号化レーン。HP文は docs/my-number-handling.md |
@@ -49,6 +49,7 @@
 | doc.audit_flow | [audit-flow.md](./audit-flow.md) | draft | 作業保存〜承認。証跡（閲覧・確認・契約同意） |
 | client_data.master | [karte-master.md](./karte-master.md) | draft | カルテで唯一利用可。上部ヘッダーはコンパクト（検索・入力率）。他セクションは工事中 |
 | client_data.relations | [karte-relations.md](./karte-relations.md) | draft | 関係図・PDF。役員・代表（役職名）／From/To は名前・かな検索。**工事中** |
+| client_data.family_tree | [karte-family-tree.md](./karte-family-tree.md) | draft | 世代別カード・顧問先ひも付け／名前のみ両立・年齢自動・法定相続人・A4 PDF／永続「家系図」 |
 | client_data.charts | [karte-charts.md](./karte-charts.md) | draft | 正規指標は年次表＋月次2カード。**工事中** |
 | client_data.payroll | [karte-payroll.md](./karte-payroll.md) | draft | 最短手順・失敗表 |
 | client_data.progress | [karte-progress.md](./karte-progress.md) | draft | マイルストーン・アラート。判定はレール「判定」 |

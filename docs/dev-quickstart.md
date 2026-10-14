@@ -5,10 +5,11 @@ Google OAuth や本番環境変数の設定は **後回し** で OK。以下だ�
 ## 起動
 
 ```bash
-# バックエンド
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+# バックエンド（リポジトリ直下で。DOCUGRID_ENV=development を付けて起動）
+cd backend && pip install -r requirements.txt && cd ..
+npm run dev:backend
+# 直接起動する場合: PowerShell なら $env:DOCUGRID_ENV="development"; uvicorn main:app --reload --port 8000
+# （未設定だと本番扱いになり、本番用の環境変数がないと起動に失敗します）
 
 # フロント（別ターミナル）
 cd frontend

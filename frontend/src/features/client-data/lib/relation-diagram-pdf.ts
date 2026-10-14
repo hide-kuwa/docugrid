@@ -55,7 +55,7 @@ function a4MediaBox(orientation: PdfPageOrientation): {
   return { pageW: A4_PORTRAIT.pageW, pageH: A4_PORTRAIT.pageH };
 }
 
-function escapeXml(s: string): string {
+export function escapeXml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -261,7 +261,7 @@ export function buildRelationDiagramSvg(args: {
 </svg>`;
 }
 
-async function svgToJpegBytes(
+export async function svgToJpegBytes(
   svg: string,
   scale = 2,
 ): Promise<{ bytes: Uint8Array; width: number; height: number }> {
@@ -300,7 +300,7 @@ async function svgToJpegBytes(
  * JPEG を A4 1 ページに収める（余白付き・アスペクト比維持・上寄せ中央）。
  * PDF 座標系は左下原点。
  */
-function buildA4JpegPdf(
+export function buildA4JpegPdf(
   jpeg: Uint8Array,
   imgW: number,
   imgH: number,

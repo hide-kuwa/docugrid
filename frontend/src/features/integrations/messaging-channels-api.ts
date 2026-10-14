@@ -23,6 +23,7 @@ export type SlackChannelConfig = {
   webhook_url_last4: string | null;
   bot_token_configured: boolean;
   bot_token_last4: string | null;
+  signing_secret_configured?: boolean;
   ready: boolean;
 };
 
@@ -68,6 +69,8 @@ export type MessagingChannelsUpdate = {
     clear_webhook_url: boolean;
     bot_token: string;
     clear_bot_token: boolean;
+    signing_secret: string;
+    clear_signing_secret: boolean;
   }>;
   line?: Partial<{
     enabled: boolean;

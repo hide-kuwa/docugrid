@@ -1,5 +1,9 @@
 """Shared pytest fixtures for backend API tests."""
 
+import os
+
+os.environ.setdefault("DOCUGRID_ENV", "development")
+
 import pytest
 from fastapi.testclient import TestClient
 

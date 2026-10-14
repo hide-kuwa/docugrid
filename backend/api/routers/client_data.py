@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 
 from api.router_imports import *  # noqa: F403
 from api.constants import *  # noqa: F403
@@ -291,6 +291,36 @@ async def delete_client_karte(request: Request, client_id: str, entry_id: str):
         raise HTTPException(status_code=404, detail="Karte entry not found")
     _log_audit_event(request, "karte.delete", "success", f"id={entry_id}")
     return {"ok": True}
+
+
+@router.get("/api/clients/{client_id}/family-tree")
+async def get_client_family_tree(request: Request, client_id: str):
+    _require_client_permission(request, "client.view", client_id)
+    ctx = _auth_context(request)
+    from services.client_family_tree_service import get_family_tree
+
+    return get_family_tree(ctx.firm_id, client_id)
+
+
+@router.put("/api/clients/{client_id}/family-tree")
+async def put_client_family_tree(request: Request, client_id: str, body: dict = Body(...)):
+    _require_client_permission(request, "settings.manage", client_id)
+    ctx = _auth_context(request)
+    from services.client_family_tree_service import save_family_tree
+    from services.tenancy import firm_client_ids
+
+    try:
+        tree = save_family_tree(
+            ctx.firm_id,
+            client_id,
+            body,
+            linkable_client_ids=firm_client_ids(ctx.firm_id),
+            actor=ctx.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_audit_event(request, "family_tree.save", "success", f"members={len(tree['members'])}")
+    return tree
 
 
 @router.get("/api/clients/{client_id}/calendar/events")

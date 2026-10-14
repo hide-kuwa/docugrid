@@ -37,7 +37,7 @@ export function useMatrixSlotLayout({
   const defaultSlotLabels = useMemo(() => {
     if (isDataPeriodIndex(activePeriodIdx)) return [];
     if (isPermPeriodIndex(activePeriodIdx))
-      return ["定款", "履歴事項全部証明書", "株主名簿", "設立届出書", "関係図"];
+      return ["定款", "履歴事項全部証明書", "株主名簿", "設立届出書", "関係図", "家系図"];
     if (activeMode === "year")
       return [
         "税務代理権限証書",

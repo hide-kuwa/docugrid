@@ -2,7 +2,7 @@
   "name": "taxx",
   "private": true,
   "scripts": {
-    "dev:backend": "cd backend && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:backend": "node scripts/run-backend-dev.mjs",
     "dev:backend:lan": "node scripts/run-backend-lan.mjs",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:frontend:fresh": "cd frontend && npm run dev:fresh",

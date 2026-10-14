@@ -15,6 +15,7 @@ import { ClientSpecialNotesPanel } from "@/features/client-data/ClientSpecialNot
 import { ClientKartePanel } from "@/features/client-data/ClientKartePanel";
 import { ClientPayrollPanel } from "@/features/payroll/ClientPayrollPanel";
 import { ClientRelationsPanel } from "@/features/client-data/ClientRelationsPanel";
+import { ClientFamilyTreePanel } from "@/features/client-data/ClientFamilyTreePanel";
 import { DataContextGrid } from "@/features/client-data/DataContextGrid";
 import { KarteSectionWipPanel } from "@/features/client-data/KarteSectionWipPanel";
 import {
@@ -122,6 +123,13 @@ export function DataWorkspace({
         ) : null}
         {showLive && activeTab === "relations" ? (
           <ClientRelationsPanel
+            client={client}
+            canEdit={canEdit}
+            onFocusClient={onSelectRelatedClient}
+          />
+        ) : null}
+        {showLive && activeTab === "familyTree" ? (
+          <ClientFamilyTreePanel
             client={client}
             canEdit={canEdit}
             onFocusClient={onSelectRelatedClient}

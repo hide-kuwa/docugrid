@@ -87,6 +87,7 @@ spawnChild(
     cwd: backendDir,
     env: {
       ...process.env,
+      DOCUGRID_ENV: process.env.DOCUGRID_ENV || "development",
       DOCUGRID_CORS_ORIGINS: corsOrigins,
     },
   },

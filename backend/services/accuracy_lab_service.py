@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import yaml
 
-from services.tenancy import DEFAULT_FIRM_ID
+from services.tenancy import DEFAULT_FIRM_ID, safe_firm_id
 
 STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage"
 PRESETS_PATH = Path(__file__).resolve().parent.parent / "config" / "accuracy_lab_presets.yaml"
@@ -29,8 +29,7 @@ def _now() -> str:
 
 
 def _firm_dir(firm_id: str) -> Path:
-    fid = (firm_id or "").strip() or DEFAULT_FIRM_ID
-    path = STORAGE_DIR / "firms" / fid / "accuracy_lab"
+    path = STORAGE_DIR / "firms" / safe_firm_id(firm_id) / "accuracy_lab"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

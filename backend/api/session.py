@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import datetime, timezone
 
@@ -82,10 +83,20 @@ def _auth_token_response(token: str, expires_in: int) -> Response:
     return resp
 
 
+def _trusted_proxy_hops() -> int:
+    try:
+        return max(0, int(os.environ.get("DOCUGRID_TRUSTED_PROXY_HOPS", "0")))
+    except ValueError:
+        return 0
+
+
 def _client_ip(request: Request) -> str:
-    forwarded = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-    if forwarded:
-        return forwarded
+    # X-Forwarded-For is client-controlled; only entries appended by our own proxies are trusted.
+    hops = _trusted_proxy_hops()
+    if hops:
+        chain = [p.strip() for p in (request.headers.get("X-Forwarded-For") or "").split(",") if p.strip()]
+        if len(chain) >= hops:
+            return chain[-hops]
     if request.client:
         return request.client.host or ""
     return ""

@@ -95,3 +95,33 @@ def transfer_public_rate_limit_exceeded(client_ip: str) -> bool:
 
 def reset_transfer_public_rate_limits() -> None:
     _transfer_public_attempts.clear()
+
+
+_PUBLIC_PDF_WINDOW_SEC = 60
+_PUBLIC_PDF_MAX = 120
+_public_pdf_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _public_pdf_max() -> int:
+    try:
+        return int(os.environ.get("DOCUGRID_PUBLIC_PDF_RATE_LIMIT", str(_PUBLIC_PDF_MAX)))
+    except ValueError:
+        return _PUBLIC_PDF_MAX
+
+
+def public_pdf_rate_limit_exceeded(client_ip: str) -> bool:
+    """Unauthenticated PDF tool limit (default 120/min per IP)."""
+    if not client_ip:
+        return False
+    now = time.time()
+    bucket = [t for t in _public_pdf_attempts[client_ip] if now - t < _PUBLIC_PDF_WINDOW_SEC]
+    if len(bucket) >= _public_pdf_max():
+        _public_pdf_attempts[client_ip] = bucket
+        return True
+    bucket.append(now)
+    _public_pdf_attempts[client_ip] = bucket
+    return False
+
+
+def reset_public_pdf_rate_limits() -> None:
+    _public_pdf_attempts.clear()

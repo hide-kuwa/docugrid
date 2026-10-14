@@ -562,3 +562,194 @@ def test_authoring_render_rejects_cross_firm_party(beta_client_master, monkeypat
         },
     )
     assert r.status_code in (403, 404), r.text
+
+
+@pytest.fixture
+def messaging_storage(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    monkeypatch.setattr("services.messaging_channels_service.STORAGE_DIR", storage)
+    monkeypatch.setattr("services.firm_settings.STORAGE_DIR", storage)
+    monkeypatch.setattr("services.dm_inbox_service.STORAGE_DIR", storage)
+    monkeypatch.setattr("services.dm_inbox_service.DM_INBOX_DB_PATH", storage / "dm_inbox.db")
+    return tmp_path
+
+
+@pytest.mark.parametrize("firm_id", ["..%5C..%5Cescaped", "..", "firm%2E%2E"])
+def test_public_messaging_rejects_path_traversal_firm_id(messaging_storage, firm_id) -> None:
+    r = TestClient(app).post(f"/api/public/messaging/{firm_id}/slack", json={"text": "x"})
+    assert r.status_code in (401, 404), r.text
+    assert not any(messaging_storage.rglob("messaging_channels.json"))
+
+
+def test_public_messaging_does_not_create_token_for_unknown_firm(messaging_storage) -> None:
+    r = TestClient(app).post("/api/public/messaging/firm_nobody/slack?token=guess", json={"text": "x"})
+    assert r.status_code == 401
+    assert not any(messaging_storage.rglob("messaging_channels.json"))
+
+
+def test_safe_firm_id_rejects_separators() -> None:
+    from services.tenancy import safe_firm_id
+
+    assert safe_firm_id("firm_default") == "firm_default"
+    for bad in ("..", "../x", "..\\x", "a/b", "a.b"):
+        with pytest.raises(ValueError):
+            safe_firm_id(bad)
+
+
+def _slack_signed_headers(secret: str, body: bytes, ts: int) -> dict[str, str]:
+    import hashlib
+    import hmac
+
+    base = b"v0:" + str(ts).encode() + b":" + body
+    sig = "v0=" + hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
+    return {
+        "X-Slack-Signature": sig,
+        "X-Slack-Request-Timestamp": str(ts),
+        "Content-Type": "application/json",
+    }
+
+
+def test_slack_webhook_requires_signature_when_signing_secret_set(messaging_storage) -> None:
+    import time
+
+    from services.messaging_channels_service import ensure_inbound_token, update_channels
+
+    token = ensure_inbound_token(DEFAULT_FIRM_ID)
+    update_channels(DEFAULT_FIRM_ID, {"slack": {"signing_secret": "shh-test-secret"}})
+    url = f"/api/public/messaging/{DEFAULT_FIRM_ID}/slack?token={token}"
+    body = json.dumps({"text": "hello"}).encode()
+    c = TestClient(app)
+
+    unsigned = c.post(url, content=body, headers={"Content-Type": "application/json"})
+    assert unsigned.status_code == 401
+
+    stale = c.post(url, content=body, headers=_slack_signed_headers("shh-test-secret", body, int(time.time()) - 3600))
+    assert stale.status_code == 401
+
+    forged = c.post(url, content=body, headers=_slack_signed_headers("wrong", body, int(time.time())))
+    assert forged.status_code == 401
+
+    ok = c.post(url, content=body, headers=_slack_signed_headers("shh-test-secret", body, int(time.time())))
+    assert ok.status_code == 200, ok.text
+
+
+def test_line_webhook_requires_signature_when_channel_secret_set(messaging_storage) -> None:
+    from services.messaging_channels_service import ensure_inbound_token, update_channels
+
+    token = ensure_inbound_token(DEFAULT_FIRM_ID)
+    update_channels(DEFAULT_FIRM_ID, {"line": {"channel_secret": "line-secret"}})
+    r = TestClient(app).post(
+        f"/api/public/messaging/{DEFAULT_FIRM_ID}/line?token={token}",
+        json={"events": []},
+    )
+    assert r.status_code == 401
+
+
+def test_login_rate_limit_ignores_spoofed_forwarded_for(monkeypatch) -> None:
+    from services.login_rate_limit import reset_login_rate_limits
+
+    reset_login_rate_limits()
+    monkeypatch.delenv("DOCUGRID_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.setenv("DOCUGRID_LOGIN_RATE_LIMIT", "3")
+    payload = {"email": "nobody@example.com", "password": "wrong", "stakeholder_id": ""}
+    c = TestClient(app)
+    statuses = [
+        c.post("/api/auth/login", json=payload, headers={"X-Forwarded-For": f"203.0.113.{i}"}).status_code
+        for i in range(5)
+    ]
+    reset_login_rate_limits()
+    assert statuses[-1] == 429, statuses
+
+
+def test_client_ip_trusts_only_proxy_appended_hop(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from api.session import _client_ip
+
+    req = SimpleNamespace(
+        headers={"X-Forwarded-For": "6.6.6.6, 198.51.100.7"},
+        client=SimpleNamespace(host="10.0.0.1"),
+    )
+    monkeypatch.delenv("DOCUGRID_TRUSTED_PROXY_HOPS", raising=False)
+    assert _client_ip(req) == "10.0.0.1"
+    monkeypatch.setenv("DOCUGRID_TRUSTED_PROXY_HOPS", "1")
+    assert _client_ip(req) == "198.51.100.7"
+
+
+def test_public_pdf_render_caps_oversized_page() -> None:
+    from services.login_rate_limit import reset_public_pdf_rate_limits
+
+    reset_public_pdf_rate_limits()
+    doc = fitz.open()
+    doc.new_page(width=14400, height=14400)
+    r = TestClient(app).post(
+        "/api/public/pdf/render",
+        files={"file": ("big.pdf", doc.write(), "application/pdf")},
+        data={"page": "0"},
+    )
+    assert r.status_code == 200, r.text
+    pix = fitz.Pixmap(r.content)
+    assert pix.width * pix.height <= 25_000_000
+
+
+def test_public_pdf_errors_do_not_leak_exception_text() -> None:
+    from services.login_rate_limit import reset_public_pdf_rate_limits
+
+    reset_public_pdf_rate_limits()
+    r = TestClient(app).post(
+        "/api/public/pdf/info",
+        files={"file": ("bad.pdf", b"not a pdf at all", "application/pdf")},
+    )
+    assert r.status_code == 500
+    assert r.json() == {"message": "PDF processing failed"}
+
+
+def test_public_pdf_rate_limited(monkeypatch) -> None:
+    from services.login_rate_limit import reset_public_pdf_rate_limits
+
+    reset_public_pdf_rate_limits()
+    monkeypatch.setenv("DOCUGRID_PUBLIC_PDF_RATE_LIMIT", "2")
+    c = TestClient(app)
+    files = {"file": ("a.pdf", _minimal_pdf_bytes(), "application/pdf")}
+    codes = [c.post("/api/public/pdf/info", files=files).status_code for _ in range(3)]
+    reset_public_pdf_rate_limits()
+    assert codes == [200, 200, 429], codes
+
+
+def test_api_responses_carry_security_headers() -> None:
+    r = TestClient(app).get("/health")
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+
+
+def test_unset_app_env_is_treated_as_production(monkeypatch) -> None:
+    from docugrid_auth import header_auth_allowed, is_production
+
+    monkeypatch.delenv("DOCUGRID_ENV", raising=False)
+    monkeypatch.delenv("DOCUGRID_ALLOW_HEADER_AUTH", raising=False)
+    assert is_production()
+    assert not header_auth_allowed()
+
+
+def test_api_docs_hidden_in_production() -> None:
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("DOCUGRID_")}
+    env["DOCUGRID_ENV"] = "production"
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from api.application import app; print(app.openapi_url, app.docs_url, app.redoc_url)",
+        ],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip().splitlines()[-1] == "None None None"

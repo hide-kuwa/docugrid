@@ -23,6 +23,11 @@ mcp-server/.env
 
 storage/
 
+# SQLite databases may contain personal data (never commit)
+*.db
+*.sqlite
+*.sqlite3
+
 # Empty production storage scaffold (never commit real prod data)
 deploy/
 

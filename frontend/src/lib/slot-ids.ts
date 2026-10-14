@@ -6,6 +6,7 @@ const PERM_SLOT_IDS = [
   "shareholder_registry",
   "establishment_notice",
   "relation_diagram",
+  "family_tree",
 ] as const;
 
 const YEAR_SLOT_IDS = [

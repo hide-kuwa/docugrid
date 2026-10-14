@@ -12,7 +12,7 @@ from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from services.tenancy import DEFAULT_FIRM_ID
+from services.tenancy import DEFAULT_FIRM_ID, safe_firm_id
 
 STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage"
 LEGACY_SYSTEM_CONFIG_PATH = STORAGE_DIR / "system_config.json"
@@ -22,8 +22,7 @@ _DEV_SECRET_ENCRYPTION_KEY = "docugrid-dev-local-ai-secret-key"
 
 
 def _firm_dir(firm_id: str) -> Path:
-    fid = (firm_id or "").strip() or DEFAULT_FIRM_ID
-    return STORAGE_DIR / "firms" / fid
+    return STORAGE_DIR / "firms" / safe_firm_id(firm_id)
 
 
 def system_config_path(firm_id: str) -> Path:

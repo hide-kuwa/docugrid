@@ -1,7 +1,7 @@
 /** Mirrors backend/services/requirements.py for slot index resolution. */
 
 const REQUIREMENTS: Record<string, string[]> = {
-  perm: ["定款", "履歴事項全部証明書", "株主名簿", "設立届出書", "関係図"],
+  perm: ["定款", "履歴事項全部証明書", "株主名簿", "設立届出書", "関係図", "家系図"],
   year: ["決算報告書", "総勘定元帳", "法人税申告書", "消費税申告書"],
   month: ["月次試算表", "通帳コピー", "請求書綴り", "給与台帳"],
 };

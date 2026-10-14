@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -13,19 +14,44 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from services.dm_inbox_service import ingest_item
 from services.messaging_channels_service import (
-    ensure_inbound_token,
     get_line_channel_secret,
+    get_slack_signing_secret,
     verify_inbound_token,
 )
-from services.tenancy import DEFAULT_FIRM_ID
+
+_SLACK_MAX_SKEW_SEC = 300
+from services.tenancy import DEFAULT_FIRM_ID, is_valid_firm_id
 
 router = APIRouter()
 
 
+def _require_valid_firm_id(firm_id: str) -> None:
+    if not is_valid_firm_id(firm_id):
+        raise HTTPException(status_code=401, detail="Invalid inbound token")
+
+
 def _require_token(firm_id: str, token: Optional[str]) -> None:
-    ensure_inbound_token(firm_id)
+    _require_valid_firm_id(firm_id)
     if not verify_inbound_token(firm_id, token):
         raise HTTPException(status_code=401, detail="Invalid inbound token")
+
+
+def _require_slack_signature(
+    signing_secret: str,
+    body: bytes,
+    timestamp: Optional[str],
+    signature: Optional[str],
+) -> None:
+    try:
+        ts = int(timestamp or "")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Slack signature") from None
+    if abs(time.time() - ts) > _SLACK_MAX_SKEW_SEC:
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
+    base = b"v0:" + str(ts).encode("utf-8") + b":" + body
+    expected = "v0=" + hmac.new(signing_secret.encode("utf-8"), base, hashlib.sha256).hexdigest()
+    if not signature or not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
 
 @router.post("/api/public/messaging/{firm_id}/slack")
@@ -34,11 +60,22 @@ async def public_slack_webhook(
     request: Request,
     token: Optional[str] = Query(None),
     x_docugrid_token: Optional[str] = Header(None, alias="X-DocuGrid-Token"),
+    x_slack_signature: Optional[str] = Header(None, alias="X-Slack-Signature"),
+    x_slack_request_timestamp: Optional[str] = Header(None, alias="X-Slack-Request-Timestamp"),
 ):
     """Slack Events API / generic JSON → DM inbox."""
     auth = token or x_docugrid_token
     _require_token(firm_id or DEFAULT_FIRM_ID, auth)
-    payload = await request.json()
+    body_bytes = await request.body()
+    signing_secret = get_slack_signing_secret(firm_id)
+    if signing_secret:
+        _require_slack_signature(
+            signing_secret, body_bytes, x_slack_request_timestamp, x_slack_signature
+        )
+    try:
+        payload = json.loads(body_bytes.decode("utf-8") or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
     # Slack URL verification
     if isinstance(payload, dict) and payload.get("type") == "url_verification":
@@ -107,16 +144,17 @@ async def public_line_webhook(
 ):
     """LINE Messaging API webhook → DM inbox."""
     auth = token or x_docugrid_token
+    _require_valid_firm_id(firm_id)
     body_bytes = await request.body()
     channel_secret = get_line_channel_secret(firm_id)
-    if channel_secret and x_line_signature:
+    if channel_secret:
         digest = hmac.new(
             channel_secret.encode("utf-8"),
             body_bytes,
             hashlib.sha256,
         ).digest()
         expected = base64.b64encode(digest).decode("utf-8")
-        if not hmac.compare_digest(expected, x_line_signature):
+        if not x_line_signature or not hmac.compare_digest(expected, x_line_signature):
             raise HTTPException(status_code=401, detail="Invalid LINE signature")
     else:
         _require_token(firm_id or DEFAULT_FIRM_ID, auth)

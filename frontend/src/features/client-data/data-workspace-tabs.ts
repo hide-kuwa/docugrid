@@ -9,12 +9,14 @@ import {
   GitBranch,
   ListChecks,
   MessagesSquare,
+  Network,
   Wallet,
 } from "lucide-react";
 
 export type DataWorkspaceTabId =
   | "master"
   | "relations"
+  | "familyTree"
   | "charts"
   | "progress"
   | "payroll"
@@ -56,6 +58,14 @@ export const DATA_WORKSPACE_TABS: DataWorkspaceTab[] = [
     description: "家系・出資・紹介の関係図",
     icon: GitBranch,
     status: "planned",
+  },
+  {
+    id: "familyTree",
+    label: "家系図",
+    subLabel: "FAMILY",
+    description: "世代別の家族表・法定相続人",
+    icon: Network,
+    status: "live",
   },
   {
     id: "karte",
@@ -155,6 +165,14 @@ export const KARTE_SECTION_TABS: DataWorkspaceTab[] = [
     description: "家系・出資・紹介の関係図",
     icon: GitBranch,
     status: "planned",
+  },
+  {
+    id: "familyTree",
+    label: "家系図",
+    subLabel: "FAMILY",
+    description: "世代別の家族表・法定相続人",
+    icon: Network,
+    status: "live",
   },
   {
     id: "charts",

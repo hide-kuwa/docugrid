@@ -41,7 +41,12 @@ CSRF_EXEMPT_PREFIXES = (
 
 
 def get_app_env() -> str:
-    return os.environ.get("DOCUGRID_ENV", "development").strip().lower()
+    # Unset => production: dev conveniences (header auth, dev JWT secret) must be opted into explicitly.
+    return (os.environ.get("DOCUGRID_ENV") or "production").strip().lower()
+
+
+def app_env_is_explicit() -> bool:
+    return bool((os.environ.get("DOCUGRID_ENV") or "").strip())
 
 
 def is_production() -> bool:
